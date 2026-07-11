@@ -1,8 +1,5 @@
 <?php
-if(!empty($on) AND isset($ret['MODS'])) {
-	if (!isset($ret['MODS']['Tools'])) {
-        $ret['MODS']['Tools'][] = 'Outils';
-    }
-	$ret['MODS']['Tools'][] = 'Greffe v2' .'|'.$CFG->ROOT_DIR.'Modules/Custom/Greffe2/';
-}
+if (subFeatureAcl($acl,AclParticipants,'pTarget') == AclReadWrite) {
+      $ret['PART']['RegistrArc'] = 'Raboule la moula!' . '|' . $CFG->ROOT_DIR . 'Modules/Custom/RegistrArc/';
+      }
 ?>
