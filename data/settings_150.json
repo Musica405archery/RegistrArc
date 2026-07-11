@@ -1,0 +1,51 @@
+{
+    "module": "RegistrArc",
+    "version": 1,
+    "tour_id": 150,
+    "tournament_code": "F26CREPS",
+    "exported_at": null,
+    "saved_at": "2026-07-11 13:28:22",
+    "tarifs": {
+        "clubs_autres": {
+            "jeunes": {
+                "1": 8,
+                "2": 14
+            },
+            "adultes": {
+                "1": 10,
+                "2": 18
+            }
+        },
+        "organizer": {
+            "jeunes": {
+                "1": 4,
+                "2": 8
+            },
+            "adultes": {
+                "1": 5,
+                "2": 10
+            }
+        }
+    },
+    "payment_modes": {
+        "ESP": "Espèces",
+        "CHQ": "Chèque",
+        "VIR": "Virement",
+        "GRA": "Gratuit"
+    },
+    "rules": [
+        {
+            "id": "R1",
+            "label": "DR PROMO",
+            "active": false,
+            "scope": "finale_team",
+            "match": [
+                "oui"
+            ],
+            "action": {
+                "type": "fixed_price",
+                "value": 0
+            }
+        }
+    ]
+}
