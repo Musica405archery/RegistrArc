@@ -1,0 +1,36 @@
+{
+    "module": "RegistrArc",
+    "version": 1,
+    "tour_id": 149,
+    "exported_at": null,
+    "tarifs": {
+        "clubs_autres": {
+            "jeunes": {
+                "1": 8,
+                "2": 16
+            },
+            "adultes": {
+                "1": 8,
+                "2": 16
+            }
+        },
+        "organizer": {
+            "jeunes": {
+                "1": 0,
+                "2": 0
+            },
+            "adultes": {
+                "1": 0,
+                "2": 0
+            }
+        }
+    },
+    "payment_modes": {
+        "ESP": "Espèce",
+        "CHQ": "Chèque",
+        "VIR": "Virement",
+        "GRA": "Gratuit"
+    },
+    "rules": [],
+    "saved_at": "2026-07-11 12:20:31"
+}
