@@ -1,8 +1,8 @@
 <?php
 if(!empty($on) AND isset($ret['MODS'])) {
-	if (!isset($ret['MODS']['Tools'])) {
-        $ret['MODS']['Tools'][] = 'Outils';
+	if (!isset($ret['MODS']['RegistrArc'])) {
+        $ret['MODS']['RegistrArc'][] = 'Outils';
     }
-	$ret['MODS']['Tools'][] = 'Greffe v2' .'|'.$CFG->ROOT_DIR.'Modules/Custom/Greffe2/';
+	$ret['MODS']['RegistrArc'][] = 'Greffe' .'|'.$CFG->ROOT_DIR.'Modules/Custom/Greffe2/';
 }
 ?>
