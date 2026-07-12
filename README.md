@@ -12,7 +12,6 @@ Quand vous organisez un tournoi de tir à l'arc avec I@nseo, **RegistrArc** vous
 - **Gérer les paiements** : savoir qui a payé, combien, et quand
 - **Automatiser la tarification** : appliquer des règles selon l'âge, le club, le nombre de départs…
 - **Générer des factures** au format PDF, individualisées ou groupées par club
-- **Organiser les archers** sur les cibles et les lignes de départ
 
 ---
 
@@ -21,7 +20,6 @@ Quand vous organisez un tournoi de tir à l'arc avec I@nseo, **RegistrArc** vous
 ### 📋 Liste des archers engagés
 - Voir d'un coup d'œil tous les participants inscrits
 - Identifier le nombre de départs et les catégories de chaque archer
-- Connaître le club et la région de chacun
 
 ### 💰 Suivi des règlements
 - Enregistrer les paiements (montant, date, moyen de paiement, référence)
@@ -34,7 +32,7 @@ Le module calcule automatiquement le montant à payer en fonction de **règles c
 
 | Critère | Exemple |
 |---|---|
-| Par catégorie | Junior 免费, Senior 6€, Vétéran 4€… |
+| Par catégorie | U18,U21,S2,etc 4€… |
 | Par nombre de départs | 1 départ = 6€, 2 départs = 10€… |
 | Par club ou région | Tarif réduit pour les clubs de votre région |
 | Par type de qualification | Individuelle, par équipe, les deux |
@@ -48,8 +46,7 @@ Le module calcule automatiquement le montant à payer en fonction de **règles c
 - Mention du nom du tournoi, de la date, et des détails de paiement
 
 ### 🎯 Positionnement sur cibles et départs
-- Identifier rapidement le positionnement en phase éliminatoire (poids sur cible)
-- Consulter les informations de positionnement gauche/droite et haut/bas
+- Identifier rapidement le positionnement en phase de qualification
 
 ### 🔍 Filtres, recherche et export
 - **Filtrer** par catégorie, club, région ou état de paiement
