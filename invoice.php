@@ -125,13 +125,13 @@ function registrarc_format_date_fr($date) {
         return '';
     }
 
-    $timestamp = strtotime($date);
+    $ts = strtotime($date);
 
-    if (!$timestamp) {
+    if (!$ts) {
         return $date;
     }
 
-    return date('d/m/Y', $timestamp);
+    return date('d/m/Y', $ts);
 }
 
 function registrarc_tournament_date_string($from, $to) {
@@ -447,7 +447,26 @@ function registrarc_rule_entry_value($scope, array $entry) {
         'finale_ind'    => 'EnIndFEvent',
         'finale_team'   => 'EnTeamFEvent',
         'double_mixte'  => 'EnTeamMixEvent',
+        'finales_ind'   => 'EnIndFEvent',
+        'finales_team'  => 'EnTeamFEvent',
+        'finales_mix'   => 'EnTeamMixEvent',
     ];
+
+    if ($scope === 'finales') {
+        $values = [
+            isset($entry['EnIndFEvent']) ? $entry['EnIndFEvent'] : '',
+            isset($entry['EnTeamFEvent']) ? $entry['EnTeamFEvent'] : '',
+            isset($entry['EnTeamMixEvent']) ? $entry['EnTeamMixEvent'] : '',
+        ];
+
+        foreach ($values as $v) {
+            if (!registrarc_is_null_empty_or_zero($v)) {
+                return 'OUI';
+            }
+        }
+
+        return 'NON';
+    }
 
     if (!isset($map[$scope])) {
         return null;
@@ -481,20 +500,12 @@ function registrarc_entry_rule_matches($scope, $matches, array $entry) {
 
     if ($scope === 'region') {
         $clubCode = preg_replace('/\D+/', '', (string)$entry['country_code']);
-        $region = '';
-
-        if (strlen($clubCode) >= 2) {
-            $region = substr($clubCode, 0, 2);
-        }
+        $region = strlen($clubCode) >= 2 ? substr($clubCode, 0, 2) : '';
 
         foreach ($matches as $match) {
             $match = preg_replace('/\D+/', '', (string)$match);
 
-            if ($match === '') {
-                continue;
-            }
-
-            if ($region === $match) {
+            if ($match !== '' && $region === $match) {
                 return true;
             }
         }
@@ -504,20 +515,12 @@ function registrarc_entry_rule_matches($scope, $matches, array $entry) {
 
     if ($scope === 'departement') {
         $clubCode = preg_replace('/\D+/', '', (string)$entry['country_code']);
-        $departement = '';
-
-        if (strlen($clubCode) >= 4) {
-            $departement = substr($clubCode, 2, 2);
-        }
+        $departement = strlen($clubCode) >= 4 ? substr($clubCode, 2, 2) : '';
 
         foreach ($matches as $match) {
             $match = preg_replace('/\D+/', '', (string)$match);
 
-            if ($match === '') {
-                continue;
-            }
-
-            if ($departement === $match) {
+            if ($match !== '' && $departement === $match) {
                 return true;
             }
         }
@@ -588,9 +591,9 @@ function registrarc_apply_tarif_rules(array $entry, array $rules) {
 
     return [
         'matched' => $matchedCount > 0,
-        'label'   => implode(' + ', $labels),
-        'amount'  => $total,
-        'count'   => $matchedCount,
+        'label' => implode(' + ', $labels),
+        'amount' => $total,
+        'count' => $matchedCount,
     ];
 }
 
@@ -606,11 +609,7 @@ function registrarc_prix_engagement($clubCode, $categorie, $numeroEngagement, $t
         $p2 = isset($tarifs['clubs_autres'][$age][2]) ? floatval($tarifs['clubs_autres'][$age][2]) : $p1;
     }
 
-    if ($numeroEngagement <= 1) {
-        return $p1;
-    }
-
-    return $p2 - $p1;
+    return ($numeroEngagement <= 1) ? $p1 : ($p2 - $p1);
 }
 
 function registrarc_format_montant($montant) {
@@ -674,8 +673,6 @@ function registrarc_get_tournament_info($TourId) {
 
     return $data;
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Numérotation globale des engagements par licence
@@ -1081,30 +1078,49 @@ $isGroupedInvoice = count($rows) > 1;
 
         .competition-header {
             display: grid;
-            grid-template-columns: 25mm 1fr 25mm;
+            grid-template-columns: 22mm 1fr 22mm;
             align-items: center;
-            gap: 8mm;
-            min-height: 18mm;
+            gap: 6mm;
+            min-height: 16mm;
             border-bottom: 1px solid #d1d5db;
-            padding-bottom: 4mm;
-            margin-bottom: 6mm;
+            padding-bottom: 3mm;
+            margin-bottom: 5mm;
         }
 
         .competition-logo {
+            width: 22mm;
+            min-width: 22mm;
+            max-width: 22mm;
+            height: 14mm;
+            min-height: 14mm;
+            max-height: 14mm;
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 16mm;
+            overflow: hidden;
         }
 
         .competition-logo img {
-            max-height: 15mm;
-            max-width: 24mm;
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
             object-fit: contain;
+            display: block;
         }
 
         .competition-info {
             text-align: center;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .competition-name,
+        .competition-where,
+        .competition-date {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .competition-name {
@@ -1330,8 +1346,30 @@ $isGroupedInvoice = count($rows) > 1;
                 display: none;
             }
 
+            .competition-header {
+                grid-template-columns: 18mm 1fr 18mm;
+                gap: 4mm;
+                min-height: 12mm;
+                padding-bottom: 2mm;
+                margin-bottom: 3mm;
+                break-inside: avoid;
+            }
+
+            .competition-logo {
+                width: 18mm;
+                min-width: 18mm;
+                max-width: 18mm;
+                height: 10mm;
+                min-height: 10mm;
+                max-height: 10mm;
+            }
+
+            .competition-logo img {
+                max-width: 100%;
+                max-height: 100%;
+            }
+
             .box,
-            .competition-header,
             .invoice-header,
             .bottom-image-wrapper {
                 break-inside: avoid;
@@ -1363,6 +1401,19 @@ $isGroupedInvoice = count($rows) > 1;
             .competition-header {
                 grid-template-columns: 1fr;
                 text-align: center;
+            }
+
+            .competition-logo {
+                width: 100%;
+                max-width: 100%;
+                min-width: 0;
+                height: 18mm;
+                min-height: 18mm;
+                max-height: 18mm;
+            }
+
+            .competition-logo img {
+                max-height: 18mm;
             }
 
             .invoice-header,
@@ -1431,7 +1482,7 @@ $isGroupedInvoice = count($rows) > 1;
         <div class="invoice-header">
             <div>
                 <div class="brand-title">Facture</div>
-                <div class="brand-subtitle">Gestion des engagements - Registr’Arc</div>
+                <div class="brand-subtitle">Gestion des engagements - Registr'Arc</div>
                 <div class="brand-subtitle">Le module de Greffe pour I@nseo</div>
             </div>
 

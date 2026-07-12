@@ -13,7 +13,6 @@
 //
 // Paiements lus depuis : data/payments_<TourId>.json
 // Groupes lus depuis   : data/cheque_groups_<TourId>.json
-// Rien n'est écrit dans Qualifications.QuNotes.
 // ============================================================================
 
 define('debug', false);

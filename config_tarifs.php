@@ -1294,10 +1294,36 @@ include('Common/Templates/head.php');
                 Enregistrer les paramètres
             </button>
 
+            <a href="github_update.php" class="btn-option" onclick="return confirm('Lancer la mise à jour depuis GitHub ?')">
+                ⚙️ Option
+            </a>
+
             <a href="index.php" class="back-link">← Retour à la liste des engagements</a>
         </div>
     </form>
 </div>
+
+<style>
+    .btn-option {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 7px 14px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+        white-space: nowrap;
+        background: #FFD700;
+        color: #333;
+    }
+    .btn-option:hover {
+        background: #FFC000;
+    }
+</style>
 
 <script>
 const registrarcAllowedRuleScopes = <?php echo json_encode($allowedRuleScopes, JSON_UNESCAPED_UNICODE); ?>;
