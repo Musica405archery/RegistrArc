@@ -1078,49 +1078,30 @@ $isGroupedInvoice = count($rows) > 1;
 
         .competition-header {
             display: grid;
-            grid-template-columns: 22mm 1fr 22mm;
+            grid-template-columns: 25mm 1fr 25mm;
             align-items: center;
-            gap: 6mm;
-            min-height: 16mm;
+            gap: 8mm;
+            min-height: 18mm;
             border-bottom: 1px solid #d1d5db;
-            padding-bottom: 3mm;
-            margin-bottom: 5mm;
+            padding-bottom: 4mm;
+            margin-bottom: 6mm;
         }
 
         .competition-logo {
-            width: 22mm;
-            min-width: 22mm;
-            max-width: 22mm;
-            height: 14mm;
-            min-height: 14mm;
-            max-height: 14mm;
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
+            min-height: 16mm;
         }
 
         .competition-logo img {
-            max-width: 100%;
-            max-height: 100%;
-            width: auto;
-            height: auto;
+            max-height: 15mm;
+            max-width: 24mm;
             object-fit: contain;
-            display: block;
         }
 
         .competition-info {
             text-align: center;
-            min-width: 0;
-            overflow: hidden;
-        }
-
-        .competition-name,
-        .competition-where,
-        .competition-date {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
         }
 
         .competition-name {
@@ -1346,30 +1327,8 @@ $isGroupedInvoice = count($rows) > 1;
                 display: none;
             }
 
-            .competition-header {
-                grid-template-columns: 18mm 1fr 18mm;
-                gap: 4mm;
-                min-height: 12mm;
-                padding-bottom: 2mm;
-                margin-bottom: 3mm;
-                break-inside: avoid;
-            }
-
-            .competition-logo {
-                width: 18mm;
-                min-width: 18mm;
-                max-width: 18mm;
-                height: 10mm;
-                min-height: 10mm;
-                max-height: 10mm;
-            }
-
-            .competition-logo img {
-                max-width: 100%;
-                max-height: 100%;
-            }
-
             .box,
+            .competition-header,
             .invoice-header,
             .bottom-image-wrapper {
                 break-inside: avoid;
@@ -1389,7 +1348,7 @@ $isGroupedInvoice = count($rows) > 1;
             }
         }
 
-        @media (max-width: 700px) {
+        @media screen and (max-width: 700px) {
             .invoice-page {
                 width: 100%;
                 min-height: auto;
@@ -1401,19 +1360,6 @@ $isGroupedInvoice = count($rows) > 1;
             .competition-header {
                 grid-template-columns: 1fr;
                 text-align: center;
-            }
-
-            .competition-logo {
-                width: 100%;
-                max-width: 100%;
-                min-width: 0;
-                height: 18mm;
-                min-height: 18mm;
-                max-height: 18mm;
-            }
-
-            .competition-logo img {
-                max-height: 18mm;
             }
 
             .invoice-header,
@@ -1440,6 +1386,58 @@ $isGroupedInvoice = count($rows) > 1;
                 margin: 10px;
                 justify-content: flex-start;
                 flex-wrap: wrap;
+            }
+        }
+
+        @media print {
+            .competition-header {
+                display: grid !important;
+                grid-template-columns: 20mm 1fr 20mm !important;
+                align-items: center !important;
+                gap: 5mm !important;
+                width: 100% !important;
+                min-height: 12mm !important;
+                max-height: 16mm !important;
+                padding-bottom: 2mm !important;
+                margin-bottom: 4mm !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+
+            .competition-logo {
+                width: 20mm !important;
+                min-width: 20mm !important;
+                max-width: 20mm !important;
+                height: 12mm !important;
+                min-height: 12mm !important;
+                max-height: 12mm !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                overflow: hidden !important;
+            }
+
+            .competition-logo img {
+                display: block !important;
+                max-width: 100% !important;
+                max-height: 100% !important;
+                width: auto !important;
+                height: auto !important;
+                object-fit: contain !important;
+            }
+
+            .competition-info {
+                min-width: 0 !important;
+                text-align: center !important;
+                overflow: hidden !important;
+            }
+
+            .competition-name,
+            .competition-where,
+            .competition-date {
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
             }
         }
     </style>
