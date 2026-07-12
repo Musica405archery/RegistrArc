@@ -13,13 +13,16 @@
 //
 // Règles avancées :
 // - Catégorie
-// - Région
-// - Département
+// - Région : 2 premiers chiffres du code club
+// - Département : 3e et 4e chiffres du code club
 // - Qualification individuelle
 // - Qualification équipe
 // - Finale individuelle si Events contient EvTeamEvent = 0 pour le tournoi
 // - Finale équipe si Events contient EvTeamEvent = 1 pour le tournoi
 // - Double mixte si Events contient EvTeamEvent = 1 et EvMixedTeam = 1
+//
+// La structure des règles reste : scope / match / action fixed_price,
+// comme dans la logique initiale des règles avancées du module [1].
 // ============================================================================
 
 define('debug', false);
@@ -111,6 +114,12 @@ function registrarc_get_module_parameter($name, $default = '') {
     }
 
     return getModuleParameter($LegacyModuleName, $name, $default);
+}
+
+function registrarc_set_module_parameter($name, $value) {
+    global $ModuleName;
+
+    setModuleParameter($ModuleName, $name, $value);
 }
 
 // ---------------------------------------------------------------------------
@@ -219,11 +228,11 @@ function registrarc_default_match_for_scope($scope) {
     }
 
     if ($scope === 'region') {
-        return '34%';
+        return '34';
     }
 
     if ($scope === 'departement') {
-        return '3400%';
+        return '34';
     }
 
     return 'OUI';
@@ -1298,9 +1307,9 @@ Object.keys(registrarcAllowedRuleScopes).forEach(function(scopeCode) {
     if (scopeCode === 'categorie') {
         registrarcDefaultRuleMatches[scopeCode] = 'CL';
     } else if (scopeCode === 'region') {
-        registrarcDefaultRuleMatches[scopeCode] = '34%';
+        registrarcDefaultRuleMatches[scopeCode] = '34';
     } else if (scopeCode === 'departement') {
-        registrarcDefaultRuleMatches[scopeCode] = '3400%';
+        registrarcDefaultRuleMatches[scopeCode] = '34';
     } else {
         registrarcDefaultRuleMatches[scopeCode] = 'OUI';
     }
