@@ -1,23 +1,19 @@
 <?php
 // ============================================================================
-// RegistrArc - invoice.php
-// Facture individuelle ou groupée
+// RegistrArc - bankchequedeposite.php
+// Remise de chèque
 //
-// Appel individuel : invoice.php?ids=123
-// Appel groupé     : invoice.php?ids=123,124,125
+// Cas possibles :
+// - bankchequedeposite.php
+//   Tous les groupes de chèques, puis les paiements CHQ non groupés.
+// - bankchequedeposite.php?ids=123,124
+//   Paiements sélectionnés PAYE en CHQ.
+// - bankchequedeposite.php?group=CG-...
+//   Groupe de chèque enregistré dans data/cheque_groups_<TourId>.json.
 //
-// Paiements lus depuis : Modules/Custom/RegistrArc/data/payments_<TourId>.json
-// Aucun paiement n'est lu ou écrit dans Qualifications.QuNotes
-//
-// Tarifs :
-// - tarifs de base depuis data/settings_<TourId>.json
-// - règles avancées cumulées si plusieurs règles correspondent
-// - si aucune règle avancée ne correspond : tarif de base
-//
-// Visuels compétition :
-// - ToLeft / ToRight via ScorePDF si disponibles
-// - ToBottom via ScorePDF si disponible
-// - aucune logique QRCode prise en compte ici
+// Paiements lus depuis : data/payments_<TourId>.json
+// Groupes lus depuis   : data/cheque_groups_<TourId>.json
+// Rien n'est écrit dans Qualifications.QuNotes.
 // ============================================================================
 
 define('debug', false);
@@ -25,7 +21,6 @@ define('debug', false);
 require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
 require_once('Common/Fun_Various.inc.php');
 require_once('Common/Fun_Sessions.inc.php');
-require_once('Common/pdf/ScorePDF.inc.php');
 
 CheckTourSession(true);
 checkACL(AclParticipants, AclReadOnly);
@@ -40,27 +35,28 @@ if (!$TourId) {
 }
 
 // ---------------------------------------------------------------------------
-// Lecture des IDs demandés
+// Lecture paramètres
 // ---------------------------------------------------------------------------
-$idsParam = '';
+$groupId = isset($_GET['group']) ? trim((string)$_GET['group']) : '';
+$idsParam = isset($_GET['ids']) ? trim((string)$_GET['ids']) : '';
 
-if (isset($_GET['ids'])) {
-    $idsParam = $_GET['ids'];
-} elseif (isset($_GET['id'])) {
-    $idsParam = $_GET['id'];
-}
+$selectedIds = [];
 
-$engagementIds = [];
+if ($idsParam !== '') {
+    foreach (explode(',', $idsParam) as $id) {
+        $id = intval(trim($id));
 
-foreach (explode(',', $idsParam) as $id) {
-    $id = intval(trim($id));
-
-    if ($id > 0) {
-        $engagementIds[] = $id;
+        if ($id > 0) {
+            $selectedIds[] = $id;
+        }
     }
+
+    $selectedIds = array_values(array_unique($selectedIds));
 }
 
-$engagementIds = array_values(array_unique($engagementIds));
+$isGroupMode = ($groupId !== '');
+$isSelectionMode = !$isGroupMode && !empty($selectedIds);
+$isAllMode = !$isGroupMode && !$isSelectionMode;
 
 // ---------------------------------------------------------------------------
 // Paramètres module
@@ -92,145 +88,30 @@ function registrarc_settings_file_path($TourId) {
     return registrarc_data_dir() . '/settings_' . intval($TourId) . '.json';
 }
 
-// ---------------------------------------------------------------------------
-// Images
-// ---------------------------------------------------------------------------
-function registrarc_image_to_data_uri($path) {
-    if (!$path || !is_file($path)) {
-        return '';
-    }
-
-    $info = @getimagesize($path);
-
-    if ($info === false || empty($info['mime'])) {
-        return '';
-    }
-
-    $content = @file_get_contents($path);
-
-    if ($content === false) {
-        return '';
-    }
-
-    return 'data:' . $info['mime'] . ';base64,' . base64_encode($content);
+function registrarc_cheque_groups_file_path($TourId) {
+    return registrarc_data_dir() . '/cheque_groups_' . intval($TourId) . '.json';
 }
 
 // ---------------------------------------------------------------------------
-// Dates
+// JSON
 // ---------------------------------------------------------------------------
-function registrarc_format_date_fr($date) {
-    $date = trim((string)$date);
-
-    if ($date === '' || $date === '0000-00-00') {
-        return '';
-    }
-
-    $timestamp = strtotime($date);
-
-    if (!$timestamp) {
-        return $date;
-    }
-
-    return date('d/m/Y', $timestamp);
-}
-
-function registrarc_tournament_date_string($from, $to) {
-    $fromLabel = registrarc_format_date_fr($from);
-    $toLabel = registrarc_format_date_fr($to);
-
-    if ($fromLabel === '' && $toLabel === '') {
-        return '';
-    }
-
-    if ($toLabel === '' || $toLabel === $fromLabel) {
-        return $fromLabel;
-    }
-
-    return 'Du ' . $fromLabel . ' au ' . $toLabel;
-}
-
-// ---------------------------------------------------------------------------
-// Visuels compétition via ScorePDF
-// ---------------------------------------------------------------------------
-function registrarc_get_competition_visuals(array $tournament) {
-    $visuals = [
-        'name' => isset($tournament['name']) ? $tournament['name'] : '',
-        'where' => isset($tournament['where']) ? $tournament['where'] : '',
-        'when' => isset($tournament['when_label']) ? $tournament['when_label'] : '',
-        'left_logo_src' => '',
-        'right_logo_src' => '',
-        'bottom_image_src' => '',
-        'has_left_logo' => false,
-        'has_right_logo' => false,
-        'has_bottom_image' => false,
-    ];
-
-    if (!class_exists('ScorePDF')) {
-        return $visuals;
-    }
-
-    try {
-        $pdf = new ScorePDF(true);
-
-        if (!empty($pdf->Name)) {
-            $visuals['name'] = $pdf->Name;
-        }
-
-        if (!empty($pdf->Where)) {
-            $visuals['where'] = $pdf->Where;
-        }
-
-        if (!empty($pdf->WhenF) || !empty($pdf->WhenT)) {
-            $dateLabel = registrarc_tournament_date_string($pdf->WhenF, $pdf->WhenT);
-
-            if ($dateLabel !== '') {
-                $visuals['when'] = $dateLabel;
-            }
-        }
-
-        if (!empty($pdf->PrintLogo) && !empty($pdf->ToPaths) && is_array($pdf->ToPaths)) {
-            if (!empty($pdf->ToPaths['ToLeft']) && file_exists($pdf->ToPaths['ToLeft'])) {
-                $visuals['left_logo_src'] = registrarc_image_to_data_uri($pdf->ToPaths['ToLeft']);
-                $visuals['has_left_logo'] = ($visuals['left_logo_src'] !== '');
-            }
-
-            if (!empty($pdf->ToPaths['ToRight']) && file_exists($pdf->ToPaths['ToRight'])) {
-                $visuals['right_logo_src'] = registrarc_image_to_data_uri($pdf->ToPaths['ToRight']);
-                $visuals['has_right_logo'] = ($visuals['right_logo_src'] !== '');
-            }
-        }
-
-        if (!empty($pdf->BottomImage) && !empty($pdf->ToPaths) && is_array($pdf->ToPaths)) {
-            if (!empty($pdf->ToPaths['ToBottom']) && file_exists($pdf->ToPaths['ToBottom'])) {
-                $visuals['bottom_image_src'] = registrarc_image_to_data_uri($pdf->ToPaths['ToBottom']);
-                $visuals['has_bottom_image'] = ($visuals['bottom_image_src'] !== '');
-            }
-        }
-    } catch (Exception $e) {
-        return $visuals;
-    }
-
-    return $visuals;
-}
-
-// ---------------------------------------------------------------------------
-// JSON paiements
-// ---------------------------------------------------------------------------
-function registrarc_load_payments($TourId) {
-    $file = registrarc_payments_file_path($TourId);
-
-    if (!file_exists($file)) {
+function registrarc_load_json_file($file) {
+    if (!is_file($file)) {
         return [];
     }
 
     $json = file_get_contents($file);
     $data = json_decode($json, true);
 
-    if (!is_array($data)) {
-        return [];
-    }
+    return is_array($data) ? $data : [];
+}
 
-    return $data;
+function registrarc_load_payments($TourId) {
+    return registrarc_load_json_file(registrarc_payments_file_path($TourId));
+}
+
+function registrarc_load_cheque_groups($TourId) {
+    return registrarc_load_json_file(registrarc_cheque_groups_file_path($TourId));
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +284,7 @@ function registrarc_load_tarif_rules($TourId) {
 }
 
 // ---------------------------------------------------------------------------
-// Tarifs / règles avancées
+// Tarifs / règles
 // ---------------------------------------------------------------------------
 function registrarc_age_category($categorie) {
     $categorie = (string)$categorie;
@@ -447,7 +328,26 @@ function registrarc_rule_entry_value($scope, array $entry) {
         'finale_ind'    => 'EnIndFEvent',
         'finale_team'   => 'EnTeamFEvent',
         'double_mixte'  => 'EnTeamMixEvent',
+        'finales_ind'   => 'EnIndFEvent',
+        'finales_team'  => 'EnTeamFEvent',
+        'finales_mix'   => 'EnTeamMixEvent',
     ];
+
+    if ($scope === 'finales') {
+        $values = [
+            isset($entry['EnIndFEvent']) ? $entry['EnIndFEvent'] : '',
+            isset($entry['EnTeamFEvent']) ? $entry['EnTeamFEvent'] : '',
+            isset($entry['EnTeamMixEvent']) ? $entry['EnTeamMixEvent'] : '',
+        ];
+
+        foreach ($values as $v) {
+            if (!registrarc_is_null_empty_or_zero($v)) {
+                return 'OUI';
+            }
+        }
+
+        return 'NON';
+    }
 
     if (!isset($map[$scope])) {
         return null;
@@ -481,20 +381,12 @@ function registrarc_entry_rule_matches($scope, $matches, array $entry) {
 
     if ($scope === 'region') {
         $clubCode = preg_replace('/\D+/', '', (string)$entry['country_code']);
-        $region = '';
-
-        if (strlen($clubCode) >= 2) {
-            $region = substr($clubCode, 0, 2);
-        }
+        $region = strlen($clubCode) >= 2 ? substr($clubCode, 0, 2) : '';
 
         foreach ($matches as $match) {
             $match = preg_replace('/\D+/', '', (string)$match);
 
-            if ($match === '') {
-                continue;
-            }
-
-            if ($region === $match) {
+            if ($match !== '' && $region === $match) {
                 return true;
             }
         }
@@ -504,20 +396,12 @@ function registrarc_entry_rule_matches($scope, $matches, array $entry) {
 
     if ($scope === 'departement') {
         $clubCode = preg_replace('/\D+/', '', (string)$entry['country_code']);
-        $departement = '';
-
-        if (strlen($clubCode) >= 4) {
-            $departement = substr($clubCode, 2, 2);
-        }
+        $departement = strlen($clubCode) >= 4 ? substr($clubCode, 2, 2) : '';
 
         foreach ($matches as $match) {
             $match = preg_replace('/\D+/', '', (string)$match);
 
-            if ($match === '') {
-                continue;
-            }
-
-            if ($departement === $match) {
+            if ($match !== '' && $departement === $match) {
                 return true;
             }
         }
@@ -606,11 +490,7 @@ function registrarc_prix_engagement($clubCode, $categorie, $numeroEngagement, $t
         $p2 = isset($tarifs['clubs_autres'][$age][2]) ? floatval($tarifs['clubs_autres'][$age][2]) : $p1;
     }
 
-    if ($numeroEngagement <= 1) {
-        return $p1;
-    }
-
-    return $p2 - $p1;
+    return ($numeroEngagement <= 1) ? $p1 : ($p2 - $p1);
 }
 
 function registrarc_format_montant($montant) {
@@ -624,16 +504,41 @@ function registrarc_format_montant($montant) {
 }
 
 // ---------------------------------------------------------------------------
-// Infos tournoi
+// Dates / tournoi
 // ---------------------------------------------------------------------------
+function registrarc_format_date_fr($date) {
+    $date = trim((string)$date);
+
+    if ($date === '' || $date === '0000-00-00') {
+        return '';
+    }
+
+    $ts = strtotime($date);
+
+    return $ts ? date('d/m/Y', $ts) : $date;
+}
+
+function registrarc_tournament_date_string($from, $to) {
+    $fromLabel = registrarc_format_date_fr($from);
+    $toLabel = registrarc_format_date_fr($to);
+
+    if ($fromLabel === '' && $toLabel === '') {
+        return '';
+    }
+
+    if ($toLabel === '' || $toLabel === $fromLabel) {
+        return $fromLabel;
+    }
+
+    return 'Du ' . $fromLabel . ' au ' . $toLabel;
+}
+
 function registrarc_get_tournament_info($TourId) {
     $TourId = intval($TourId);
 
     $data = [
         'name' => 'Concours n° ' . $TourId,
         'where' => '',
-        'when_from' => '',
-        'when_to' => '',
         'when_label' => '',
         'organizer_code' => '',
         'organizer_name' => '',
@@ -650,8 +555,6 @@ function registrarc_get_tournament_info($TourId) {
     if ($row = safe_fetch($rs)) {
         $data['name'] = $row->ToName;
         $data['where'] = $row->ToWhere;
-        $data['when_from'] = $row->ToWhenFrom;
-        $data['when_to'] = $row->ToWhenTo;
         $data['when_label'] = registrarc_tournament_date_string($row->ToWhenFrom, $row->ToWhenTo);
         $data['organizer_code'] = $row->ToCommitee;
         $data['organizer_name'] = $row->ToComDescr;
@@ -675,10 +578,8 @@ function registrarc_get_tournament_info($TourId) {
     return $data;
 }
 
-
-
 // ---------------------------------------------------------------------------
-// Numérotation globale des engagements par licence
+// Numérotation engagements
 // ---------------------------------------------------------------------------
 function registrarc_get_engagement_numbers($TourId) {
     $TourId = intval($TourId);
@@ -720,17 +621,19 @@ function registrarc_get_engagement_numbers($TourId) {
 }
 
 // ---------------------------------------------------------------------------
-// Récupération des engagements
+// Engagements
 // ---------------------------------------------------------------------------
-function registrarc_get_invoice_engagements($TourId, array $engagementIds) {
+function registrarc_get_cheque_engagements($TourId, array $selectedIds) {
     $TourId = intval($TourId);
-    $ids = array_values(array_unique(array_filter(array_map('intval', $engagementIds))));
+    $whereIds = '';
 
-    if (empty($ids)) {
-        return [];
+    if (!empty($selectedIds)) {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $selectedIds))));
+
+        if (!empty($ids)) {
+            $whereIds = ' AND e.EnId IN (' . implode(',', $ids) . ') ';
+        }
     }
-
-    $idsSql = implode(',', $ids);
 
     $query = "
         SELECT
@@ -756,8 +659,10 @@ function registrarc_get_invoice_engagements($TourId, array $engagementIds) {
         LEFT JOIN Qualifications q
             ON e.EnId = q.QuId
         WHERE e.EnTournament = $TourId
-          AND e.EnId IN ($idsSql)
-        ORDER BY UPPER(TRIM(e.EnCode)), q.QuSession, q.QuTarget, q.QuLetter, e.EnId
+          AND e.EnAthlete = 1
+          AND TRIM(e.EnCode) <> ''
+          $whereIds
+        ORDER BY c.CoName, UPPER(TRIM(e.EnFirstName)), TRIM(e.EnName), q.QuSession, q.QuTarget, q.QuLetter, e.EnId
     ";
 
     $rs = safe_r_sql($query);
@@ -788,14 +693,23 @@ function registrarc_get_invoice_engagements($TourId, array $engagementIds) {
     return $rows;
 }
 
-// ---------------------------------------------------------------------------
-// Enrichissement
-// ---------------------------------------------------------------------------
-function registrarc_enrich_invoice_rows(array $rows, array $tarifs, $organizerClubCode, array $payments, array $engagementNumbers, array $paymentModes, array $tarifRules) {
+function registrarc_build_cheque_rows(array $rows, array $payments, array $paymentModes, array $tarifs, $organizerClubCode, array $engagementNumbers, array $tarifRules) {
     $result = [];
 
     foreach ($rows as $row) {
         $engagementId = intval($row['engagement_id']);
+
+        $payment = isset($payments[(string)$engagementId]) && is_array($payments[(string)$engagementId])
+            ? $payments[(string)$engagementId]
+            : [];
+
+        $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
+        $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
+
+        if ($status !== 'PAYE' || $method !== 'CHQ') {
+            continue;
+        }
+
         $numeroEngagement = isset($engagementNumbers[$engagementId]) ? intval($engagementNumbers[$engagementId]) : 1;
 
         $target = trim((string)$row['target']);
@@ -806,27 +720,10 @@ function registrarc_enrich_invoice_rows(array $rows, array $tarifs, $organizerCl
 
         if ($targetIsUnassigned) {
             $targetLabel = 'Archer non affecté';
+        } elseif ($row['session_no'] !== '') {
+            $targetLabel = 'D' . $row['session_no'] . ' - ' . $targetNo;
         } else {
             $targetLabel = $targetNo;
-        }
-
-        $sessionLabel = $row['session_no'] !== '' ? 'Départ ' . $row['session_no'] : '—';
-
-        if (!$targetIsUnassigned && $row['session_no'] !== '') {
-            $targetLabel = 'D' . $row['session_no'] . ' - ' . $targetNo;
-        }
-
-        $payment = isset($payments[(string)$engagementId]) && is_array($payments[(string)$engagementId])
-            ? $payments[(string)$engagementId]
-            : [];
-
-        $isPaid = isset($payment['status']) && $payment['status'] === 'PAYE';
-        $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
-
-        $methodLabel = '—';
-
-        if ($method !== '') {
-            $methodLabel = isset($paymentModes[$method]) ? $paymentModes[$method] : $method;
         }
 
         $entryForRules = [
@@ -855,16 +752,13 @@ function registrarc_enrich_invoice_rows(array $rows, array $tarifs, $organizerCl
             $ruleLabel = '';
         }
 
-        $amount = registrarc_is_free_method($method) ? 0 : $amountBase;
-
         $row['numero_engagement'] = $numeroEngagement;
-        $row['session_label'] = $sessionLabel;
+        $row['session_label'] = $row['session_no'] !== '' ? 'Départ ' . $row['session_no'] : '—';
         $row['target_label'] = $targetLabel;
-        $row['payment_status_label'] = $isPaid ? 'Payé' : 'Non payé';
         $row['payment_method'] = $method;
-        $row['payment_method_label'] = $methodLabel;
+        $row['payment_method_label'] = isset($paymentModes[$method]) ? $paymentModes[$method] : $method;
         $row['tarif_rule_label'] = $ruleLabel;
-        $row['amount'] = $amount;
+        $row['amount'] = registrarc_is_free_method($method) ? 0 : $amountBase;
 
         $result[] = $row;
     }
@@ -872,184 +766,256 @@ function registrarc_enrich_invoice_rows(array $rows, array $tarifs, $organizerCl
     return $result;
 }
 
-// ---------------------------------------------------------------------------
-// Destinataire groupé par club
-// ---------------------------------------------------------------------------
-function registrarc_build_invoice_customer_groups(array $rows) {
-    $groups = [];
+function registrarc_sum_rows(array $rows) {
+    $total = 0;
 
     foreach ($rows as $row) {
-        $club = trim((string)$row['club']);
+        $total += isset($row['amount']) ? floatval($row['amount']) : 0;
+    }
 
-        if ($club === '') {
-            $club = 'Sans club';
-        }
+    return $total;
+}
 
-        $archer = trim($row['nom'] . ' ' . $row['prenom']);
+function registrarc_get_group_ids_map(array $groups) {
+    $map = [];
 
-        if ($archer === '') {
+    foreach ($groups as $group) {
+        if (!is_array($group)) {
             continue;
         }
 
-        if (!isset($groups[$club])) {
-            $groups[$club] = [];
-        }
+        $ids = isset($group['engagement_ids']) && is_array($group['engagement_ids'])
+            ? $group['engagement_ids']
+            : [];
 
-        $groups[$club][$archer] = true;
+        foreach ($ids as $id) {
+            $id = intval($id);
+
+            if ($id > 0) {
+                $map[$id] = true;
+            }
+        }
     }
 
+    return $map;
+}
+
+function registrarc_filter_rows_not_in_map(array $rows, array $groupedIdsMap) {
     $out = [];
 
-    foreach ($groups as $club => $archers) {
-        $list = array_keys($archers);
-        sort($list, SORT_NATURAL | SORT_FLAG_CASE);
+    foreach ($rows as $row) {
+        $id = isset($row['engagement_id']) ? intval($row['engagement_id']) : 0;
 
-        $out[] = [
-            'club' => $club,
-            'archers' => $list,
-        ];
+        if ($id > 0 && isset($groupedIdsMap[$id])) {
+            continue;
+        }
+
+        $out[] = $row;
     }
-
-    usort($out, function($a, $b) {
-        return strcmp($a['club'], $b['club']);
-    });
 
     return $out;
 }
 
-// ---------------------------------------------------------------------------
-// Numéro de facture non persistant
-// ---------------------------------------------------------------------------
-function registrarc_generate_invoice_number($TourId, array $ids) {
-    $TourId = intval($TourId);
-    $suffix = implode('-', array_slice(array_map('intval', $ids), 0, 3));
+function registrarc_render_entries_table(array $rows) {
+    ?>
+    <table>
+        <thead>
+            <tr>
+                <th style="width:7%;">Eng.</th>
+                <th style="width:12%;">Licence</th>
+                <th style="width:20%;">Archer</th>
+                <th style="width:25%;">Club</th>
+                <th style="width:9%;">Cat.</th>
+                <th style="width:9%;">Départ</th>
+                <th style="width:9%;">Cible</th>
+                <th style="width:9%;" class="right">Montant</th>
+            </tr>
+        </thead>
 
-    if (count($ids) > 3) {
-        $suffix .= '-G' . count($ids);
-    }
+        <tbody>
+            <?php foreach ($rows as $row): ?>
+                <tr class="entry-row">
+                    <td class="center">n° <?php echo intval($row['numero_engagement']); ?></td>
+                    <td><?php echo htmlspecialchars($row['licence']); ?></td>
+                    <td><?php echo htmlspecialchars(trim($row['nom'] . ' ' . $row['prenom'])); ?></td>
+                    <td><?php echo htmlspecialchars(trim($row['country_code'] . ' - ' . $row['club'])); ?></td>
+                    <td>
+                        <?php echo htmlspecialchars($row['categorie']); ?>
 
-    return 'RA-' . $TourId . '-' . date('Ymd-His') . '-' . $suffix;
+                        <?php if (!empty($row['tarif_rule_label'])): ?>
+                            <span class="rule"><?php echo htmlspecialchars($row['tarif_rule_label']); ?></span>
+                        <?php endif; ?>
+                    </td>
+                    <td><?php echo htmlspecialchars($row['session_label']); ?></td>
+                    <td><?php echo htmlspecialchars($row['target_label']); ?></td>
+                    <td class="right"><?php echo registrarc_format_montant($row['amount']); ?> €</td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php
 }
 
-// ---------------------------------------------------------------------------
-// Erreur
-// ---------------------------------------------------------------------------
-function registrarc_render_error($title, $message) {
+function registrarc_render_manual_fields() {
     ?>
-    <!DOCTYPE html>
-    <html lang="fr">
-    <head>
-        <meta charset="UTF-8">
-        <title><?php echo htmlspecialchars($title); ?></title>
-        <style>
-            body {
-                font-family: Arial, Helvetica, sans-serif;
-                background: #f9fafb;
-                color: #111827;
-                padding: 30px;
-            }
-
-            .box {
-                max-width: 700px;
-                margin: 0 auto;
-                background: #fff;
-                border-radius: 8px;
-                padding: 20px;
-                box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
-            }
-
-            h1 {
-                font-size: 20px;
-                margin-top: 0;
-            }
-
-            .error {
-                color: #b91c1c;
-                font-weight: 700;
-            }
-
-            .btn {
-                display: inline-flex;
-                margin-top: 12px;
-                padding: 8px 14px;
-                background: #2563eb;
-                color: #fff;
-                text-decoration: none;
-                border-radius: 999px;
-                font-size: 13px;
-                font-weight: 700;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="box">
-            <h1><?php echo htmlspecialchars($title); ?></h1>
-            <p class="error"><?php echo htmlspecialchars($message); ?></p>
-            <a href="index.php" class="btn">Retour</a>
+    <div class="manual-fields">
+        <div class="manual-field">
+            <div class="manual-label">N° chèque</div>
+            <div class="manual-write-line"></div>
         </div>
-    </body>
-    </html>
+
+        <div class="manual-field">
+            <div class="manual-label">Banque émettrice</div>
+            <div class="manual-write-line"></div>
+        </div>
+    </div>
     <?php
-    exit();
+}
+
+function registrarc_group_created_label(array $group) {
+    if (empty($group['created_at'])) {
+        return '';
+    }
+
+    $ts = strtotime($group['created_at']);
+
+    if (!$ts) {
+        return trim((string)$group['created_at']);
+    }
+
+    return date('d/m/Y H:i', $ts);
 }
 
 // ---------------------------------------------------------------------------
 // Données
 // ---------------------------------------------------------------------------
-if (empty($engagementIds)) {
-    registrarc_render_error(
-        'Facture impossible',
-        'Aucun engagement sélectionné pour générer la facture.'
-    );
-}
-
 $tournament = registrarc_get_tournament_info($TourId);
-$competitionVisuals = registrarc_get_competition_visuals($tournament);
 $payments = registrarc_load_payments($TourId);
 $paymentModes = registrarc_load_payment_modes($TourId);
 $tarifs = registrarc_load_tarifs($TourId, $tournament['organizer_code'], $tournament['organizer_name']);
 $tarifRules = registrarc_load_tarif_rules($TourId);
 $engagementNumbers = registrarc_get_engagement_numbers($TourId);
+$chequeGroups = registrarc_load_cheque_groups($TourId);
 
-$rows = registrarc_get_invoice_engagements($TourId, $engagementIds);
+$groupData = null;
+$groupBlocks = [];
+$singleRows = [];
 
-if (empty($rows)) {
-    registrarc_render_error(
-        'Facture impossible',
-        'Aucun engagement trouvé pour cette facture.'
+if ($isGroupMode) {
+    if (isset($chequeGroups[$groupId]) && is_array($chequeGroups[$groupId])) {
+        $groupData = $chequeGroups[$groupId];
+        $selectedIds = isset($groupData['engagement_ids']) && is_array($groupData['engagement_ids'])
+            ? array_values(array_unique(array_filter(array_map('intval', $groupData['engagement_ids']))))
+            : [];
+
+        $rawRows = registrarc_get_cheque_engagements($TourId, $selectedIds);
+
+        $rows = registrarc_build_cheque_rows(
+            $rawRows,
+            $payments,
+            $paymentModes,
+            $tarifs,
+            $tournament['organizer_code'],
+            $engagementNumbers,
+            $tarifRules
+        );
+
+        $groupBlocks[] = [
+            'id' => $groupId,
+            'data' => $groupData,
+            'rows' => $rows,
+            'total' => registrarc_sum_rows($rows),
+        ];
+    }
+} elseif ($isSelectionMode) {
+    $rawRows = registrarc_get_cheque_engagements($TourId, $selectedIds);
+
+    $singleRows = registrarc_build_cheque_rows(
+        $rawRows,
+        $payments,
+        $paymentModes,
+        $tarifs,
+        $tournament['organizer_code'],
+        $engagementNumbers,
+        $tarifRules
     );
-}
+} else {
+    foreach ($chequeGroups as $id => $group) {
+        if (!is_array($group)) {
+            continue;
+        }
 
-$rows = registrarc_enrich_invoice_rows(
-    $rows,
-    $tarifs,
-    $tournament['organizer_code'],
-    $payments,
-    $engagementNumbers,
-    $paymentModes,
-    $tarifRules
-);
+        $ids = isset($group['engagement_ids']) && is_array($group['engagement_ids'])
+            ? array_values(array_unique(array_filter(array_map('intval', $group['engagement_ids']))))
+            : [];
+
+        if (empty($ids)) {
+            continue;
+        }
+
+        $rawRows = registrarc_get_cheque_engagements($TourId, $ids);
+
+        $rows = registrarc_build_cheque_rows(
+            $rawRows,
+            $payments,
+            $paymentModes,
+            $tarifs,
+            $tournament['organizer_code'],
+            $engagementNumbers,
+            $tarifRules
+        );
+
+        if (empty($rows)) {
+            continue;
+        }
+
+        $groupBlocks[] = [
+            'id' => $id,
+            'data' => $group,
+            'rows' => $rows,
+            'total' => registrarc_sum_rows($rows),
+        ];
+    }
+
+    $groupedIdsMap = registrarc_get_group_ids_map($chequeGroups);
+    $rawRows = registrarc_get_cheque_engagements($TourId, []);
+
+    $allChequeRows = registrarc_build_cheque_rows(
+        $rawRows,
+        $payments,
+        $paymentModes,
+        $tarifs,
+        $tournament['organizer_code'],
+        $engagementNumbers,
+        $tarifRules
+    );
+
+    $singleRows = registrarc_filter_rows_not_in_map($allChequeRows, $groupedIdsMap);
+}
 
 $total = 0;
+$countEntries = 0;
+$countCheques = 0;
 
-foreach ($rows as $row) {
-    $total += $row['amount'];
+foreach ($groupBlocks as $block) {
+    $total += $block['total'];
+    $countEntries += count($block['rows']);
+    $countCheques++;
 }
 
-$invoiceNumber = registrarc_generate_invoice_number($TourId, $engagementIds);
-$invoiceDate = date('d/m/Y');
-$customerGroups = registrarc_build_invoice_customer_groups($rows);
-$isGroupedInvoice = count($rows) > 1;
+foreach ($singleRows as $row) {
+    $total += $row['amount'];
+    $countEntries++;
+    $countCheques++;
+}
 
-// ---------------------------------------------------------------------------
-// HTML
-// ---------------------------------------------------------------------------
+$documentDate = date('d/m/Y');
 ?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Facture <?php echo htmlspecialchars($invoiceNumber); ?></title>
+    <title>Remise de chèque - RegistrArc</title>
 
     <style>
         @page {
@@ -1070,7 +1036,7 @@ $isGroupedInvoice = count($rows) > 1;
             font-size: 12px;
         }
 
-        .invoice-page {
+        .page {
             width: 210mm;
             min-height: 297mm;
             margin: 20px auto;
@@ -1079,154 +1045,90 @@ $isGroupedInvoice = count($rows) > 1;
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
         }
 
-        .competition-header {
-            display: grid;
-            grid-template-columns: 25mm 1fr 25mm;
-            align-items: center;
-            gap: 8mm;
-            min-height: 18mm;
-            border-bottom: 1px solid #d1d5db;
-            padding-bottom: 4mm;
-            margin-bottom: 6mm;
-        }
-
-        .competition-logo {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 16mm;
-        }
-
-        .competition-logo img {
-            max-height: 15mm;
-            max-width: 24mm;
-            object-fit: contain;
-        }
-
-        .competition-info {
-            text-align: center;
-        }
-
-        .competition-name {
-            font-size: 16px;
-            font-weight: 800;
-            color: #111827;
-            margin-bottom: 2px;
-        }
-
-        .competition-where {
-            font-size: 12px;
-            font-weight: 700;
-            color: #374151;
-            margin-bottom: 1px;
-        }
-
-        .competition-date {
-            font-size: 12px;
-            color: #4b5563;
-        }
-
-        .invoice-header {
+        .header {
             display: flex;
             justify-content: space-between;
-            gap: 20px;
+            gap: 18px;
             border-bottom: 2px solid #111827;
             padding-bottom: 12px;
-            margin-bottom: 18px;
+            margin-bottom: 16px;
         }
 
-        .brand-title {
+        .title {
             font-size: 24px;
             font-weight: 800;
             margin-bottom: 4px;
         }
 
-        .brand-subtitle {
-            font-size: 12px;
+        .subtitle {
             color: #4b5563;
-        }
-
-        .invoice-meta {
-            text-align: right;
             font-size: 12px;
-            line-height: 1.5;
-        }
-
-        .invoice-meta strong {
-            font-weight: 700;
-        }
-
-        .box-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .box {
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            padding: 10px 12px;
-            min-height: 82px;
-            background: #fff;
-        }
-
-        .box-title {
-            font-weight: 700;
-            margin-bottom: 6px;
-            color: #111827;
-            font-size: 12px;
-        }
-
-        .box-content {
             line-height: 1.4;
-            white-space: pre-line;
+        }
+
+        .meta {
+            text-align: right;
+            line-height: 1.5;
             font-size: 12px;
         }
 
-        .customer-groups {
+        .summary {
             display: flex;
-            flex-direction: column;
-            gap: 8px;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
         }
 
-        .customer-group {
-            break-inside: avoid;
-        }
-
-        .customer-club {
+        .summary-item {
+            border-radius: 999px;
+            background: #eef2ff;
+            color: #3730a3;
+            padding: 6px 12px;
             font-weight: 700;
-            font-size: 11px;
+        }
+
+        .section-title {
+            font-size: 15px;
+            font-weight: 800;
             color: #111827;
-            margin-bottom: 3px;
-            padding-bottom: 2px;
-            border-bottom: 1px solid #e5e7eb;
+            margin: 16px 0 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #d1d5db;
         }
 
-        .customer-archers {
-            column-width: 105px;
-            column-gap: 14px;
-            font-size: 11px;
-            line-height: 1.35;
-        }
-
-        .customer-archer {
-            break-inside: avoid;
+        .group-block {
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 14px;
             page-break-inside: avoid;
-            margin-bottom: 2px;
+        }
+
+        .group-title {
+            font-size: 14px;
+            font-weight: 800;
+            margin-bottom: 4px;
+            color: #111827;
+        }
+
+        .group-subtitle {
+            color: #6b7280;
+            font-size: 10.5px;
+            margin-bottom: 8px;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 11px;
-            margin-top: 8px;
+            font-size: 10.5px;
+            margin-bottom: 10px;
         }
 
         th,
         td {
             border: 1px solid #d1d5db;
-            padding: 6px 7px;
+            padding: 5px 6px;
             text-align: left;
             vertical-align: top;
         }
@@ -1234,6 +1136,11 @@ $isGroupedInvoice = count($rows) > 1;
         th {
             background: #f3f4f6;
             font-weight: 700;
+            color: #374151;
+        }
+
+        tbody tr:nth-child(even) {
+            background: #f9fafb;
         }
 
         .right {
@@ -1244,23 +1151,17 @@ $isGroupedInvoice = count($rows) > 1;
             text-align: center;
         }
 
-        .total-row td {
-            font-weight: 800;
-            background: #f9fafb;
-            font-size: 12px;
-        }
-
-        .status-paid {
-            color: #166534;
-            font-weight: 700;
-        }
-
-        .status-unpaid {
+        .empty {
+            text-align: center;
+            padding: 22px;
             color: #991b1b;
             font-weight: 700;
+            border: 1px solid #fecaca;
+            background: #fee2e2;
+            border-radius: 6px;
         }
 
-        .tarif-rule {
+        .rule {
             display: block;
             margin-top: 2px;
             font-size: 9px;
@@ -1268,16 +1169,78 @@ $isGroupedInvoice = count($rows) > 1;
             font-weight: 700;
         }
 
-        .bottom-image-wrapper {
-            margin-top: 12mm;
-            text-align: center;
+        .manual-fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            align-items: end;
+            padding: 8px 0 2px;
+        }
+
+        .manual-field {
+            min-height: 42px;
+        }
+
+        .manual-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #374151;
+            margin-bottom: 14px;
+        }
+
+        .manual-write-line {
+            height: 24px;
+            border-bottom: 1.5px solid #111827;
+        }
+
+        .single-entry-manual {
+            border: 1px solid #d1d5db;
+            border-top: none;
+            padding: 8px 10px 12px;
+            margin-bottom: 12px;
             page-break-inside: avoid;
         }
 
-        .bottom-image {
-            max-width: 100%;
-            max-height: 7.5mm;
-            object-fit: contain;
+        .single-entry-card {
+            page-break-inside: avoid;
+            margin-bottom: 12px;
+        }
+
+        .single-entry-card table {
+            margin-bottom: 0;
+        }
+
+        .total-line {
+            text-align: right;
+            font-weight: 800;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+
+        .signature-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-top: 18px;
+            page-break-inside: avoid;
+        }
+
+        .signature-box {
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            min-height: 42px;
+            padding: 8px 10px;
+        }
+
+        .signature-title {
+            font-weight: 700;
+            color: #374151;
+            margin-bottom: 12px;
+        }
+
+        .signature-line {
+            border-bottom: 1px solid #6b7280;
+            height: 18px;
         }
 
         .actions {
@@ -1317,42 +1280,36 @@ $isGroupedInvoice = count($rows) > 1;
                 background: #fff;
             }
 
-            .invoice-page {
+            .page {
                 width: auto;
                 min-height: auto;
                 margin: 0;
                 padding: 5mm;
                 box-shadow: none;
-                border: 1px solid transparent;
             }
 
             .actions {
                 display: none;
             }
 
-            .box,
-            .competition-header,
-            .invoice-header,
-            .bottom-image-wrapper {
+            .header,
+            .group-block,
+            .single-entry-card,
+            .signature-grid {
                 break-inside: avoid;
-            }
-
-            table {
-                page-break-inside: auto;
-            }
-
-            tr {
-                page-break-inside: avoid;
-                page-break-after: auto;
             }
 
             thead {
                 display: table-header-group;
             }
+
+            .manual-write-line {
+                border-bottom-color: #000;
+            }
         }
 
         @media (max-width: 700px) {
-            .invoice-page {
+            .page {
                 width: 100%;
                 min-height: auto;
                 margin: 0;
@@ -1360,28 +1317,20 @@ $isGroupedInvoice = count($rows) > 1;
                 box-shadow: none;
             }
 
-            .competition-header {
-                grid-template-columns: 1fr;
-                text-align: center;
-            }
-
-            .invoice-header,
-            .box-grid {
+            .header,
+            .signature-grid,
+            .manual-fields {
                 display: block;
             }
 
-            .invoice-meta {
+            .meta {
                 text-align: left;
                 margin-top: 12px;
             }
 
-            .box {
+            .signature-box,
+            .manual-field {
                 margin-bottom: 10px;
-            }
-
-            .customer-archers {
-                column-width: auto;
-                column-count: 1;
             }
 
             .actions {
@@ -1395,157 +1344,120 @@ $isGroupedInvoice = count($rows) > 1;
 </head>
 
 <body>
-    <div class="invoice-page">
-        <div class="competition-header">
-            <div class="competition-logo">
-                <?php if (!empty($competitionVisuals['has_left_logo'])): ?>
-                    <img src="<?php echo htmlspecialchars($competitionVisuals['left_logo_src']); ?>" alt="Logo gauche">
-                <?php endif; ?>
-            </div>
-
-            <div class="competition-info">
-                <div class="competition-name">
-                    <?php echo htmlspecialchars($competitionVisuals['name']); ?>
-                </div>
-
-                <?php if (!empty($competitionVisuals['where'])): ?>
-                    <div class="competition-where">
-                        <?php echo htmlspecialchars($competitionVisuals['where']); ?>
-                    </div>
-                <?php endif; ?>
-
-                <?php if (!empty($competitionVisuals['when'])): ?>
-                    <div class="competition-date">
-                        <?php echo htmlspecialchars($competitionVisuals['when']); ?>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <div class="competition-logo">
-                <?php if (!empty($competitionVisuals['has_right_logo'])): ?>
-                    <img src="<?php echo htmlspecialchars($competitionVisuals['right_logo_src']); ?>" alt="Logo droit">
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <div class="invoice-header">
+    <div class="page">
+        <div class="header">
             <div>
-                <div class="brand-title">Facture</div>
-                <div class="brand-subtitle">Gestion des engagements - Registr’Arc</div>
-                <div class="brand-subtitle">Le module de Greffe pour I@nseo</div>
-            </div>
-
-            <div class="invoice-meta">
-                <strong>Facture n° :</strong> <?php echo htmlspecialchars($invoiceNumber); ?><br>
-                <strong>Date :</strong> <?php echo htmlspecialchars($invoiceDate); ?><br>
-                <strong>Type :</strong> <?php echo $isGroupedInvoice ? 'Facture groupée' : 'Facture individuelle'; ?>
-            </div>
-        </div>
-
-        <div class="box-grid">
-            <div class="box">
-                <div class="box-title">Concours</div>
-                <div class="box-content">
-<?php echo htmlspecialchars($tournament['name']); ?>
-
-<?php if ($tournament['organizer_name'] || $tournament['organizer_code']): ?>
-Organisateur : <?php echo htmlspecialchars($tournament['organizer_name'] ?: $tournament['organizer_code']); ?>
-<?php endif; ?>
-
-<?php if (!empty($tournament['where'])): ?>
-Lieu : <?php echo htmlspecialchars($tournament['where']); ?>
-<?php endif; ?>
-
-<?php if (!empty($tournament['when_label'])): ?>
-Date : <?php echo htmlspecialchars($tournament['when_label']); ?>
-<?php endif; ?>
+                <div class="title">Remise de chèque</div>
+                <div class="subtitle">
+                    Document interne - Registr'Arc
                 </div>
             </div>
 
-            <div class="box">
-                <div class="box-title">Facturé à</div>
-
-                <?php if (!empty($customerGroups)): ?>
-                    <div class="customer-groups">
-                        <?php foreach ($customerGroups as $group): ?>
-                            <div class="customer-group">
-                                <div class="customer-club">
-                                    <?php echo htmlspecialchars($group['club']); ?>
-                                </div>
-
-                                <div class="customer-archers">
-                                    <?php foreach ($group['archers'] as $archer): ?>
-                                        <div class="customer-archer">
-                                            <?php echo htmlspecialchars($archer); ?>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                <?php else: ?>
-                    <div class="box-content">—</div>
-                <?php endif; ?>
+            <div class="meta">
+                <strong>Date :</strong> <?php echo htmlspecialchars($documentDate); ?>
             </div>
         </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th style="width:8%;">Eng.</th>
-                    <th style="width:12%;">Licence</th>
-                    <th style="width:20%;">Archer</th>
-                    <th style="width:10%;">Catégorie</th>
-                    <th style="width:12%;">Départ</th>
-                    <th style="width:12%;">Cible</th>
-                    <th style="width:10%;">Statut</th>
-                    <th style="width:10%;">Paiement</th>
-                    <th style="width:8%;" class="right">Montant</th>
-                </tr>
-            </thead>
+        <div class="summary">
+            <div class="summary-item">
+                Nombre de chèques : <?php echo intval($countCheques); ?>
+            </div>
 
-            <tbody>
-                <?php foreach ($rows as $row): ?>
-                    <tr>
-                        <td class="center">n° <?php echo intval($row['numero_engagement']); ?></td>
-                        <td><?php echo htmlspecialchars($row['licence']); ?></td>
-                        <td><?php echo htmlspecialchars(trim($row['nom'] . ' ' . $row['prenom'])); ?></td>
-                        <td>
-                            <?php echo htmlspecialchars($row['categorie']); ?>
-                            <?php if (!empty($row['tarif_rule_label'])): ?>
-                                <span class="tarif-rule">
-                                    <?php echo htmlspecialchars($row['tarif_rule_label']); ?>
-                                </span>
-                            <?php endif; ?>
-                        </td>
-                        <td><?php echo htmlspecialchars($row['session_label']); ?></td>
-                        <td><?php echo htmlspecialchars($row['target_label']); ?></td>
-                        <td>
-                            <span class="<?php echo ($row['payment_status_label'] === 'Payé') ? 'status-paid' : 'status-unpaid'; ?>">
-                                <?php echo htmlspecialchars($row['payment_status_label']); ?>
-                            </span>
-                        </td>
-                        <td><?php echo htmlspecialchars($row['payment_method_label']); ?></td>
-                        <td class="right"><?php echo registrarc_format_montant($row['amount']); ?> €</td>
-                    </tr>
+            <div class="summary-item">
+                Nombre d'engagements : <?php echo intval($countEntries); ?>
+            </div>
+
+            <div class="summary-item">
+                Total remise : <?php echo registrarc_format_montant($total); ?> €
+            </div>
+        </div>
+
+        <?php if ($isGroupMode && !$groupData): ?>
+            <div class="empty">
+                Groupe de chèque introuvable.
+            </div>
+        <?php elseif ($countEntries === 0): ?>
+            <div class="empty">
+                Aucun paiement par chèque trouvé pour ce périmètre.
+            </div>
+        <?php else: ?>
+
+            <?php if (!empty($groupBlocks)): ?>
+                <?php if ($isAllMode): ?>
+                    <div class="section-title">Groupes de chèques</div>
+                <?php endif; ?>
+
+                <?php foreach ($groupBlocks as $block): ?>
+                    <?php
+                    $createdLabel = registrarc_group_created_label($block['data']);
+                    $entriesCount = count($block['rows']);
+                    ?>
+                    <div class="group-block">
+                        <div class="group-title">
+                            Chèque groupé <?php echo htmlspecialchars($block['id']); ?>
+                        </div>
+
+                        <?php if ($createdLabel !== ''): ?>
+                            <div class="group-subtitle">
+                                Créé le <?php echo htmlspecialchars($createdLabel); ?> ·
+                                <?php echo intval($entriesCount); ?> engagement(s)
+                            </div>
+                        <?php else: ?>
+                            <div class="group-subtitle">
+                                <?php echo intval($entriesCount); ?> engagement(s)
+                            </div>
+                        <?php endif; ?>
+
+                        <?php registrarc_render_entries_table($block['rows']); ?>
+
+                        <div class="total-line">
+                            Total du chèque : <?php echo registrarc_format_montant($block['total']); ?> €
+                        </div>
+
+                        <?php registrarc_render_manual_fields(); ?>
+                    </div>
                 <?php endforeach; ?>
+            <?php endif; ?>
 
-                <tr class="total-row">
-                    <td colspan="8" class="right">Total</td>
-                    <td class="right"><?php echo registrarc_format_montant($total); ?> €</td>
-                </tr>
-            </tbody>
-        </table>
+            <?php if (!empty($singleRows)): ?>
+                <?php if ($isAllMode): ?>
+                    <div class="section-title">Chèque paiement individuel</div>
+                <?php endif; ?>
 
-        <?php if (!empty($competitionVisuals['has_bottom_image'])): ?>
-            <div class="bottom-image-wrapper">
-                <img src="<?php echo htmlspecialchars($competitionVisuals['bottom_image_src']); ?>" alt="Logo / sponsors" class="bottom-image">
+                <?php foreach ($singleRows as $row): ?>
+                    <div class="single-entry-card">
+                        <?php registrarc_render_entries_table([$row]); ?>
+
+                        <div class="single-entry-manual">
+                            <div class="total-line">
+                                Montant du chèque : <?php echo registrarc_format_montant($row['amount']); ?> €
+                            </div>
+
+                            <?php registrarc_render_manual_fields(); ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+
+        <?php endif; ?>
+
+        <?php if ($countEntries > 0): ?>
+            <div class="signature-grid">
+                <div class="signature-box">
+                    <div class="signature-title">Préparé par</div>
+                    <div class="signature-line"></div>
+                </div>
+
+                <div class="signature-box">
+                    <div class="signature-title">Déposé le</div>
+                    <div class="signature-line"></div>
+                </div>
             </div>
         <?php endif; ?>
     </div>
 
     <div class="actions">
-        <button type="button" class="btn btn-ghost" onclick="closeInvoiceTab();">
+        <button type="button" class="btn btn-ghost" onclick="closeDepositTab();">
             Retour
         </button>
 
@@ -1555,7 +1467,7 @@ Date : <?php echo htmlspecialchars($tournament['when_label']); ?>
     </div>
 
     <script>
-        function closeInvoiceTab() {
+        function closeDepositTab() {
             window.close();
 
             setTimeout(function() {

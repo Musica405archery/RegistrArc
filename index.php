@@ -6,8 +6,9 @@
 // Rien n'est écrit dans Qualifications.QuNotes.
 //
 // Fichiers JSON :
-// - Paiements  : Modules/Custom/RegistrArc/data/payments_<TourId>.json
-// - Paramètres : Modules/Custom/RegistrArc/data/settings_<TourId>.json
+// - Paiements        : Modules/Custom/RegistrArc/data/payments_<TourId>.json
+// - Paramètres       : Modules/Custom/RegistrArc/data/settings_<TourId>.json
+// - Groupes chèques  : Modules/Custom/RegistrArc/data/cheque_groups_<TourId>.json
 //
 // Tarification :
 // - tarifs de base jeunes/adultes, club extérieur/organisateur
@@ -87,6 +88,10 @@ function registrarc_payments_file_path($TourId) {
 
 function registrarc_settings_file_path($TourId) {
     return registrarc_data_dir() . '/settings_' . intval($TourId) . '.json';
+}
+
+function registrarc_cheque_groups_file_path($TourId) {
+    return registrarc_data_dir() . '/cheque_groups_' . intval($TourId) . '.json';
 }
 
 function registrarc_data_dir_status() {
@@ -314,6 +319,110 @@ function registrarc_unset_payment_bulk($TourId, array $ids) {
     }
 
     return registrarc_save_payments($TourId, $data);
+}
+
+// ---------------------------------------------------------------------------
+// Groupes de chèques JSON
+// ---------------------------------------------------------------------------
+function registrarc_load_cheque_groups($TourId) {
+    $file = registrarc_cheque_groups_file_path($TourId);
+
+    if (!file_exists($file)) {
+        return [];
+    }
+
+    $json = file_get_contents($file);
+    $data = json_decode($json, true);
+
+    if (!is_array($data)) {
+        return [];
+    }
+
+    return $data;
+}
+
+function registrarc_save_cheque_groups($TourId, array $data) {
+    if (!registrarc_ensure_data_dir()) {
+        return false;
+    }
+
+    $file = registrarc_cheque_groups_file_path($TourId);
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+
+    return file_put_contents($file, $json, LOCK_EX) !== false;
+}
+
+function registrarc_generate_cheque_group_id(array $groups) {
+    $base = 'CG-' . date('Ymd-His');
+    $idx = 1;
+
+    do {
+        $id = $base . '-' . str_pad($idx, 3, '0', STR_PAD_LEFT);
+        $idx++;
+    } while (isset($groups[$id]));
+
+    return $id;
+}
+
+function registrarc_create_cheque_group($TourId, array $ids, array $payments) {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+
+    if (count($ids) < 2) {
+        return [
+            'ok' => false,
+            'message' => 'Sélectionne au moins 2 engagements pour créer une remise groupée.',
+            'group_id' => '',
+        ];
+    }
+
+    $invalid = [];
+
+    foreach ($ids as $id) {
+        $payment = isset($payments[(string)$id]) && is_array($payments[(string)$id])
+            ? $payments[(string)$id]
+            : [];
+
+        $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
+        $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
+
+        if ($status !== 'PAYE' || $method !== 'CHQ') {
+            $invalid[] = $id;
+        }
+    }
+
+    if (!empty($invalid)) {
+        return [
+            'ok' => false,
+            'message' => 'Tous les engagements sélectionnés doivent être payés par chèque.',
+            'group_id' => '',
+        ];
+    }
+
+    $groups = registrarc_load_cheque_groups($TourId);
+    $groupId = registrarc_generate_cheque_group_id($groups);
+
+    $groups[$groupId] = [
+        'id' => $groupId,
+        'created_at' => date('Y-m-d H:i:s'),
+        'updated_at' => date('Y-m-d H:i:s'),
+        'label' => 'Chèque groupé',
+        'engagement_ids' => $ids,
+        'archers_count' => count($ids),
+    ];
+
+    if (!registrarc_save_cheque_groups($TourId, $groups)) {
+        return [
+            'ok' => false,
+            'message' => "Erreur : impossible d'écrire le fichier JSON des remises de chèques.",
+            'group_id' => '',
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'message' => 'Remise groupée créée.',
+        'group_id' => $groupId,
+    ];
 }
 
 // ---------------------------------------------------------------------------
@@ -813,7 +922,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (isset($_POST['import_registrations'])) {
         if (empty($_FILES['registrations_file']['tmp_name']) || !is_uploaded_file($_FILES['registrations_file']['tmp_name'])) {
-            $_SESSION['RegistrArc_payment_message'] = 'Aucun fichier JSON sélectionné pour l’import inscriptions.';
+            $_SESSION['RegistrArc_payment_message'] = 'Aucun fichier JSON sélectionné pour l\'import inscriptions.';
             $_SESSION['RegistrArc_message_type'] = 'error';
             header('Location: ' . $_SERVER['PHP_SELF'] . ($redirectQuery ? '?' . $redirectQuery : ''));
             exit();
@@ -823,7 +932,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $data = json_decode($json, true);
 
         if (!is_array($data) || empty($data['registrations']) || !is_array($data['registrations'])) {
-            $_SESSION['RegistrArc_payment_message'] = 'Le fichier importé n’est pas un JSON inscriptions valide.';
+            $_SESSION['RegistrArc_payment_message'] = 'Le fichier importé n\'est pas un JSON inscriptions valide.';
             $_SESSION['RegistrArc_message_type'] = 'error';
             header('Location: ' . $_SERVER['PHP_SELF'] . ($redirectQuery ? '?' . $redirectQuery : ''));
             exit();
@@ -960,13 +1069,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ? registrarc_clean_payment_method($_POST['bulk_payment_method'], $paymentModes)
             : 'ESP';
 
+        $createChequeGroupAfterPayment = !empty($_POST['create_cheque_group_after_payment'])
+            && $_POST['create_cheque_group_after_payment'] === '1'
+            && $bulkMethod === 'CHQ';
+
         if (!empty($ids)) {
             if ($action === 'validate') {
                 $saved = registrarc_set_payment_bulk($TourId, $ids, $bulkMethod);
 
                 if ($saved) {
-                    $_SESSION['RegistrArc_payment_message'] = 'Paiement validé pour les engagements sélectionnés.';
-                    $_SESSION['RegistrArc_message_type'] = 'success';
+                    if ($createChequeGroupAfterPayment && count($ids) >= 2) {
+                        $payments = registrarc_load_payments($TourId);
+                        $result = registrarc_create_cheque_group($TourId, $ids, $payments);
+
+                        if (!empty($result['ok'])) {
+                            $_SESSION['RegistrArc_payment_message'] = 'Paiement validé et remise groupée créée. Elle sera visible dans la remise de chèque.';
+                            $_SESSION['RegistrArc_message_type'] = 'success';
+                        } else {
+                            $_SESSION['RegistrArc_payment_message'] = 'Paiement validé, mais la remise groupée n’a pas pu être créée : ' . $result['message'];
+                            $_SESSION['RegistrArc_message_type'] = 'warning';
+                        }
+                    } else {
+                        $_SESSION['RegistrArc_payment_message'] = 'Paiement validé pour les engagements sélectionnés.';
+                        $_SESSION['RegistrArc_message_type'] = 'success';
+                    }
                 } else {
                     $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements.";
                     $_SESSION['RegistrArc_message_type'] = 'error';
@@ -1367,6 +1493,8 @@ include('Common/Templates/head.php');
         --import-dark: #9d174d;
         --settings-color: #0891b2;
         --settings-dark: #0e7490;
+        --cheque-color: #0d9488;
+        --cheque-dark: #0f766e;
         --border-radius: 6px;
         --shadow-soft: 0 4px 12px rgba(15, 23, 42, 0.08);
         --text-muted: #6b7280;
@@ -1423,7 +1551,8 @@ include('Common/Templates/head.php');
     .btn-warning,
     .btn-export,
     .btn-import,
-    .btn-settings {
+    .btn-settings,
+    .btn-cheque {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -1512,6 +1641,15 @@ include('Common/Templates/head.php');
 
     .btn-settings:hover {
         background: var(--settings-dark);
+    }
+
+    .btn-cheque {
+        background: var(--cheque-color);
+        color: #fff;
+    }
+
+    .btn-cheque:hover {
+        background: var(--cheque-dark);
     }
 
     .bulk-invoice-button {
@@ -1811,7 +1949,7 @@ include('Common/Templates/head.php');
 <div class="registrarc-container">
     <div class="registrarc-header">
         <div>
-            <div class="registrarc-header-title">Gestion des engagements - Registr’Arc</div>
+            <div class="registrarc-header-title">Gestion des engagements - Registr'Arc</div>
             <div class="registrarc-header-sub">Le module de Greffe pour I@nseo</div>
         </div>
 
@@ -1826,7 +1964,7 @@ include('Common/Templates/head.php');
         <div class="alert alert-warning">
             <strong>Attention :</strong>
             <?php echo htmlspecialchars($dataDirStatus['message']); ?><br>
-            Les actions JSON ne pourront pas être enregistrées tant que ce problème n’est pas corrigé.<br>
+            Les actions JSON ne pourront pas être enregistrées tant que ce problème n'est pas corrigé.<br>
             Dossier concerné :
             <span class="storage-path"><?php echo htmlspecialchars($dataDirStatus['path']); ?></span><br>
             Commande Ubuntu possible :
@@ -1912,6 +2050,8 @@ include('Common/Templates/head.php');
         <div class="card-title">Actions sur les engagements sélectionnés</div>
 
         <form method="POST" id="bulkForm">
+            <input type="hidden" name="create_cheque_group_after_payment" id="create_cheque_group_after_payment" value="0">
+
             <div class="filters-row">
                 <div class="filter-group">
                     <label for="bulk_payment_method">Mode de paiement</label>
@@ -1949,6 +2089,10 @@ include('Common/Templates/head.php');
                         Importer inscriptions
                     </button>
 
+                    <button type="button" class="btn-cheque" onclick="return openChequeDeposit();">
+                        Remise de chèque
+                    </button>
+
                     <button type="button" class="btn-print-list" onclick="return printGreffeList();">
                         Liste Greffe
                     </button>
@@ -1965,7 +2109,7 @@ include('Common/Templates/head.php');
 
                 <div class="filter-actions">
                     <button type="submit" name="import_registrations" value="1" class="btn-import" onclick="return confirmImportRegistrations();">
-                        Confirmer l’import
+                        Confirmer l'import
                     </button>
 
                     <button type="button" class="btn-ghost" onclick="toggleImportRegistrations();">
@@ -2192,6 +2336,12 @@ function toggleSelectAll(master) {
 function confirmBulkAction(type) {
     const selectedIds = getSelectedEngagementIds();
     const count = selectedIds.length;
+    const groupInput = document.getElementById('create_cheque_group_after_payment');
+    const bulkMethod = document.getElementById('bulk_payment_method');
+
+    if (groupInput) {
+        groupInput.value = '0';
+    }
 
     if (count === 0) {
         alert('Aucun engagement sélectionné.');
@@ -2201,6 +2351,27 @@ function confirmBulkAction(type) {
     const actionText = (type === 'validate')
         ? 'valider le paiement'
         : 'retirer le paiement';
+
+    if (type !== 'validate') {
+        return confirm(
+            'Vous allez ' + actionText + ' pour ' + count + ' engagement(s).\n\nConfirmer ?'
+        );
+    }
+
+    const method = bulkMethod ? String(bulkMethod.value || '').toUpperCase() : '';
+
+    if (method === 'CHQ' && count >= 2) {
+        const createGroup = confirm(
+            'Vous allez valider ' + count + ' engagement(s) en paiement par chèque.\n\n' +
+            'Créer un groupement de chèque pour ces engagements ?'
+        );
+
+        if (groupInput) {
+            groupInput.value = createGroup ? '1' : '0';
+        }
+
+        return true;
+    }
 
     return confirm(
         'Vous allez ' + actionText + ' pour ' + count + ' engagement(s).\n\nConfirmer ?'
@@ -2230,6 +2401,18 @@ function factureGroupePrompt() {
     return false;
 }
 
+function openChequeDeposit() {
+    const selectedIds = getSelectedEngagementIds();
+    let url = 'bankchequedeposite.php';
+
+    if (selectedIds.length > 0) {
+        url += '?ids=' + encodeURIComponent(selectedIds.join(','));
+    }
+
+    window.open(url, '_blank');
+    return false;
+}
+
 function toggleImportRegistrations() {
     const form = document.getElementById('importRegistrationsForm');
 
@@ -2250,7 +2433,7 @@ function confirmImportRegistrations() {
     }
 
     return confirm(
-        'Importer ce fichier d’inscriptions ?\n\n' +
+        'Importer ce fichier d\'inscriptions ?\n\n' +
         'Les états de paiement correspondants seront appliqués aux inscriptions locales trouvées.\n' +
         'Aucune inscription I@nseo ne sera créée ou supprimée.'
     );
@@ -2297,11 +2480,11 @@ function printGreffeList() {
     const printWindow = window.open('', '_blank', 'width=1200,height=900');
 
     if (!printWindow) {
-        alert('La fenêtre d’impression a été bloquée par le navigateur.');
+        alert('La fenêtre d\'impression a été bloquée par le navigateur.');
         return false;
     }
 
-    const title = 'Liste Greffe - Registr’Arc';
+    const title = "Liste Greffe - Registr'Arc";
 
     printWindow.document.open();
     printWindow.document.write(`
@@ -2462,13 +2645,13 @@ function printGreffeList() {
             </style>
         </head>
         <body>
-            <div class="print-title">Gestion des engagements - Registr’Arc</div>
+            <div class="print-title">Gestion des engagements - Registr'Arc</div>
             <div class="print-subtitle">Liste Greffe</div>
 
             ${clonedTable.outerHTML}
 
             <div class="print-footer">
-                Document généré depuis Registr’Arc.
+                Document généré depuis Registr'Arc.
             </div>
 
             <script>
