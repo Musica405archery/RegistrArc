@@ -12,7 +12,7 @@
 //
 // Tarification :
 // - tarifs de base jeunes/adultes, club extérieur/organisateur
-// - règles avancées JSON
+// - règles avancées JSON cumulatives définies dans config_tarifs.php
 // - règles possibles sur Entries :
 //   EnIndClEvent, EnTeamClEvent, EnIndFEvent, EnTeamFEvent, EnTeamMixEvent
 // ============================================================================
@@ -255,6 +255,23 @@ function registrarc_save_payments($TourId, array $data) {
     return file_put_contents($file, $json, LOCK_EX) !== false;
 }
 
+function registrarc_normalize_payment_code($code) {
+    $code = strtoupper(trim((string)$code));
+
+    $map = [
+        'ESPECE'   => 'ESP',
+        'ESPECES'  => 'ESP',
+        'ESPÈCE'   => 'ESP',
+        'ESPÈCES'  => 'ESP',
+        'CHEQUE'   => 'CHQ',
+        'CHÈQUE'   => 'CHQ',
+        'VIREMENT' => 'VIR',
+        'GRATUIT'  => 'GRA',
+    ];
+
+    return isset($map[$code]) ? $map[$code] : $code;
+}
+
 function registrarc_set_payment_in_array(array &$data, $engagementId, $method) {
     $engagementId = intval($engagementId);
 
@@ -262,7 +279,7 @@ function registrarc_set_payment_in_array(array &$data, $engagementId, $method) {
         return false;
     }
 
-    $method = strtoupper(trim((string)$method));
+    $method = registrarc_normalize_payment_code($method);
 
     $data[(string)$engagementId] = [
         'status'     => 'PAYE',
@@ -450,23 +467,6 @@ function registrarc_default_payment_modes() {
     ];
 }
 
-function registrarc_normalize_payment_code($code) {
-    $code = strtoupper(trim((string)$code));
-
-    $map = [
-        'ESPECE'   => 'ESP',
-        'ESPECES'  => 'ESP',
-        'ESPÈCE'   => 'ESP',
-        'ESPÈCES'  => 'ESP',
-        'CHEQUE'   => 'CHQ',
-        'CHÈQUE'   => 'CHQ',
-        'VIREMENT' => 'VIR',
-        'GRATUIT'  => 'GRA',
-    ];
-
-    return isset($map[$code]) ? $map[$code] : $code;
-}
-
 function registrarc_normalize_payment_modes($modes) {
     if (!is_array($modes) || empty($modes)) {
         return registrarc_default_payment_modes();
@@ -502,6 +502,32 @@ function registrarc_normalize_payment_modes($modes) {
     return empty($clean) ? registrarc_default_payment_modes() : $clean;
 }
 
+function registrarc_normalize_settings($TourId, $settings) {
+    $out = [
+        'tarifs' => registrarc_default_tarifs(),
+        'payment_modes' => registrarc_default_payment_modes(),
+        'rules' => [],
+    ];
+
+    if (!is_array($settings)) {
+        return $out;
+    }
+
+    if (isset($settings['tarifs']) && is_array($settings['tarifs'])) {
+        $out['tarifs'] = $settings['tarifs'];
+    }
+
+    if (isset($settings['payment_modes']) && is_array($settings['payment_modes'])) {
+        $out['payment_modes'] = registrarc_normalize_payment_modes($settings['payment_modes']);
+    }
+
+    if (isset($settings['rules']) && is_array($settings['rules'])) {
+        $out['rules'] = $settings['rules'];
+    }
+
+    return $out;
+}
+
 function registrarc_load_settings($TourId) {
     $file = registrarc_settings_file_path($TourId);
 
@@ -510,7 +536,7 @@ function registrarc_load_settings($TourId) {
         $data = json_decode($json, true);
 
         if (is_array($data)) {
-            return $data;
+            return registrarc_normalize_settings($TourId, $data);
         }
     }
 
@@ -544,11 +570,7 @@ function registrarc_load_settings($TourId) {
         }
     }
 
-    if (!isset($settings['rules']) || !is_array($settings['rules'])) {
-        $settings['rules'] = [];
-    }
-
-    return $settings;
+    return registrarc_normalize_settings($TourId, $settings);
 }
 
 function registrarc_load_tarifs($TourId, $organizerClubCode, $organizerClubName) {
@@ -563,6 +585,7 @@ function registrarc_load_tarifs($TourId, $organizerClubCode, $organizerClubName)
     $default = registrarc_default_tarifs();
     $default['organizer_club_code'] = $organizerClubCode;
     $default['organizer_club_name'] = $organizerClubName;
+
     return $default;
 }
 
@@ -697,18 +720,13 @@ function registrarc_entry_rule_matches($scope, $matches, array $entry) {
     }
 
     if ($scope === 'region') {
-        $clubCode = strtoupper((string)$entry['country_code']);
+        $clubCode = preg_replace('/\D+/', '', (string)$entry['country_code']);
+        $region = strlen($clubCode) >= 2 ? substr($clubCode, 0, 2) : '';
 
         foreach ($matches as $match) {
-            $match = strtoupper(trim((string)$match));
+            $match = preg_replace('/\D+/', '', (string)$match);
 
-            if ($match === '') {
-                continue;
-            }
-
-            $prefix = rtrim($match, '%');
-
-            if ($prefix !== '' && strpos($clubCode, $prefix) === 0) {
+            if ($match !== '' && $region === $match) {
                 return true;
             }
         }
@@ -717,18 +735,13 @@ function registrarc_entry_rule_matches($scope, $matches, array $entry) {
     }
 
     if ($scope === 'departement') {
-        $clubCode = strtoupper((string)$entry['country_code']);
+        $clubCode = preg_replace('/\D+/', '', (string)$entry['country_code']);
+        $departement = strlen($clubCode) >= 4 ? substr($clubCode, 2, 2) : '';
 
         foreach ($matches as $match) {
-            $match = strtoupper(trim((string)$match));
+            $match = preg_replace('/\D+/', '', (string)$match);
 
-            if ($match === '') {
-                continue;
-            }
-
-            $prefix = rtrim($match, '%');
-
-            if ($prefix !== '' && strpos($clubCode, $prefix) === 0) {
+            if ($match !== '' && $departement === $match) {
                 return true;
             }
         }
@@ -769,6 +782,10 @@ function registrarc_entry_rule_matches($scope, $matches, array $entry) {
 }
 
 function registrarc_apply_tarif_rules(array $entry, array $rules) {
+    $total = 0;
+    $labels = [];
+    $matchedCount = 0;
+
     foreach ($rules as $rule) {
         if (empty($rule['active'])) {
             continue;
@@ -782,18 +799,23 @@ function registrarc_apply_tarif_rules(array $entry, array $rules) {
         }
 
         if (isset($rule['action']['type']) && $rule['action']['type'] === 'fixed_price') {
-            return [
-                'matched' => true,
-                'label' => isset($rule['label']) ? $rule['label'] : '',
-                'amount' => isset($rule['action']['value']) ? (float)$rule['action']['value'] : 0,
-            ];
+            $value = isset($rule['action']['value']) ? (float)$rule['action']['value'] : 0;
+
+            $total += $value;
+            $matchedCount++;
+
+            if (!empty($rule['label'])) {
+                $labels[] = trim((string)$rule['label']);
+            }
         }
     }
 
     return [
-        'matched' => false,
-        'label' => '',
-        'amount' => null,
+        'matched' => $matchedCount > 0,
+        'label'   => implode(' + ', $labels),
+        'amount'  => $total,
+        'count'   => $matchedCount,
+        'labels'  => $labels,
     ];
 }
 
@@ -908,7 +930,7 @@ $tarifRules = registrarc_load_tarif_rules($TourId);
 $dataDirStatus = registrarc_data_dir_status();
 
 // ---------------------------------------------------------------------------
-// POST : paiements + import inscriptions
+// POST : paiements + import inscriptions + groupes chèques
 // ---------------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $redirectQuery = registrarc_redirect_params($filters, $sortColumn, $sortDirection);
@@ -1216,7 +1238,7 @@ if ($Rs) {
             $targetLabel = 'Archer non affecté';
             $targetNo = '';
         } else {
-            $targetLabel = ($session !== '') ? 'D' . $session . ' - ' . $targetNo : $targetNo;
+            $targetLabel = $targetNo;
         }
 
         $key = registrarc_registration_key(
@@ -1254,7 +1276,7 @@ if ($Rs) {
 }
 
 // ---------------------------------------------------------------------------
-// Numérotation + montant
+// Numérotation + montant + type tarif
 // ---------------------------------------------------------------------------
 $counterByLicence = [];
 
@@ -1273,6 +1295,14 @@ foreach ($engagementsData as $idx => $e) {
     if (!empty($ruleResult['matched'])) {
         $montantBase = (float)$ruleResult['amount'];
         $ruleLabel = $ruleResult['label'];
+
+        if (!empty($ruleResult['count']) && intval($ruleResult['count']) > 1) {
+            $tarifTypeLabel = 'Cumul : ' . $ruleLabel;
+        } else {
+            $tarifTypeLabel = $ruleLabel !== '' ? $ruleLabel : 'Spécial';
+        }
+
+        $tarifTypeClass = 'chip-rule';
     } else {
         $montantBase = registrarc_prix_engagement(
             $e['country_code'],
@@ -1281,7 +1311,10 @@ foreach ($engagementsData as $idx => $e) {
             $tarifs,
             $organizerClubCode
         );
+
         $ruleLabel = '';
+        $tarifTypeLabel = 'Standard';
+        $tarifTypeClass = 'chip-standard';
     }
 
     $mode = strtoupper((string)$e['payment_method']);
@@ -1291,6 +1324,8 @@ foreach ($engagementsData as $idx => $e) {
     $engagementsData[$idx]['montant_base'] = $montantBase;
     $engagementsData[$idx]['montant'] = $montant;
     $engagementsData[$idx]['tarif_rule_label'] = $ruleLabel;
+    $engagementsData[$idx]['tarif_type_label'] = $tarifTypeLabel;
+    $engagementsData[$idx]['tarif_type_class'] = $tarifTypeClass;
 }
 
 // ---------------------------------------------------------------------------
@@ -1359,7 +1394,8 @@ foreach ($engagementsData as $e) {
             $e['prenom'] . ' ' .
             $e['club'] . ' ' .
             $e['country_code'] . ' ' .
-            $e['categorie']
+            $e['categorie'] . ' ' .
+            $e['tarif_type_label']
         );
 
         if (strpos($haystack, $searchFilter) === false) {
@@ -1404,6 +1440,9 @@ usort($displayEngagements, function($a, $b) use ($sortColumn, $sortDirection) {
         case 'montant':
             return $dir * ($a['montant'] <=> $b['montant']);
 
+        case 'tarif':
+            return $dir * strcmp(mb_strtolower((string)$a['tarif_type_label']), mb_strtolower((string)$b['tarif_type_label']));
+
         case 'statut':
             return $dir * ($a['payment_status'] <=> $b['payment_status']);
 
@@ -1439,6 +1478,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_registrations') {
                 'EnIndFEvent' => $e['EnIndFEvent'],
                 'EnTeamFEvent' => $e['EnTeamFEvent'],
                 'EnTeamMixEvent' => $e['EnTeamMixEvent'],
+            ],
+            'tarif' => [
+                'label' => $e['tarif_type_label'],
+                'rule_label' => $e['tarif_rule_label'],
+                'amount' => $e['montant'],
             ],
             'payment' => [
                 'status' => $e['payment_status'] ? 'PAYE' : 'NON_PAYE',
@@ -1876,6 +1920,12 @@ include('Common/Templates/head.php');
         font-weight: 700;
     }
 
+    .chip-standard {
+        background: #e0f2fe;
+        color: #075985;
+        font-weight: 700;
+    }
+
     .payment-actions {
         width: max-content;
         max-width: none;
@@ -2147,6 +2197,7 @@ include('Common/Templates/head.php');
                         <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'depart', 'dir' => ($sortColumn == 'depart' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Départ</a></th>
                         <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'cible', 'dir' => ($sortColumn == 'cible' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Cible</a></th>
                         <th style="text-align:right;"><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'montant', 'dir' => ($sortColumn == 'montant' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Montant</a></th>
+                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'tarif', 'dir' => ($sortColumn == 'tarif' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Tarif</a></th>
                         <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'statut', 'dir' => ($sortColumn == 'statut' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Statut</a></th>
                         <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'paiement', 'dir' => ($sortColumn == 'paiement' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Paiement / Actions</a></th>
                     </tr>
@@ -2175,14 +2226,7 @@ include('Common/Templates/head.php');
                             <td><?php echo htmlspecialchars($e['nom']); ?></td>
                             <td><?php echo htmlspecialchars($e['prenom']); ?></td>
                             <td><?php echo htmlspecialchars(trim($e['country_code'] . ' - ' . $e['club'])); ?></td>
-                            <td>
-                                <?php echo htmlspecialchars($e['categorie']); ?>
-                                <?php if (!empty($e['tarif_rule_label'])): ?>
-                                    <span class="chip chip-rule" title="Règle tarifaire appliquée">
-                                        <?php echo htmlspecialchars($e['tarif_rule_label']); ?>
-                                    </span>
-                                <?php endif; ?>
-                            </td>
+                            <td><?php echo htmlspecialchars($e['categorie']); ?></td>
                             <td><?php echo ($e['session'] !== '') ? 'Départ ' . htmlspecialchars($e['session']) : '—'; ?></td>
 
                             <td>
@@ -2194,6 +2238,12 @@ include('Common/Templates/head.php');
                             </td>
 
                             <td style="text-align:right;"><?php echo registrarc_format_montant($e['montant']); ?> €</td>
+
+                            <td>
+                                <span class="chip <?php echo htmlspecialchars($e['tarif_type_class']); ?>" title="<?php echo htmlspecialchars($e['tarif_rule_label']); ?>">
+                                    <?php echo htmlspecialchars($e['tarif_type_label']); ?>
+                                </span>
+                            </td>
 
                             <td>
                                 <span class="<?php echo $isPaid ? 'status-paid' : 'status-unpaid'; ?>">
@@ -2259,7 +2309,7 @@ include('Common/Templates/head.php');
                     <?php if ($displayCount === 0): ?>
                         <tr>
                             <td class="col-check"></td>
-                            <td colspan="11" style="text-align:center;padding:20px;">Aucun engagement trouvé.</td>
+                            <td colspan="12" style="text-align:center;padding:20px;">Aucun engagement trouvé.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
@@ -2270,7 +2320,7 @@ include('Common/Templates/head.php');
                             <td class="col-check"></td>
                             <td colspan="8" style="text-align:right;font-weight:600;">Total affiché :</td>
                             <td style="text-align:right;font-weight:600;"><?php echo registrarc_format_montant($total); ?> €</td>
-                            <td colspan="2"></td>
+                            <td colspan="3"></td>
                         </tr>
                     </tfoot>
                 <?php endif; ?>
@@ -2454,17 +2504,57 @@ function printGreffeList() {
     });
 
     clonedTable.querySelectorAll('tr').forEach(row => {
-        const cells = row.querySelectorAll('th, td');
+        let cells = row.querySelectorAll('th, td');
 
         if (cells.length > 0) {
             cells[0].remove();
         }
 
-        const updatedCells = row.querySelectorAll('th, td');
+        cells = row.querySelectorAll('th, td');
 
-        if (updatedCells.length > 0) {
-            updatedCells[updatedCells.length - 1].remove();
+        if (cells.length > 0) {
+            cells[cells.length - 1].remove();
         }
+
+        cells = row.querySelectorAll('th, td');
+
+        if (cells.length >= 8) {
+            cells[6].remove();
+        }
+    });
+
+    clonedTable.querySelectorAll('thead tr').forEach(row => {
+        const cells = row.querySelectorAll('th');
+
+        if (cells.length > 0) {
+            cells[0].textContent = 'Eng.';
+        }
+
+        const paiementTh = document.createElement('th');
+        paiementTh.textContent = 'Paiement';
+        row.appendChild(paiementTh);
+
+        const recuTh = document.createElement('th');
+        recuTh.textContent = 'Reçu';
+        row.appendChild(recuTh);
+    });
+
+    clonedTable.querySelectorAll('tbody tr').forEach(row => {
+        const cells = row.querySelectorAll('td');
+
+        if (cells.length <= 1) {
+            return;
+        }
+
+        const paiementTd = document.createElement('td');
+        paiementTd.className = 'manual-payment';
+        paiementTd.innerHTML = '<span class="manual-line"></span>';
+        row.appendChild(paiementTd);
+
+        const recuTd = document.createElement('td');
+        recuTd.className = 'manual-recu';
+        recuTd.innerHTML = '<span class="manual-checkbox"></span>';
+        row.appendChild(recuTd);
     });
 
     clonedTable.querySelectorAll('a').forEach(link => {
@@ -2496,7 +2586,7 @@ function printGreffeList() {
             <style>
                 @page {
                     size: landscape;
-                    margin: 6mm;
+                    margin: 5mm;
                 }
 
                 * {
@@ -2512,14 +2602,14 @@ function printGreffeList() {
                 }
 
                 .print-title {
-                    font-size: 14px;
+                    font-size: 13px;
                     font-weight: 700;
                     margin-bottom: 2px;
                 }
 
                 .print-subtitle {
-                    font-size: 9px;
-                    margin-bottom: 6px;
+                    font-size: 8px;
+                    margin-bottom: 5px;
                     color: #333;
                 }
 
@@ -2527,7 +2617,7 @@ function printGreffeList() {
                     width: 100%;
                     border-collapse: collapse;
                     table-layout: fixed;
-                    font-size: 8px;
+                    font-size: 7px;
                 }
 
                 thead {
@@ -2538,10 +2628,10 @@ function printGreffeList() {
                 td {
                     border: 1px solid #999;
                     border-bottom: 1.5px solid #555;
-                    padding: 2px 3px;
+                    padding: 2px 2px;
                     text-align: left;
                     vertical-align: top;
-                    line-height: 1.15;
+                    line-height: 1.1;
                     word-break: break-word;
                     overflow-wrap: anywhere;
                 }
@@ -2563,8 +2653,6 @@ function printGreffeList() {
                 th:nth-child(1),
                 td:nth-child(1) {
                     width: 3.5%;
-                    min-width: 22px;
-                    max-width: 28px;
                     text-align: center;
                     white-space: nowrap;
                     word-break: normal;
@@ -2575,48 +2663,55 @@ function printGreffeList() {
 
                 th:nth-child(2),
                 td:nth-child(2) {
-                    width: 9%;
+                    width: 8%;
                 }
 
                 th:nth-child(3),
                 td:nth-child(3) {
-                    width: 12%;
+                    width: 10%;
                 }
 
                 th:nth-child(4),
                 td:nth-child(4) {
-                    width: 11%;
+                    width: 9%;
                 }
 
                 th:nth-child(5),
                 td:nth-child(5) {
-                    width: 20%;
+                    width: 19%;
                 }
 
                 th:nth-child(6),
                 td:nth-child(6) {
-                    width: 8%;
+                    width: 7%;
                 }
 
                 th:nth-child(7),
                 td:nth-child(7) {
-                    width: 8%;
+                    width: 10%;
                 }
 
                 th:nth-child(8),
                 td:nth-child(8) {
-                    width: 12%;
+                    width: 6%;
+                    text-align: right;
+                    white-space: nowrap;
                 }
 
                 th:nth-child(9),
                 td:nth-child(9) {
                     width: 7%;
-                    text-align: right;
                 }
 
                 th:nth-child(10),
                 td:nth-child(10) {
-                    width: 9.5%;
+                    width: 15%;
+                }
+
+                th:nth-child(11),
+                td:nth-child(11) {
+                    width: 5.5%;
+                    text-align: center;
                 }
 
                 .status-paid,
@@ -2637,9 +2732,32 @@ function printGreffeList() {
                     font-weight: inherit;
                 }
 
+                .manual-payment {
+                    background: #fff;
+                }
+
+                .manual-line {
+                    display: block;
+                    height: 10px;
+                    border-bottom: 1px solid #333;
+                }
+
+                .manual-recu {
+                    text-align: center;
+                    background: #fff;
+                }
+
+                .manual-checkbox {
+                    display: inline-block;
+                    width: 10px;
+                    height: 10px;
+                    border: 1.5px solid #000;
+                    vertical-align: middle;
+                }
+
                 .print-footer {
                     margin-top: 4px;
-                    font-size: 8px;
+                    font-size: 7px;
                     color: #333;
                 }
             </style>
