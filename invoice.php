@@ -310,6 +310,32 @@ function registrarc_normalize_payment_modes($modes) {
     return empty($clean) ? registrarc_default_payment_modes() : $clean;
 }
 
+function registrarc_normalize_settings($TourId, $settings) {
+    $out = [
+        'tarifs' => registrarc_default_tarifs(),
+        'payment_modes' => registrarc_default_payment_modes(),
+        'rules' => [],
+    ];
+
+    if (!is_array($settings)) {
+        return $out;
+    }
+
+    if (isset($settings['tarifs']) && is_array($settings['tarifs'])) {
+        $out['tarifs'] = $settings['tarifs'];
+    }
+
+    if (isset($settings['payment_modes']) && is_array($settings['payment_modes'])) {
+        $out['payment_modes'] = registrarc_normalize_payment_modes($settings['payment_modes']);
+    }
+
+    if (isset($settings['rules']) && is_array($settings['rules'])) {
+        $out['rules'] = $settings['rules'];
+    }
+
+    return $out;
+}
+
 function registrarc_load_settings($TourId) {
     $file = registrarc_settings_file_path($TourId);
 
@@ -318,19 +344,7 @@ function registrarc_load_settings($TourId) {
         $data = json_decode($json, true);
 
         if (is_array($data)) {
-            if (empty($data['tarifs']) || !is_array($data['tarifs'])) {
-                $data['tarifs'] = registrarc_default_tarifs();
-            }
-
-            if (empty($data['payment_modes']) || !is_array($data['payment_modes'])) {
-                $data['payment_modes'] = registrarc_default_payment_modes();
-            }
-
-            if (empty($data['rules']) || !is_array($data['rules'])) {
-                $data['rules'] = [];
-            }
-
-            return $data;
+            return registrarc_normalize_settings($TourId, $data);
         }
     }
 
@@ -364,7 +378,7 @@ function registrarc_load_settings($TourId) {
         }
     }
 
-    return $settings;
+    return registrarc_normalize_settings($TourId, $settings);
 }
 
 function registrarc_load_tarifs($TourId, $organizerClubCode, $organizerClubName) {
@@ -609,7 +623,11 @@ function registrarc_prix_engagement($clubCode, $categorie, $numeroEngagement, $t
         $p2 = isset($tarifs['clubs_autres'][$age][2]) ? floatval($tarifs['clubs_autres'][$age][2]) : $p1;
     }
 
-    return ($numeroEngagement <= 1) ? $p1 : ($p2 - $p1);
+    if ($numeroEngagement <= 1) {
+        return $p1;
+    }
+
+    return $p2 - $p1;
 }
 
 function registrarc_format_montant($montant) {
@@ -809,10 +827,6 @@ function registrarc_enrich_invoice_rows(array $rows, array $tarifs, $organizerCl
 
         $sessionLabel = $row['session_no'] !== '' ? 'Départ ' . $row['session_no'] : '—';
 
-        if (!$targetIsUnassigned && $row['session_no'] !== '') {
-            $targetLabel = 'D' . $row['session_no'] . ' - ' . $targetNo;
-        }
-
         $payment = isset($payments[(string)$engagementId]) && is_array($payments[(string)$engagementId])
             ? $payments[(string)$engagementId]
             : [];
@@ -841,6 +855,14 @@ function registrarc_enrich_invoice_rows(array $rows, array $tarifs, $organizerCl
         if (!empty($ruleResult['matched'])) {
             $amountBase = (float)$ruleResult['amount'];
             $ruleLabel = $ruleResult['label'];
+
+            if (!empty($ruleResult['count']) && intval($ruleResult['count']) > 1) {
+                $tarifTypeLabel = 'Cumul : ' . $ruleLabel;
+            } else {
+                $tarifTypeLabel = $ruleLabel !== '' ? $ruleLabel : 'Spécial';
+            }
+
+            $tarifTypeClass = 'tarif-rule';
         } else {
             $amountBase = registrarc_prix_engagement(
                 $row['country_code'],
@@ -849,7 +871,10 @@ function registrarc_enrich_invoice_rows(array $rows, array $tarifs, $organizerCl
                 $tarifs,
                 $organizerClubCode
             );
+
             $ruleLabel = '';
+            $tarifTypeLabel = 'Standard';
+            $tarifTypeClass = 'tarif-standard';
         }
 
         $amount = registrarc_is_free_method($method) ? 0 : $amountBase;
@@ -861,6 +886,8 @@ function registrarc_enrich_invoice_rows(array $rows, array $tarifs, $organizerCl
         $row['payment_method'] = $method;
         $row['payment_method_label'] = $methodLabel;
         $row['tarif_rule_label'] = $ruleLabel;
+        $row['tarif_type_label'] = $tarifTypeLabel;
+        $row['tarif_type_class'] = $tarifTypeClass;
         $row['amount'] = $amount;
 
         $result[] = $row;
@@ -978,6 +1005,7 @@ function registrarc_render_error($title, $message) {
             }
         </style>
     </head>
+
     <body>
         <div class="box">
             <h1><?php echo htmlspecialchars($title); ?></h1>
@@ -1216,14 +1244,14 @@ $isGroupedInvoice = count($rows) > 1;
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 11px;
+            font-size: 10.5px;
             margin-top: 8px;
         }
 
         th,
         td {
             border: 1px solid #d1d5db;
-            padding: 6px 7px;
+            padding: 5px 6px;
             text-align: left;
             vertical-align: top;
         }
@@ -1257,12 +1285,26 @@ $isGroupedInvoice = count($rows) > 1;
             font-weight: 700;
         }
 
-        .tarif-rule {
-            display: block;
-            margin-top: 2px;
+        .tarif-standard {
+            display: inline-flex;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: #e0f2fe;
+            color: #075985;
             font-size: 9px;
-            color: #5b21b6;
             font-weight: 700;
+            white-space: normal;
+        }
+
+        .tarif-rule {
+            display: inline-flex;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: #ede9fe;
+            color: #5b21b6;
+            font-size: 9px;
+            font-weight: 700;
+            white-space: normal;
         }
 
         .bottom-image-wrapper {
@@ -1348,7 +1390,7 @@ $isGroupedInvoice = count($rows) > 1;
             }
         }
 
-        @media screen and (max-width: 700px) {
+        @media (max-width: 700px) {
             .invoice-page {
                 width: 100%;
                 min-height: auto;
@@ -1386,58 +1428,6 @@ $isGroupedInvoice = count($rows) > 1;
                 margin: 10px;
                 justify-content: flex-start;
                 flex-wrap: wrap;
-            }
-        }
-
-        @media print {
-            .competition-header {
-                display: grid !important;
-                grid-template-columns: 20mm 1fr 20mm !important;
-                align-items: center !important;
-                gap: 5mm !important;
-                width: 100% !important;
-                min-height: 12mm !important;
-                max-height: 16mm !important;
-                padding-bottom: 2mm !important;
-                margin-bottom: 4mm !important;
-                page-break-inside: avoid !important;
-                break-inside: avoid !important;
-            }
-
-            .competition-logo {
-                width: 20mm !important;
-                min-width: 20mm !important;
-                max-width: 20mm !important;
-                height: 12mm !important;
-                min-height: 12mm !important;
-                max-height: 12mm !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                overflow: hidden !important;
-            }
-
-            .competition-logo img {
-                display: block !important;
-                max-width: 100% !important;
-                max-height: 100% !important;
-                width: auto !important;
-                height: auto !important;
-                object-fit: contain !important;
-            }
-
-            .competition-info {
-                min-width: 0 !important;
-                text-align: center !important;
-                overflow: hidden !important;
-            }
-
-            .competition-name,
-            .competition-where,
-            .competition-date {
-                white-space: nowrap !important;
-                overflow: hidden !important;
-                text-overflow: ellipsis !important;
             }
         }
     </style>
@@ -1541,15 +1531,16 @@ Date : <?php echo htmlspecialchars($tournament['when_label']); ?>
         <table>
             <thead>
                 <tr>
-                    <th style="width:8%;">Eng.</th>
-                    <th style="width:12%;">Licence</th>
-                    <th style="width:20%;">Archer</th>
-                    <th style="width:10%;">Catégorie</th>
-                    <th style="width:12%;">Départ</th>
-                    <th style="width:12%;">Cible</th>
-                    <th style="width:10%;">Statut</th>
-                    <th style="width:10%;">Paiement</th>
-                    <th style="width:8%;" class="right">Montant</th>
+                    <th style="width:7%;">Eng.</th>
+                    <th style="width:11%;">Licence</th>
+                    <th style="width:18%;">Archer</th>
+                    <th style="width:9%;">Catégorie</th>
+                    <th style="width:10%;">Départ</th>
+                    <th style="width:10%;">Cible</th>
+                    <th style="width:9%;" class="right">Montant</th>
+                    <th style="width:12%;">Tarif</th>
+                    <th style="width:7%;">Statut</th>
+                    <th style="width:7%;">Paiement</th>
                 </tr>
             </thead>
 
@@ -1559,29 +1550,28 @@ Date : <?php echo htmlspecialchars($tournament['when_label']); ?>
                         <td class="center">n° <?php echo intval($row['numero_engagement']); ?></td>
                         <td><?php echo htmlspecialchars($row['licence']); ?></td>
                         <td><?php echo htmlspecialchars(trim($row['nom'] . ' ' . $row['prenom'])); ?></td>
-                        <td>
-                            <?php echo htmlspecialchars($row['categorie']); ?>
-                            <?php if (!empty($row['tarif_rule_label'])): ?>
-                                <span class="tarif-rule">
-                                    <?php echo htmlspecialchars($row['tarif_rule_label']); ?>
-                                </span>
-                            <?php endif; ?>
-                        </td>
+                        <td><?php echo htmlspecialchars($row['categorie']); ?></td>
                         <td><?php echo htmlspecialchars($row['session_label']); ?></td>
                         <td><?php echo htmlspecialchars($row['target_label']); ?></td>
+                        <td class="right"><?php echo registrarc_format_montant($row['amount']); ?> €</td>
+                        <td>
+                            <span class="<?php echo htmlspecialchars($row['tarif_type_class']); ?>">
+                                <?php echo htmlspecialchars($row['tarif_type_label']); ?>
+                            </span>
+                        </td>
                         <td>
                             <span class="<?php echo ($row['payment_status_label'] === 'Payé') ? 'status-paid' : 'status-unpaid'; ?>">
                                 <?php echo htmlspecialchars($row['payment_status_label']); ?>
                             </span>
                         </td>
                         <td><?php echo htmlspecialchars($row['payment_method_label']); ?></td>
-                        <td class="right"><?php echo registrarc_format_montant($row['amount']); ?> €</td>
                     </tr>
                 <?php endforeach; ?>
 
                 <tr class="total-row">
-                    <td colspan="8" class="right">Total</td>
+                    <td colspan="6" class="right">Total</td>
                     <td class="right"><?php echo registrarc_format_montant($total); ?> €</td>
+                    <td colspan="3"></td>
                 </tr>
             </tbody>
         </table>

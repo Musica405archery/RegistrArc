@@ -719,8 +719,6 @@ function registrarc_build_cheque_rows(array $rows, array $payments, array $payme
 
         if ($targetIsUnassigned) {
             $targetLabel = 'Archer non affecté';
-        } elseif ($row['session_no'] !== '') {
-            $targetLabel = 'D' . $row['session_no'] . ' - ' . $targetNo;
         } else {
             $targetLabel = $targetNo;
         }
@@ -740,6 +738,14 @@ function registrarc_build_cheque_rows(array $rows, array $payments, array $payme
         if (!empty($ruleResult['matched'])) {
             $amountBase = (float)$ruleResult['amount'];
             $ruleLabel = $ruleResult['label'];
+
+            if (!empty($ruleResult['count']) && intval($ruleResult['count']) > 1) {
+                $tarifTypeLabel = 'Cumul : ' . $ruleLabel;
+            } else {
+                $tarifTypeLabel = $ruleLabel !== '' ? $ruleLabel : 'Spécial';
+            }
+
+            $tarifTypeClass = 'tarif-rule';
         } else {
             $amountBase = registrarc_prix_engagement(
                 $row['country_code'],
@@ -748,7 +754,10 @@ function registrarc_build_cheque_rows(array $rows, array $payments, array $payme
                 $tarifs,
                 $organizerClubCode
             );
+
             $ruleLabel = '';
+            $tarifTypeLabel = 'Standard';
+            $tarifTypeClass = 'tarif-standard';
         }
 
         $row['numero_engagement'] = $numeroEngagement;
@@ -757,6 +766,8 @@ function registrarc_build_cheque_rows(array $rows, array $payments, array $payme
         $row['payment_method'] = $method;
         $row['payment_method_label'] = isset($paymentModes[$method]) ? $paymentModes[$method] : $method;
         $row['tarif_rule_label'] = $ruleLabel;
+        $row['tarif_type_label'] = $tarifTypeLabel;
+        $row['tarif_type_class'] = $tarifTypeClass;
         $row['amount'] = registrarc_is_free_method($method) ? 0 : $amountBase;
 
         $result[] = $row;
@@ -821,13 +832,14 @@ function registrarc_render_entries_table(array $rows) {
         <thead>
             <tr>
                 <th style="width:7%;">Eng.</th>
-                <th style="width:12%;">Licence</th>
-                <th style="width:20%;">Archer</th>
-                <th style="width:25%;">Club</th>
-                <th style="width:9%;">Cat.</th>
-                <th style="width:9%;">Départ</th>
-                <th style="width:9%;">Cible</th>
-                <th style="width:9%;" class="right">Montant</th>
+                <th style="width:11%;">Licence</th>
+                <th style="width:17%;">Archer</th>
+                <th style="width:22%;">Club</th>
+                <th style="width:8%;">Cat.</th>
+                <th style="width:8%;">Départ</th>
+                <th style="width:8%;">Cible</th>
+                <th style="width:8%;" class="right">Montant</th>
+                <th style="width:11%;">Tarif</th>
             </tr>
         </thead>
 
@@ -838,16 +850,15 @@ function registrarc_render_entries_table(array $rows) {
                     <td><?php echo htmlspecialchars($row['licence']); ?></td>
                     <td><?php echo htmlspecialchars(trim($row['nom'] . ' ' . $row['prenom'])); ?></td>
                     <td><?php echo htmlspecialchars(trim($row['country_code'] . ' - ' . $row['club'])); ?></td>
-                    <td>
-                        <?php echo htmlspecialchars($row['categorie']); ?>
-
-                        <?php if (!empty($row['tarif_rule_label'])): ?>
-                            <span class="rule"><?php echo htmlspecialchars($row['tarif_rule_label']); ?></span>
-                        <?php endif; ?>
-                    </td>
+                    <td><?php echo htmlspecialchars($row['categorie']); ?></td>
                     <td><?php echo htmlspecialchars($row['session_label']); ?></td>
                     <td><?php echo htmlspecialchars($row['target_label']); ?></td>
                     <td class="right"><?php echo registrarc_format_montant($row['amount']); ?> €</td>
+                    <td>
+                        <span class="<?php echo htmlspecialchars($row['tarif_type_class']); ?>">
+                            <?php echo htmlspecialchars($row['tarif_type_label']); ?>
+                        </span>
+                    </td>
                 </tr>
             <?php endforeach; ?>
         </tbody>
@@ -1120,7 +1131,7 @@ $documentDate = date('d/m/Y');
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 10.5px;
+            font-size: 10px;
             margin-bottom: 10px;
         }
 
@@ -1160,12 +1171,26 @@ $documentDate = date('d/m/Y');
             border-radius: 6px;
         }
 
-        .rule {
-            display: block;
-            margin-top: 2px;
+        .tarif-standard {
+            display: inline-flex;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: #e0f2fe;
+            color: #075985;
             font-size: 9px;
-            color: #5b21b6;
             font-weight: 700;
+            white-space: normal;
+        }
+
+        .tarif-rule {
+            display: inline-flex;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: #ede9fe;
+            color: #5b21b6;
+            font-size: 9px;
+            font-weight: 700;
+            white-space: normal;
         }
 
         .manual-fields {
