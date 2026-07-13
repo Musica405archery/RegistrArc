@@ -7,7 +7,7 @@
 // Modules/Custom/RegistrArc/data/settings_<TourId>.json
 //
 // Export / Import JSON :
-// - inclut le code tournoi pour faciliter l’échange entre installations
+// - inclut le code tournoi pour faciliter l'échange entre installations
 // - alerte si le fichier importé semble plus ancien
 // - alerte si le code tournoi importé diffère du code tournoi courant
 //
@@ -22,7 +22,7 @@
 // - Double mixte si Events contient EvTeamEvent = 1 et EvMixedTeam = 1
 //
 // La structure des règles reste : scope / match / action fixed_price,
-// comme dans la logique initiale des règles avancées du module [1].
+// comme dans la logique initiale des règles avancées du module.
 // ============================================================================
 
 define('debug', false);
@@ -1023,7 +1023,7 @@ include('Common/Templates/head.php');
 
 <div class="registrarc-container">
     <div class="registrarc-header">
-        <div class="registrarc-header-title">Gestion des engagements - Registr’Arc</div>
+        <div class="registrarc-header-title">Gestion des engagements - Registr'Arc</div>
         <div class="registrarc-header-sub">Le module de Greffe pour I@nseo</div>
     </div>
 
@@ -1148,12 +1148,12 @@ include('Common/Templates/head.php');
                 <?php if (empty($finalPresence['individual']) && empty($finalPresence['team']) && empty($finalPresence['mixed'])): ?>
                     <br><strong>Aucune phase finale détectée :</strong> les règles liées aux finales ne sont pas proposées.
                 <?php elseif (empty($finalPresence['individual'])): ?>
-                    <br><strong>Pas de finale individuelle détectée :</strong> la règle finale individuelle n’est pas proposée.
+                    <br><strong>Pas de finale individuelle détectée :</strong> la règle finale individuelle n'est pas proposée.
                 <?php elseif (empty($finalPresence['team'])): ?>
-                    <br><strong>Pas de finale équipe détectée :</strong> la règle finale équipe n’est pas proposée.
+                    <br><strong>Pas de finale équipe détectée :</strong> la règle finale équipe n'est pas proposée.
                 <?php endif; ?>
                 <?php if (empty($finalPresence['mixed'])): ?>
-                    <br><strong>Pas de double mixte détecté :</strong> la règle double mixte n’est pas proposée.
+                    <br><strong>Pas de double mixte détecté :</strong> la règle double mixte n'est pas proposée.
                 <?php endif; ?>
             </div>
 
@@ -1461,7 +1461,7 @@ function handleImportSubmit(event) {
         try {
             data = JSON.parse(e.target.result);
         } catch (err) {
-            alert('Le fichier sélectionné n’est pas un JSON valide.');
+            alert('Le fichier sélectionné n'est pas un JSON valide.');
             return;
         }
 
