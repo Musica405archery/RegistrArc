@@ -812,10 +812,10 @@ function registrarc_apply_tarif_rules(array $entry, array $rules) {
 
     return [
         'matched' => $matchedCount > 0,
-        'label'   => implode(' + ', $labels),
-        'amount'  => $total,
-        'count'   => $matchedCount,
-        'labels'  => $labels,
+        'label' => implode(' + ', $labels),
+        'amount' => $total,
+        'count' => $matchedCount,
+        'labels' => $labels,
     ];
 }
 
@@ -944,7 +944,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (isset($_POST['import_registrations'])) {
         if (empty($_FILES['registrations_file']['tmp_name']) || !is_uploaded_file($_FILES['registrations_file']['tmp_name'])) {
-            $_SESSION['RegistrArc_payment_message'] = 'Aucun fichier JSON sélectionné pour l\'import inscriptions.';
+            $_SESSION['RegistrArc_payment_message'] = "Aucun fichier JSON sélectionné pour l'import inscriptions.";
             $_SESSION['RegistrArc_message_type'] = 'error';
             header('Location: ' . $_SERVER['PHP_SELF'] . ($redirectQuery ? '?' . $redirectQuery : ''));
             exit();
@@ -954,7 +954,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $data = json_decode($json, true);
 
         if (!is_array($data) || empty($data['registrations']) || !is_array($data['registrations'])) {
-            $_SESSION['RegistrArc_payment_message'] = 'Le fichier importé n\'est pas un JSON inscriptions valide.';
+            $_SESSION['RegistrArc_payment_message'] = "Le fichier importé n'est pas un JSON inscriptions valide.";
             $_SESSION['RegistrArc_message_type'] = 'error';
             header('Location: ' . $_SERVER['PHP_SELF'] . ($redirectQuery ? '?' . $redirectQuery : ''));
             exit();
@@ -2519,7 +2519,29 @@ function printGreffeList() {
         cells = row.querySelectorAll('th, td');
 
         if (cells.length >= 8) {
+            const departCell = cells[6];
+            const cibleCell = cells[7];
+
+            if (departCell && cibleCell) {
+                const departText = departCell.textContent.trim();
+                const cibleText = cibleCell.textContent.trim();
+
+                if (departText !== '' && departText !== '—' && cibleText !== '') {
+                    cibleCell.textContent = departText + ' - ' + cibleText;
+                } else if (cibleText !== '') {
+                    cibleCell.textContent = cibleText;
+                } else {
+                    cibleCell.textContent = departText;
+                }
+            }
+
             cells[6].remove();
+        }
+
+        cells = row.querySelectorAll('th, td');
+
+        if (cells.length >= 10) {
+            cells[8].remove();
         }
     });
 
@@ -2528,6 +2550,10 @@ function printGreffeList() {
 
         if (cells.length > 0) {
             cells[0].textContent = 'Eng.';
+        }
+
+        if (cells.length > 6) {
+            cells[6].textContent = 'Départ - Cible';
         }
 
         const paiementTh = document.createElement('th');
@@ -2566,6 +2592,58 @@ function printGreffeList() {
     clonedTable.querySelectorAll('button, input, select, form').forEach(el => {
         el.remove();
     });
+
+    const tbody = clonedTable.querySelector('tbody');
+
+    if (tbody) {
+        let currentLetter = '';
+
+        Array.from(tbody.querySelectorAll('tr')).forEach(row => {
+            const cells = row.querySelectorAll('td');
+
+            if (cells.length <= 1) {
+                return;
+            }
+
+            const nomCell = cells[2];
+
+            if (!nomCell) {
+                return;
+            }
+
+            const rawName = nomCell.textContent.trim();
+
+            if (rawName === '') {
+                return;
+            }
+
+            let firstLetter = rawName.charAt(0).toUpperCase();
+
+            if (firstLetter.normalize) {
+                firstLetter = firstLetter
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '');
+            }
+
+            if (!/^[A-Z]$/.test(firstLetter)) {
+                firstLetter = '#';
+            }
+
+            if (firstLetter !== currentLetter) {
+                currentLetter = firstLetter;
+
+                const letterRow = document.createElement('tr');
+                letterRow.className = 'letter-separator-row';
+
+                const letterCell = document.createElement('td');
+                letterCell.colSpan = cells.length;
+                letterCell.textContent = currentLetter;
+
+                letterRow.appendChild(letterCell);
+                tbody.insertBefore(letterRow, row);
+            }
+        });
+    }
 
     const printWindow = window.open('', '_blank', 'width=1200,height=900');
 
@@ -2650,6 +2728,18 @@ function printGreffeList() {
                     border-bottom: 2px solid #333;
                 }
 
+                .letter-separator-row td {
+                    background: #111827 !important;
+                    color: #fff;
+                    font-size: 10px;
+                    font-weight: 800;
+                    text-align: left;
+                    padding: 3px 2px;
+                    padding-left: 5px;
+                    border: 1px solid #111827;
+                    letter-spacing: 0.08em;
+                }
+
                 th:nth-child(1),
                 td:nth-child(1) {
                     width: 3.5%;
@@ -2688,7 +2778,7 @@ function printGreffeList() {
 
                 th:nth-child(7),
                 td:nth-child(7) {
-                    width: 10%;
+                    width: 12%;
                 }
 
                 th:nth-child(8),
@@ -2705,7 +2795,7 @@ function printGreffeList() {
 
                 th:nth-child(10),
                 td:nth-child(10) {
-                    width: 15%;
+                    width: 13%;
                 }
 
                 th:nth-child(11),
