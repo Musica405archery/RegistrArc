@@ -21,7 +21,7 @@ C'est l'écran principal du module. Il affiche tous les archers inscrits à la c
 - Son numéro d'engagement
 - Sa licence
 - Son nom, prénom, club
-- Sa catégorie (ex : Senior Homme, Cadette...)
+- Sa catégorie (ex : Senior Homme, U15Femme...)
 - Son départ (session) et sa cible
 - Le tarif appliqué et le montant dû
 - Son statut de paiement et le mode de paiement utilisé
@@ -75,7 +75,7 @@ Les règles avancées permettent de gérer des cas particuliers qui ne rentrent 
 
 - **Portée (scope)** : à quoi s'applique la règle (ex : engagement en finale individuelle, finale par équipe, double mixte...)
 - **Condition (match)** : les critères que doit remplir l'engagement pour que la règle s'applique
-- **Action** : ce que fait la règle si elle s'applique — actuellement, il s'agit d'un **tarif fixe** (`fixed_price`) qui remplace ou s'ajoute au calcul standard
+- **Action** : ce que fait la règle si elle s'applique — actuellement, il s'agit d'un **tarif fixe** qui remplace ou s'ajoute au calcul standard
 - **Libellé** : un texte affiché sur la facture pour expliquer pourquoi ce tarif a été appliqué (ex : "Tarif finale équipe")
 - **Actif** : chaque règle peut être activée ou désactivée sans être supprimée
 
