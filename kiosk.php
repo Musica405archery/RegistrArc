@@ -864,7 +864,7 @@ $query = "
     WHERE e.EnTournament = $TourId
       AND e.EnAthlete = 1
       AND TRIM(e.EnCode) <> ''
-    ORDER BY q.QuSession, q.QuTarget, q.QuLetter, UPPER(TRIM(e.EnFirstName)), TRIM(e.EnName), e.EnId
+    ORDER BY UPPER(TRIM(e.EnFirstName)), TRIM(e.EnName), e.EnId
 ";
 
 $rs = safe_r_sql($query);
@@ -961,6 +961,23 @@ if ($rs) {
     }
 }
 
+// Tri final demandé : nom, prénom, numéro d'engagement
+usort($rows, function($a, $b) {
+    $nomCompare = strcmp(mb_strtolower((string)$a['nom']), mb_strtolower((string)$b['nom']));
+
+    if ($nomCompare !== 0) {
+        return $nomCompare;
+    }
+
+    $prenomCompare = strcmp(mb_strtolower((string)$a['prenom']), mb_strtolower((string)$b['prenom']));
+
+    if ($prenomCompare !== 0) {
+        return $prenomCompare;
+    }
+
+    return intval($a['numero_engagement']) <=> intval($b['numero_engagement']);
+});
+
 $sessions = array_keys($sessions);
 sort($sessions, SORT_NUMERIC);
 
@@ -1026,12 +1043,14 @@ foreach ($rows as $r) {
             padding: 0;
             background: var(--bg);
             color: var(--strong);
+            font-family: Aptos, "Aptos Display", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
             -webkit-font-smoothing: antialiased;
         }
 
         button,
         input,
-        select {
+        select,
+        textarea {
             font: inherit;
         }
 
