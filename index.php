@@ -1101,7 +1101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $_SESSION['RegistrArc_payment_message'] = 'Paiement validé et remise groupée créée. Elle sera visible dans la remise de chèque.';
                             $_SESSION['RegistrArc_message_type'] = 'success';
                         } else {
-                            $_SESSION['RegistrArc_payment_message'] = 'Paiement validé, mais la remise groupée n’a pas pu être créée : ' . $result['message'];
+                            $_SESSION['RegistrArc_payment_message'] = 'Paiement validé, mais la remise groupée n\'a pas pu être créée : ' . $result['message'];
                             $_SESSION['RegistrArc_message_type'] = 'warning';
                         }
                     } else {
@@ -1950,6 +1950,18 @@ include('Common/Templates/head.php');
         white-space: nowrap;
     }
 
+    .payment-receipt-label {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: #ffedd5;
+        color: #c2410c;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
     .summary-footer {
         margin-top: 8px;
         font-size: 13px;
@@ -2258,6 +2270,10 @@ include('Common/Templates/head.php');
                                 <div class="payment-actions">
                                     <?php if ($isPaid): ?>
                                         <span class="payment-method-label"><?php echo htmlspecialchars($e['payment_method'] ?: '—'); ?></span>
+
+                                        <?php if (!empty($e['receipt_required'])): ?>
+                                            <span class="payment-receipt-label">Reçu</span>
+                                        <?php endif; ?>
 
                                         <form method="POST">
                                             <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
@@ -2816,7 +2832,8 @@ function printGreffeList() {
 
                 .chip,
                 .chip-engagement,
-                .payment-method-label {
+                .payment-method-label,
+                .payment-receipt-label {
                     display: inline;
                     padding: 0;
                     background: transparent;

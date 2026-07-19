@@ -6,25 +6,8 @@
 // Objectif :
 // - page autonome sans menu Ianseo
 // - rendu type application mobile
-// - sélection d'un ou plusieurs départs avec persistance après rechargement
-// - par défaut : affiche uniquement les archers restant à payer
-// - option pour afficher aussi les archers déjà payés
-// - affichage compact : nom, catégorie, départ, cible, prix par engagement
-// - affichage des étiquettes tarif spécial / cumul / gratuit
-// - total dû dynamique selon les archers sélectionnés
-// - paiement en masse via sélection
-// - choix du moyen de paiement en bas de page
-// - demande de reçu
-// - création automatique d'un groupe de chèque si plusieurs engagements sont validés en CHQ
-// - aucune modification de tarif depuis cette page
-// - stockage uniquement dans data/payments_<TourId>.json
-// - groupes chèques dans data/cheque_groups_<TourId>.json
-// - aucune écriture dans Qualifications.QuNotes
-//
-// Fichiers JSON :
-// - Paiements       : Modules/Custom/RegistrArc/data/payments_<TourId>.json
-// - Paramètres      : Modules/Custom/RegistrArc/data/settings_<TourId>.json
-// - Groupes chèques : Modules/Custom/RegistrArc/data/cheque_groups_<TourId>.json
+// - recherche et filtres dans l'entête sticky
+// - validation groupée avec notion de reçu sauvegardée dans le JSON
 // ============================================================================
 
 define('debug', false);
@@ -184,7 +167,7 @@ function registrarc_generate_cheque_group_id(array $groups) {
     return $id;
 }
 
-function registrarc_create_cheque_group($TourId, array $ids) {
+function registrarc_create_cheque_group($TourId, array $ids, array $payments) {
     $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
 
     if (count($ids) < 2) {
@@ -193,6 +176,23 @@ function registrarc_create_cheque_group($TourId, array $ids) {
             'message' => 'Il faut au moins 2 engagements pour créer un groupe de chèque.',
             'group_id' => '',
         ];
+    }
+
+    foreach ($ids as $id) {
+        $payment = isset($payments[(string)$id]) && is_array($payments[(string)$id])
+            ? $payments[(string)$id]
+            : [];
+
+        $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
+        $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
+
+        if ($status !== 'PAYE' || $method !== 'CHQ') {
+            return [
+                'ok' => false,
+                'message' => 'Tous les engagements sélectionnés doivent être payés par chèque.',
+                'group_id' => '',
+            ];
+        }
     }
 
     $groups = registrarc_load_cheque_groups($TourId);
@@ -638,7 +638,7 @@ function registrarc_prix_engagement($clubCode, $categorie, $numeroEngagement, $t
 }
 
 // ---------------------------------------------------------------------------
-// Paiement JSON setters
+// Paiement JSON setter avec reçu demandé
 // ---------------------------------------------------------------------------
 function registrarc_set_payment_in_array(array &$data, $engagementId, $method, $receiptRequired = false) {
     $engagementId = intval($engagementId);
@@ -653,23 +653,6 @@ function registrarc_set_payment_in_array(array &$data, $engagementId, $method, $
         'status' => 'PAYE',
         'method' => $method,
         'receipt_required' => !empty($receiptRequired),
-        'updated_at' => date('Y-m-d H:i:s'),
-    ];
-
-    return true;
-}
-
-function registrarc_unset_payment_in_array(array &$data, $engagementId) {
-    $engagementId = intval($engagementId);
-
-    if ($engagementId <= 0) {
-        return false;
-    }
-
-    $data[(string)$engagementId] = [
-        'status' => 'NON_PAYE',
-        'method' => '',
-        'receipt_required' => false,
         'updated_at' => date('Y-m-d H:i:s'),
     ];
 
@@ -744,51 +727,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $payments = registrarc_load_payments($TourId);
 
-    if (isset($_POST['single_action']) && isset($_POST['engagement_id'])) {
-        $engagementId = intval($_POST['engagement_id']);
-        $action = trim((string)$_POST['single_action']);
-
-        $method = isset($_POST['payment_method'])
-            ? registrarc_clean_payment_method($_POST['payment_method'], $paymentModes)
-            : 'ESP';
-
-        $receiptRequired = !empty($_POST['receipt_required']);
-
-        if ($engagementId > 0) {
-            if ($action === 'validate') {
-                registrarc_set_payment_in_array(
-                    $payments,
-                    $engagementId,
-                    $method,
-                    $receiptRequired
-                );
-
-                $_SESSION['RegistrArc_kiosk_message'] = 'Paiement validé.';
-                $_SESSION['RegistrArc_kiosk_message_type'] = 'success';
-            } elseif ($action === 'unvalidate') {
-                registrarc_unset_payment_in_array($payments, $engagementId);
-                $_SESSION['RegistrArc_kiosk_message'] = 'Paiement retiré.';
-                $_SESSION['RegistrArc_kiosk_message_type'] = 'info';
-            }
-
-            if (!registrarc_save_payments($TourId, $payments)) {
-                $_SESSION['RegistrArc_kiosk_message'] = "Erreur lors de l'écriture du JSON paiements.";
-                $_SESSION['RegistrArc_kiosk_message_type'] = 'error';
-            }
-        }
-
-        header('Location: kiosk.php');
-        exit();
-    }
-
-    if (isset($_POST['bulk_action']) && !empty($_POST['engagements']) && is_array($_POST['engagements'])) {
-        $action = trim((string)$_POST['bulk_action']);
-
+    if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'validate' && !empty($_POST['engagements']) && is_array($_POST['engagements'])) {
         $method = isset($_POST['bulk_payment_method'])
             ? registrarc_clean_payment_method($_POST['bulk_payment_method'], $paymentModes)
             : 'ESP';
 
         $receiptRequired = !empty($_POST['bulk_receipt_required']);
+
+        $createChequeGroupAfterPayment = !empty($_POST['create_cheque_group_after_payment'])
+            && $_POST['create_cheque_group_after_payment'] === '1'
+            && $method === 'CHQ';
 
         $ids = [];
 
@@ -804,20 +752,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!empty($ids)) {
             foreach ($ids as $id) {
-                if ($action === 'validate') {
-                    registrarc_set_payment_in_array($payments, $id, $method, $receiptRequired);
-                } elseif ($action === 'unvalidate') {
-                    registrarc_unset_payment_in_array($payments, $id);
-                }
+                registrarc_set_payment_in_array($payments, $id, $method, $receiptRequired);
             }
 
             if (registrarc_save_payments($TourId, $payments)) {
-                if ($action === 'validate') {
+                if ($createChequeGroupAfterPayment && count($ids) >= 2) {
+                    $paymentsAfterSave = registrarc_load_payments($TourId);
+                    $result = registrarc_create_cheque_group($TourId, $ids, $paymentsAfterSave);
+
+                    if (!empty($result['ok'])) {
+                        $_SESSION['RegistrArc_kiosk_message'] = 'Paiements validés et chèque groupé créé.';
+                        $_SESSION['RegistrArc_kiosk_message_type'] = 'success';
+                    } else {
+                        $_SESSION['RegistrArc_kiosk_message'] = 'Paiements validés, mais le chèque groupé n’a pas pu être créé : ' . $result['message'];
+                        $_SESSION['RegistrArc_kiosk_message_type'] = 'warning';
+                    }
+                } else {
                     $_SESSION['RegistrArc_kiosk_message'] = 'Paiements validés pour ' . count($ids) . ' engagement(s).';
                     $_SESSION['RegistrArc_kiosk_message_type'] = 'success';
-                } else {
-                    $_SESSION['RegistrArc_kiosk_message'] = 'Paiements retirés pour ' . count($ids) . ' engagement(s).';
-                    $_SESSION['RegistrArc_kiosk_message_type'] = 'info';
                 }
             } else {
                 $_SESSION['RegistrArc_kiosk_message'] = "Erreur lors de l'écriture du JSON paiements.";
@@ -945,7 +897,6 @@ if ($rs) {
 
         if ($targetIsUnassigned) {
             $targetLabel = 'Archer non affecté';
-            $targetNo = '';
         } else {
             $targetLabel = $targetNo;
         }
@@ -1021,6 +972,22 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
     $messageType = isset($_SESSION['RegistrArc_kiosk_message_type']) ? $_SESSION['RegistrArc_kiosk_message_type'] : 'success';
     unset($_SESSION['RegistrArc_kiosk_message'], $_SESSION['RegistrArc_kiosk_message_type']);
 }
+
+$paidRows = 0;
+$unpaidRows = 0;
+$receiptRows = 0;
+
+foreach ($rows as $r) {
+    if ($r['payment_status'] === 'PAYE') {
+        $paidRows++;
+    } else {
+        $unpaidRows++;
+    }
+
+    if (!empty($r['receipt_required'])) {
+        $receiptRows++;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -1034,6 +1001,7 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             --primary: #2563eb;
             --success: #16a34a;
             --danger: #dc2626;
+            --warning: #d97706;
             --muted: #6b7280;
             --strong: #111827;
             --bg: #f9fafb;
@@ -1058,8 +1026,13 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             padding: 0;
             background: var(--bg);
             color: var(--strong);
-            font-family: Arial, Helvetica, sans-serif;
             -webkit-font-smoothing: antialiased;
+        }
+
+        button,
+        input,
+        select {
+            font: inherit;
         }
 
         .app-shell {
@@ -1078,7 +1051,7 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             background: rgba(249, 250, 251, 0.97);
             backdrop-filter: blur(10px);
             border-bottom: 1px solid var(--border);
-            padding: 12px 12px 10px;
+            padding: 10px 12px 9px;
         }
 
         .app-title-line {
@@ -1108,8 +1081,8 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
         }
 
         .app-content {
-            padding: 12px;
-            padding-bottom: calc(170px + var(--safe-bottom));
+            padding: 10px 12px;
+            padding-bottom: calc(150px + var(--safe-bottom));
         }
 
         .btn {
@@ -1136,11 +1109,6 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
 
         .btn-success {
             background: var(--success);
-            color: #fff;
-        }
-
-        .btn-danger {
-            background: var(--danger);
             color: #fff;
         }
 
@@ -1182,6 +1150,155 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             color: #92400e;
         }
 
+        .status-details {
+            margin-top: 8px;
+            border: 1px solid var(--border);
+            border-radius: 13px;
+            background: #fff;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .status-details summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 8px 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 900;
+            color: #374151;
+            user-select: none;
+        }
+
+        .status-details summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .status-summary-left {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .status-arrow {
+            display: inline-flex;
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            align-items: center;
+            justify-content: center;
+            background: #eef2ff;
+            color: #3730a3;
+            font-size: 11px;
+            transition: transform .16s ease;
+            flex-shrink: 0;
+        }
+
+        .status-details[open] .status-arrow {
+            transform: rotate(90deg);
+        }
+
+        .status-summary-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .status-summary-counts {
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+            padding: 0 8px 8px;
+        }
+
+        .stat {
+            background: #f9fafb;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 7px 8px;
+        }
+
+        .stat-label {
+            color: var(--muted);
+            font-size: 9px;
+            font-weight: 950;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+
+        .stat-value {
+            margin-top: 3px;
+            font-size: 18px;
+            font-weight: 950;
+            line-height: 1;
+        }
+
+        .success-text {
+            color: var(--success);
+        }
+
+        .danger-text {
+            color: var(--danger);
+        }
+
+        .warning-text {
+            color: var(--warning);
+        }
+
+        .search-panel {
+            margin-top: 9px;
+        }
+
+        .search-input-wrap {
+            position: relative;
+        }
+
+        .search-input-wrap input[type="text"] {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 42px 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 999px;
+            background: #fff;
+            font-size: 14px;
+            font-weight: 800;
+            outline: none;
+        }
+
+        .search-clear {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
+            border: none;
+            border-radius: 999px;
+            background: #e5e7eb;
+            color: #374151;
+            font-size: 14px;
+            font-weight: 900;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+        }
+
+        .results-count {
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
         .card {
             background: var(--card);
             border-radius: 13px;
@@ -1193,8 +1310,8 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
 
         .filter-panel {
             display: grid;
-            gap: 9px;
-            margin-top: 10px;
+            gap: 8px;
+            margin-top: 9px;
         }
 
         .filter-title {
@@ -1222,12 +1339,14 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             font-size: 12px;
             font-weight: 900;
             color: #374151;
+            user-select: none;
         }
 
         .session-pill input {
             width: 15px;
             height: 15px;
             margin: 0;
+            accent-color: var(--primary);
         }
 
         .show-paid-row {
@@ -1237,62 +1356,14 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             font-size: 12px;
             font-weight: 900;
             color: #374151;
+            user-select: none;
         }
 
         .show-paid-row input {
             width: 18px;
             height: 18px;
             margin: 0;
-        }
-
-        .search-card {
-            padding: 10px;
-        }
-
-        label {
-            font-size: 11px;
-            color: var(--muted);
-            font-weight: 800;
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        select,
-        input[type="text"] {
-            width: 100%;
-            box-sizing: border-box;
-            padding: 10px 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 999px;
-            background: #fff;
-            font-size: 14px;
-        }
-
-        .search-input-wrap {
-            position: relative;
-        }
-
-        .search-clear {
-            position: absolute;
-            right: 6px;
-            top: 50%;
-            transform: translateY(-50%);
-            border: none;
-            border-radius: 999px;
-            background: #e5e7eb;
-            color: #374151;
-            font-size: 14px;
-            font-weight: 900;
-            width: 30px;
-            height: 30px;
-            cursor: pointer;
-        }
-
-        .results-count {
-            margin-top: 7px;
-            color: var(--muted);
-            font-size: 12px;
-            font-weight: 700;
+            accent-color: var(--primary);
         }
 
         .row-card {
@@ -1308,6 +1379,7 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
         }
 
         .row-card.is-selected {
+            opacity: 1;
             border-color: var(--primary);
             background: #eff6ff;
         }
@@ -1321,67 +1393,150 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
         .row-check input {
             width: 23px;
             height: 23px;
+            accent-color: var(--primary);
         }
 
         .row-main {
             min-width: 0;
+            display: grid;
+            gap: 6px;
         }
 
-        .row-line-primary {
-            display: flex;
-            justify-content: space-between;
+        .row-line-archer {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
             gap: 8px;
-            align-items: flex-start;
+            align-items: center;
+        }
+
+        .archer-identity {
+            min-width: 0;
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            flex-wrap: wrap;
+            line-height: 1.1;
         }
 
         .archer-name {
             font-size: 15px;
-            font-weight: 900;
-            line-height: 1.15;
-            min-width: 0;
-        }
-
-        .amount-compact {
-            flex-shrink: 0;
-            font-size: 16px;
             font-weight: 950;
-            color: var(--strong);
-            line-height: 1.1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
             white-space: nowrap;
         }
 
-        .row-line-secondary {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px 8px;
+        .archer-club {
             font-size: 12px;
+            font-style: italic;
+            font-weight: 700;
             color: var(--muted);
-            line-height: 1.25;
-            margin-top: 4px;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
-        .row-line-secondary strong {
-            color: #374151;
-        }
-
-        .target-strong {
-            font-size: 22px;
+        .status-mini {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 22px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 10px;
             font-weight: 950;
-            color: #111827;
+            white-space: nowrap;
+        }
+
+        .status-mini-paid {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-mini-unpaid {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .row-tile-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .mini-tile {
+            min-width: 0;
+            min-height: 42px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 6px 8px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: #f9fafb;
+        }
+
+        .mini-tile-label {
+            color: var(--muted);
+            font-size: 9px;
+            font-weight: 950;
+            text-transform: uppercase;
+            letter-spacing: .04em;
             line-height: 1;
         }
 
-        .category-strong {
-            font-size: 16px;
-            font-weight: 950;
+        .mini-tile-value {
+            margin-top: 4px;
             color: #111827;
+            font-size: 13px;
+            font-weight: 950;
+            line-height: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .mini-tile-target {
+            font-size: 20px;
+            letter-spacing: -.04em;
+        }
+
+        .mini-tile-category {
+            font-size: 15px;
+            letter-spacing: -.03em;
+        }
+
+        .mini-tile-price {
+            background: #111827;
+            border-color: #111827;
+        }
+
+        .mini-tile-price .mini-tile-label {
+            color: #cbd5e1;
+        }
+
+        .mini-tile-amount {
+            color: #fff;
+            font-size: 18px;
+            text-align: right;
+            letter-spacing: -.04em;
+        }
+
+        .mini-tile-danger {
+            color: #991b1b;
+            font-size: 12px;
+            line-height: 1.05;
+            white-space: normal;
         }
 
         .badges {
             display: flex;
             flex-wrap: wrap;
             gap: 5px;
-            margin-top: 5px;
+            margin-top: 1px;
         }
 
         .badge {
@@ -1392,16 +1547,6 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             font-size: 10.5px;
             font-weight: 900;
             white-space: nowrap;
-        }
-
-        .badge-paid {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .badge-unpaid {
-            background: #fee2e2;
-            color: #991b1b;
         }
 
         .badge-method {
@@ -1449,8 +1594,8 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
         }
 
         .bulk-summary {
-            display: flex;
-            justify-content: space-between;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
             align-items: center;
             gap: 8px;
             font-size: 12px;
@@ -1461,13 +1606,25 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
         .bulk-total {
             color: var(--strong);
             font-size: 13px;
+            white-space: nowrap;
         }
 
         .bulk-controls {
             display: grid;
-            grid-template-columns: 1fr auto;
+            grid-template-columns: minmax(0, 1fr);
             gap: 8px;
             align-items: center;
+        }
+
+        select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 999px;
+            background: #fff;
+            font-size: 14px;
+            font-weight: 800;
         }
 
         .bulk-receipt {
@@ -1483,18 +1640,27 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             font-size: 11px;
             font-weight: 900;
             white-space: nowrap;
+            margin: 0;
+            user-select: none;
         }
 
         .bulk-receipt input {
             width: 16px;
             height: 16px;
             margin: 0;
+            accent-color: var(--warning);
         }
 
         .bulk-buttons {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr;
             gap: 8px;
+        }
+
+        .btn-validate-wide {
+            width: 100%;
+            min-height: 48px;
+            font-size: 15px;
         }
 
         .empty {
@@ -1504,6 +1670,108 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             padding: 24px;
         }
 
+        @media (max-width: 520px) {
+            .app-header {
+                padding-left: 8px;
+                padding-right: 8px;
+            }
+
+            .app-content {
+                padding-left: 8px;
+                padding-right: 8px;
+                padding-bottom: calc(154px + var(--safe-bottom));
+            }
+
+            .app-title {
+                font-size: 21px;
+            }
+
+            .status-details summary {
+                padding: 7px 8px;
+            }
+
+            .status-summary-counts {
+                display: none;
+            }
+
+            .card {
+                padding: 8px;
+                margin-bottom: 7px;
+            }
+
+            .row-card {
+                gap: 7px;
+            }
+
+            .row-check {
+                padding-top: 1px;
+            }
+
+            .row-check input {
+                width: 22px;
+                height: 22px;
+            }
+
+            .row-main {
+                gap: 5px;
+            }
+
+            .archer-identity {
+                display: grid;
+                gap: 2px;
+            }
+
+            .archer-name,
+            .archer-club {
+                max-width: 100%;
+            }
+
+            .archer-club {
+                font-size: 11px;
+            }
+
+            .mini-tile {
+                min-height: 40px;
+                padding: 6px 7px;
+                border-radius: 11px;
+            }
+
+            .mini-tile-target {
+                font-size: 19px;
+            }
+
+            .mini-tile-category {
+                font-size: 14px;
+            }
+
+            .mini-tile-amount {
+                font-size: 17px;
+            }
+
+            .badges {
+                display: none;
+            }
+
+            .bulk-summary {
+                grid-template-columns: minmax(0, 1fr) auto auto;
+                gap: 6px;
+            }
+
+            .bulk-total {
+                font-size: 12px;
+            }
+
+            .bulk-receipt span {
+                display: none;
+            }
+
+            .bulk-receipt {
+                width: 38px;
+                height: 34px;
+                padding: 0;
+            }
+        }
+
         @media (min-width: 768px) {
             .app-shell,
             .bottom-bulk-inner {
@@ -1511,7 +1779,7 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             }
 
             .app-content {
-                padding-bottom: calc(155px + var(--safe-bottom));
+                padding-bottom: calc(150px + var(--safe-bottom));
             }
         }
     </style>
@@ -1523,11 +1791,56 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             <div class="app-title-line">
                 <div>
                     <div class="app-title">RegistrArc</div>
-                    <div class="app-subtitle">Mode guichet mobile</div>
+                    <div class="app-subtitle">
+                        <?php echo htmlspecialchars($tournamentName ?: 'Mode guichet mobile'); ?>
+                    </div>
                 </div>
 
                 <div class="app-header-actions">
                     <a href="index.php?desktop=1" class="btn btn-ghost btn-small">Version complète</a>
+                </div>
+            </div>
+
+            <details class="status-details">
+                <summary>
+                    <span class="status-summary-left">
+                        <span class="status-arrow">›</span>
+                        <span class="status-summary-text">Reçu / En attente / Payé</span>
+                    </span>
+
+                    <span class="status-summary-counts">
+                        <?php echo intval($receiptRows); ?> reçu ·
+                        <?php echo intval($unpaidRows); ?> attente ·
+                        <?php echo intval($paidRows); ?> payé
+                    </span>
+                </summary>
+
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-label">Reçu</div>
+                        <div class="stat-value warning-text"><?php echo intval($receiptRows); ?></div>
+                    </div>
+
+                    <div class="stat">
+                        <div class="stat-label">En attente</div>
+                        <div class="stat-value danger-text"><?php echo intval($unpaidRows); ?></div>
+                    </div>
+
+                    <div class="stat">
+                        <div class="stat-label">Payé</div>
+                        <div class="stat-value success-text"><?php echo intval($paidRows); ?></div>
+                    </div>
+                </div>
+            </details>
+
+            <div class="search-panel">
+                <div class="search-input-wrap">
+                    <input type="text" id="kioskSearch" placeholder="Rechercher nom, licence, club..." oninput="filterCards();" autocomplete="off">
+                    <button type="button" class="search-clear" onclick="clearSearch();" aria-label="Effacer la recherche">×</button>
+                </div>
+
+                <div class="results-count">
+                    <span id="visibleCount"><?php echo count($rows); ?></span> engagement(s) affiché(s)
                 </div>
             </div>
 
@@ -1582,18 +1895,6 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
                 </div>
             <?php endif; ?>
 
-            <div class="card search-card">
-                <label for="kioskSearch">Rechercher un archer</label>
-                <div class="search-input-wrap">
-                    <input type="text" id="kioskSearch" placeholder="Nom, prénom, licence, club..." oninput="filterCards();" autocomplete="off">
-                    <button type="button" class="search-clear" onclick="clearSearch();">×</button>
-                </div>
-
-                <div class="results-count">
-                    <span id="visibleCount"><?php echo count($rows); ?></span> engagement(s) affiché(s)
-                </div>
-            </div>
-
             <?php if (empty($rows)): ?>
                 <div class="card empty">
                     Aucun engagement trouvé.
@@ -1635,47 +1936,57 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
                     </div>
 
                     <div class="row-main">
-                        <div class="row-line-primary">
-                            <div class="archer-name">
-                                <?php echo htmlspecialchars(trim($row['nom'] . ' ' . $row['prenom'])); ?>
+                        <div class="row-line-archer">
+                            <div class="archer-identity">
+                                <span class="archer-name">
+                                    <?php echo htmlspecialchars(trim($row['nom'] . ' ' . $row['prenom'])); ?>
+                                </span>
+
+                                <?php if ($row['club'] !== ''): ?>
+                                    <span class="archer-club">
+                                        <?php echo htmlspecialchars($row['club']); ?>
+                                    </span>
+                                <?php endif; ?>
                             </div>
 
-                            <div class="amount-compact">
-                                <?php echo registrarc_format_montant($row['amount_due']); ?> €
+                            <div class="status-mini <?php echo $isPaid ? 'status-mini-paid' : 'status-mini-unpaid'; ?>">
+                                <?php echo $isPaid ? 'Payé' : 'À payer'; ?>
                             </div>
                         </div>
 
-                        <div class="row-line-secondary">
-                            <span>
-                                <?php echo $row['session'] !== '' ? htmlspecialchars('Départ ' . $row['session']) : '—'; ?>
-                            </span>
+                        <div class="row-tile-grid">
+                            <div class="mini-tile">
+                                <div class="mini-tile-label">Départ</div>
+                                <div class="mini-tile-value">
+                                    <?php echo $row['session'] !== '' ? htmlspecialchars('Départ ' . $row['session']) : '—'; ?>
+                                </div>
+                            </div>
 
-                            <span>
-                                Cible
-                                <?php if (!empty($row['target_is_unassigned'])): ?>
-                                    <strong class="target-strong" style="color:#991b1b;"><?php echo htmlspecialchars($row['target_label']); ?></strong>
-                                <?php else: ?>
-                                    <strong class="target-strong"><?php echo htmlspecialchars($row['target_label']); ?></strong>
-                                <?php endif; ?>
-                            </span>
+                            <div class="mini-tile">
+                                <div class="mini-tile-label">Cible</div>
+                                <div class="mini-tile-value mini-tile-target <?php echo !empty($row['target_is_unassigned']) ? 'mini-tile-danger' : ''; ?>">
+                                    <?php echo htmlspecialchars($row['target_label']); ?>
+                                </div>
+                            </div>
+                        </div>
 
-                            <span>
-                                Cat.
-                                <strong class="category-strong"><?php echo htmlspecialchars($row['categorie']); ?></strong>
-                            </span>
+                        <div class="row-tile-grid">
+                            <div class="mini-tile">
+                                <div class="mini-tile-label">Catégorie</div>
+                                <div class="mini-tile-value mini-tile-category">
+                                    <?php echo htmlspecialchars($row['categorie']); ?>
+                                </div>
+                            </div>
 
-                            <span>
-                                Eng. n° <strong><?php echo intval($row['numero_engagement']); ?></strong>
-                            </span>
+                            <div class="mini-tile mini-tile-price">
+                                <div class="mini-tile-label">Prix</div>
+                                <div class="mini-tile-value mini-tile-amount">
+                                    <?php echo registrarc_format_montant($row['amount_due']); ?> €
+                                </div>
+                            </div>
                         </div>
 
                         <div class="badges">
-                            <?php if ($isPaid): ?>
-                                <span class="badge badge-paid">Payé</span>
-                            <?php else: ?>
-                                <span class="badge badge-unpaid">À payer</span>
-                            <?php endif; ?>
-
                             <?php if ($row['payment_method'] !== ''): ?>
                                 <span class="badge badge-method">
                                     <?php echo htmlspecialchars($row['payment_method_label']); ?>
@@ -1683,7 +1994,7 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
                             <?php endif; ?>
 
                             <?php if (!empty($row['receipt_required'])): ?>
-                                <span class="badge badge-receipt">Reçu requis</span>
+                                <span class="badge badge-receipt">Reçu demandé</span>
                             <?php endif; ?>
 
                             <?php if (!empty($row['target_is_unassigned'])): ?>
@@ -1707,14 +2018,16 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
     </div>
 
     <form method="POST" id="bulkForm" class="bottom-bulk-bar">
+        <input type="hidden" name="create_cheque_group_after_payment" id="create_cheque_group_after_payment" value="0">
+
         <div class="bottom-bulk-inner">
             <div class="bulk-summary">
                 <span><span id="bulkCount">0</span> sélectionné(s)</span>
                 <span class="bulk-total">Total dû : <span id="bulkTotal">0 €</span></span>
 
-                <label class="bulk-receipt">
+                <label class="bulk-receipt" title="Reçu demandé">
                     <input type="checkbox" name="bulk_receipt_required" id="bulkReceiptRequired" value="1" autocomplete="off">
-                    Reçu
+                    <span>Reçu</span>
                 </label>
             </div>
 
@@ -1726,19 +2039,11 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
                         </option>
                     <?php endforeach; ?>
                 </select>
-
-                <button type="button" class="btn btn-ghost btn-small" onclick="clearBulkSelection();">
-                    Effacer
-                </button>
             </div>
 
             <div class="bulk-buttons">
-                <button type="submit" name="bulk_action" value="validate" class="btn btn-success" onclick="return confirmBulk('validate');">
+                <button type="submit" name="bulk_action" value="validate" class="btn btn-success btn-validate-wide" onclick="return confirmBulk();">
                     Valider
-                </button>
-
-                <button type="submit" name="bulk_action" value="unvalidate" class="btn btn-danger" onclick="return confirmBulk('unvalidate');">
-                    Retirer
                 </button>
             </div>
         </div>
@@ -1747,12 +2052,44 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
     <script>
         const KIOSK_FILTERS_KEY = 'RegistrArcKioskFilters_<?php echo intval($TourId); ?>';
 
+        let KIOSK_FILTERS_LOADING = false;
+
+        function sessionCheckboxes() {
+            return Array.from(document.querySelectorAll('.session-filter'));
+        }
+
+        function ensureAtLeastTwoSessionsSelected() {
+            const boxes = sessionCheckboxes();
+
+            if (boxes.length === 0) {
+                return;
+            }
+
+            const checked = boxes.filter(cb => cb.checked);
+
+            if (checked.length > 0) {
+                return;
+            }
+
+            boxes.slice(0, Math.min(2, boxes.length)).forEach(cb => {
+                cb.checked = true;
+            });
+        }
+
         function selectedSessions() {
+            ensureAtLeastTwoSessionsSelected();
+
             const checked = Array.from(document.querySelectorAll('.session-filter:checked'));
             return checked.map(input => String(input.value || ''));
         }
 
         function saveKioskFiltersState() {
+            if (KIOSK_FILTERS_LOADING) {
+                return;
+            }
+
+            ensureAtLeastTwoSessionsSelected();
+
             const searchInput = document.getElementById('kioskSearch');
             const showPaidCheckbox = document.getElementById('showPaidCheckbox');
 
@@ -1770,6 +2107,8 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
         }
 
         function loadKioskFiltersState() {
+            KIOSK_FILTERS_LOADING = true;
+
             let state = null;
 
             try {
@@ -1782,19 +2121,21 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
                 state = null;
             }
 
-            const sessionCheckboxes = Array.from(document.querySelectorAll('.session-filter'));
+            const boxes = sessionCheckboxes();
             const searchInput = document.getElementById('kioskSearch');
             const showPaidCheckbox = document.getElementById('showPaidCheckbox');
 
             if (state && Array.isArray(state.selectedSessions)) {
-                sessionCheckboxes.forEach(cb => {
+                boxes.forEach(cb => {
                     cb.checked = state.selectedSessions.indexOf(String(cb.value || '')) !== -1;
                 });
             } else {
-                sessionCheckboxes.forEach(cb => {
+                boxes.forEach(cb => {
                     cb.checked = true;
                 });
             }
+
+            ensureAtLeastTwoSessionsSelected();
 
             if (showPaidCheckbox) {
                 showPaidCheckbox.checked = state ? !!state.showPaid : false;
@@ -1811,6 +2152,14 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             document.querySelectorAll('.kiosk-card').forEach(card => {
                 card.classList.remove('is-selected');
             });
+
+            const groupInput = document.getElementById('create_cheque_group_after_payment');
+
+            if (groupInput) {
+                groupInput.value = '0';
+            }
+
+            KIOSK_FILTERS_LOADING = false;
         }
 
         function formatEuro(value) {
@@ -1831,6 +2180,8 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
         }
 
         function filterCards() {
+            ensureAtLeastTwoSessionsSelected();
+
             const input = document.getElementById('kioskSearch');
             const query = String(input ? input.value : '').toLowerCase();
             const showPaid = document.getElementById('showPaidCheckbox')
@@ -1858,6 +2209,7 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
                     card.style.display = 'none';
 
                     const checkbox = card.querySelector('.bulk-checkbox');
+
                     if (checkbox) {
                         checkbox.checked = false;
                     }
@@ -1941,38 +2293,48 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
             });
         }
 
-        function clearBulkSelection() {
-            document.querySelectorAll('.bulk-checkbox').forEach(cb => {
-                cb.checked = false;
-            });
-
-            updateBulkSummary();
+        function currentBulkPaymentMethod() {
+            const select = document.getElementById('bulk_payment_method');
+            return select ? String(select.value || '').toUpperCase() : '';
         }
 
-        function confirmBulk(type) {
+        function confirmBulk() {
             const count = selectedBulkCount();
             const total = selectedBulkTotal();
+            const method = currentBulkPaymentMethod();
+            const groupInput = document.getElementById('create_cheque_group_after_payment');
+
+            if (groupInput) {
+                groupInput.value = '0';
+            }
 
             if (count === 0) {
                 alert('Aucun engagement sélectionné.');
                 return false;
             }
 
-            if (type === 'validate') {
-                return confirm(
-                    'Valider le paiement pour ' + count + ' engagement(s) ?\n\n' +
-                    'Total dû : ' + formatEuro(total)
+            if (method === 'CHQ' && count >= 2) {
+                const createGroup = confirm(
+                    'Valider le paiement par chèque pour ' + count + ' engagement(s) ?\n\n' +
+                    'Total dû : ' + formatEuro(total) + '\n\n' +
+                    'Créer un chèque groupé pour ces engagements ?'
                 );
+
+                if (groupInput) {
+                    groupInput.value = createGroup ? '1' : '0';
+                }
+
+                return true;
             }
 
             return confirm(
-                'Retirer le paiement pour ' + count + ' engagement(s) ?\n\n' +
-                'Total concerné : ' + formatEuro(total)
+                'Valider le paiement pour ' + count + ' engagement(s) ?\n\n' +
+                'Total dû : ' + formatEuro(total)
             );
         }
 
         function toggleCardSelection(event, card) {
-            if (event.target.closest('input, button, select, a, label')) {
+            if (event.target.closest('input, button, select, a, label, summary')) {
                 return;
             }
 
