@@ -407,6 +407,14 @@ function registrarc_normalize_payment_modes($modes) {
         $clean[$code] = $label;
     }
 
+    if (!isset($clean['GRA'])) {
+        $clean['GRA'] = 'Gratuit';
+    }
+
+    if (trim((string)$clean['GRA']) === '') {
+        $clean['GRA'] = 'Gratuit';
+    }
+
     return empty($clean) ? registrarc_default_payment_modes() : $clean;
 }
 
@@ -703,6 +711,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $modes[$code] = $label !== '' ? $label : $code;
             }
 
+            if (!isset($modes['GRA'])) {
+                $modes['GRA'] = 'Gratuit';
+            }
+
+            if (trim((string)$modes['GRA']) === '') {
+                $modes['GRA'] = 'Gratuit';
+            }
+
             $rules = [];
 
             if (!empty($_POST['rule_label']) && is_array($_POST['rule_label'])) {
@@ -976,6 +992,12 @@ include('Common/Templates/head.php');
         background: #f9fafb;
     }
 
+    input[readonly] {
+        background: #e5e7eb;
+        color: #374151;
+        cursor: not-allowed;
+    }
+
     .tarif-input {
         max-width: 80px;
         text-align: right;
@@ -987,6 +1009,11 @@ include('Common/Templates/head.php');
         color: var(--danger-color);
         cursor: pointer;
         font-size: 16px;
+    }
+
+    .delete-btn[disabled] {
+        color: #9ca3af;
+        cursor: not-allowed;
     }
 
     .form-footer {
@@ -1267,17 +1294,42 @@ include('Common/Templates/head.php');
                 <tbody id="pmTableBody">
                     <?php
                     $rows = $currentModes;
+
+                    if (!isset($rows['GRA'])) {
+                        $rows['GRA'] = 'Gratuit';
+                    }
+
                     $rows[''] = '';
 
                     foreach ($rows as $code => $label):
                         $code = trim((string)$code);
                         $label = trim((string)$label);
+                        $isProtectedGra = ($code === 'GRA');
                     ?>
                         <tr>
-                            <td><input type="text" name="pm_code[]" value="<?php echo htmlspecialchars($code); ?>" placeholder="ESP"></td>
-                            <td><input type="text" name="pm_label[]" value="<?php echo htmlspecialchars($label); ?>" placeholder="Espèces"></td>
+                            <td>
+                                <input
+                                    type="text"
+                                    name="pm_code[]"
+                                    value="<?php echo htmlspecialchars($code); ?>"
+                                    placeholder="ESP"
+                                    <?php echo $isProtectedGra ? 'readonly data-protected-code="GRA"' : ''; ?>
+                                >
+                            </td>
+                            <td>
+                                <input
+                                    type="text"
+                                    name="pm_label[]"
+                                    value="<?php echo htmlspecialchars($label); ?>"
+                                    placeholder="Espèces"
+                                >
+                            </td>
                             <td style="text-align:center;">
-                                <button type="button" class="delete-btn" onclick="deletePaymentModeRow(this)">🗑</button>
+                                <?php if ($isProtectedGra): ?>
+                                    <button type="button" class="delete-btn" disabled title="Le mode GRA / Gratuit est protégé">🔒</button>
+                                <?php else: ?>
+                                    <button type="button" class="delete-btn" onclick="deletePaymentModeRow(this)">🗑</button>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -1461,7 +1513,7 @@ function handleImportSubmit(event) {
         try {
             data = JSON.parse(e.target.result);
         } catch (err) {
-            alert('Le fichier sélectionné n'est pas un JSON valide.');
+            alert("Le fichier sélectionné n'est pas un JSON valide.");
             return;
         }
 
@@ -1551,9 +1603,19 @@ function addPaymentModeRow() {
 function deletePaymentModeRow(btn) {
     const tr = btn.closest('tr');
 
-    if (tr) {
-        tr.remove();
+    if (!tr) {
+        return;
     }
+
+    const codeInput = tr.querySelector('input[name="pm_code[]"]');
+    const code = codeInput ? codeInput.value.trim().toUpperCase() : '';
+
+    if (code === 'GRA') {
+        alert('Le mode de paiement GRA / Gratuit est protégé et ne peut pas être supprimé.');
+        return;
+    }
+
+    tr.remove();
 }
 
 function addRuleRow() {
