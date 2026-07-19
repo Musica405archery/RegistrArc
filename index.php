@@ -142,6 +142,30 @@ function registrarc_ensure_data_dir() {
 }
 
 // ---------------------------------------------------------------------------
+// JSON générique
+// ---------------------------------------------------------------------------
+function registrarc_load_json_file($file) {
+    if (!is_file($file)) {
+        return [];
+    }
+
+    $json = file_get_contents($file);
+    $data = json_decode($json, true);
+
+    return is_array($data) ? $data : [];
+}
+
+function registrarc_save_json_file($file, array $data) {
+    if (!registrarc_ensure_data_dir()) {
+        return false;
+    }
+
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+
+    return file_put_contents($file, $json, LOCK_EX) !== false;
+}
+
+// ---------------------------------------------------------------------------
 // Code tournoi
 // ---------------------------------------------------------------------------
 function registrarc_current_tournament_code() {
@@ -164,9 +188,7 @@ function registrarc_safe_filename_part($value) {
     }
 
     $value = preg_replace('/[^A-Za-z0-9_\-]+/', '_', $value);
-    $value = trim($value, '_');
-
-    return $value;
+    return trim($value, '_');
 }
 
 function registrarc_extract_tournament_code_from_export($data) {
@@ -228,31 +250,11 @@ function registrarc_export_timestamp(array $data, $fallbackFile = '') {
 // Paiements JSON
 // ---------------------------------------------------------------------------
 function registrarc_load_payments($TourId) {
-    $file = registrarc_payments_file_path($TourId);
-
-    if (!file_exists($file)) {
-        return [];
-    }
-
-    $json = file_get_contents($file);
-    $data = json_decode($json, true);
-
-    if (!is_array($data)) {
-        return [];
-    }
-
-    return $data;
+    return registrarc_load_json_file(registrarc_payments_file_path($TourId));
 }
 
 function registrarc_save_payments($TourId, array $data) {
-    if (!registrarc_ensure_data_dir()) {
-        return false;
-    }
-
-    $file = registrarc_payments_file_path($TourId);
-    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-
-    return file_put_contents($file, $json, LOCK_EX) !== false;
+    return registrarc_save_json_file(registrarc_payments_file_path($TourId), $data);
 }
 
 function registrarc_normalize_payment_code($code) {
@@ -272,7 +274,7 @@ function registrarc_normalize_payment_code($code) {
     return isset($map[$code]) ? $map[$code] : $code;
 }
 
-function registrarc_set_payment_in_array(array &$data, $engagementId, $method) {
+function registrarc_set_payment_in_array(array &$data, $engagementId, $method, $receiptRequired = false) {
     $engagementId = intval($engagementId);
 
     if ($engagementId <= 0) {
@@ -282,8 +284,9 @@ function registrarc_set_payment_in_array(array &$data, $engagementId, $method) {
     $method = registrarc_normalize_payment_code($method);
 
     $data[(string)$engagementId] = [
-        'status'     => 'PAYE',
-        'method'     => $method,
+        'status' => 'PAYE',
+        'method' => $method,
+        'receipt_required' => !empty($receiptRequired),
         'updated_at' => date('Y-m-d H:i:s'),
     ];
 
@@ -298,17 +301,18 @@ function registrarc_unset_payment_in_array(array &$data, $engagementId) {
     }
 
     $data[(string)$engagementId] = [
-        'status'     => 'NON_PAYE',
-        'method'     => '',
+        'status' => 'NON_PAYE',
+        'method' => '',
+        'receipt_required' => false,
         'updated_at' => date('Y-m-d H:i:s'),
     ];
 
     return true;
 }
 
-function registrarc_set_payment($TourId, $engagementId, $method) {
+function registrarc_set_payment($TourId, $engagementId, $method, $receiptRequired = false) {
     $data = registrarc_load_payments($TourId);
-    registrarc_set_payment_in_array($data, $engagementId, $method);
+    registrarc_set_payment_in_array($data, $engagementId, $method, $receiptRequired);
     return registrarc_save_payments($TourId, $data);
 }
 
@@ -318,11 +322,11 @@ function registrarc_unset_payment($TourId, $engagementId) {
     return registrarc_save_payments($TourId, $data);
 }
 
-function registrarc_set_payment_bulk($TourId, array $ids, $method) {
+function registrarc_set_payment_bulk($TourId, array $ids, $method, $receiptRequired = false) {
     $data = registrarc_load_payments($TourId);
 
     foreach ($ids as $id) {
-        registrarc_set_payment_in_array($data, $id, $method);
+        registrarc_set_payment_in_array($data, $id, $method, $receiptRequired);
     }
 
     return registrarc_save_payments($TourId, $data);
@@ -342,31 +346,11 @@ function registrarc_unset_payment_bulk($TourId, array $ids) {
 // Groupes de chèques JSON
 // ---------------------------------------------------------------------------
 function registrarc_load_cheque_groups($TourId) {
-    $file = registrarc_cheque_groups_file_path($TourId);
-
-    if (!file_exists($file)) {
-        return [];
-    }
-
-    $json = file_get_contents($file);
-    $data = json_decode($json, true);
-
-    if (!is_array($data)) {
-        return [];
-    }
-
-    return $data;
+    return registrarc_load_json_file(registrarc_cheque_groups_file_path($TourId));
 }
 
 function registrarc_save_cheque_groups($TourId, array $data) {
-    if (!registrarc_ensure_data_dir()) {
-        return false;
-    }
-
-    $file = registrarc_cheque_groups_file_path($TourId);
-    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-
-    return file_put_contents($file, $json, LOCK_EX) !== false;
+    return registrarc_save_json_file(registrarc_cheque_groups_file_path($TourId), $data);
 }
 
 function registrarc_generate_cheque_group_id(array $groups) {
@@ -448,11 +432,11 @@ function registrarc_create_cheque_group($TourId, array $ids, array $payments) {
 function registrarc_default_tarifs() {
     return [
         'clubs_autres' => [
-            'jeunes'  => [1 => 8,  2 => 14],
+            'jeunes' => [1 => 8, 2 => 14],
             'adultes' => [1 => 10, 2 => 18],
         ],
         'organizer' => [
-            'jeunes'  => [1 => 4, 2 => 8],
+            'jeunes' => [1 => 4, 2 => 8],
             'adultes' => [1 => 5, 2 => 10],
         ],
     ];
@@ -497,6 +481,10 @@ function registrarc_normalize_payment_modes($modes) {
         }
 
         $clean[$code] = $label;
+    }
+
+    if (!isset($clean['GRA'])) {
+        $clean['GRA'] = 'Gratuit';
     }
 
     return empty($clean) ? registrarc_default_payment_modes() : $clean;
@@ -610,7 +598,7 @@ function registrarc_load_tarif_rules($TourId) {
 }
 
 // ---------------------------------------------------------------------------
-// Tarifs / règles
+// Tarifs / règles avancées
 // ---------------------------------------------------------------------------
 function registrarc_age_category($categorie) {
     $categorie = (string)$categorie;
@@ -663,14 +651,14 @@ function registrarc_is_null_empty_or_zero($value) {
 
 function registrarc_rule_entry_value($scope, array $entry) {
     $map = [
-        'qualif_ind'    => 'EnIndClEvent',
-        'qualif_team'   => 'EnTeamClEvent',
-        'finale_ind'    => 'EnIndFEvent',
-        'finale_team'   => 'EnTeamFEvent',
-        'double_mixte'  => 'EnTeamMixEvent',
-        'finales_ind'   => 'EnIndFEvent',
-        'finales_team'  => 'EnTeamFEvent',
-        'finales_mix'   => 'EnTeamMixEvent',
+        'qualif_ind' => 'EnIndClEvent',
+        'qualif_team' => 'EnTeamClEvent',
+        'finale_ind' => 'EnIndFEvent',
+        'finale_team' => 'EnTeamFEvent',
+        'double_mixte' => 'EnTeamMixEvent',
+        'finales_ind' => 'EnIndFEvent',
+        'finales_team' => 'EnTeamFEvent',
+        'finales_mix' => 'EnTeamMixEvent',
     ];
 
     if ($scope === 'finales') {
@@ -693,9 +681,7 @@ function registrarc_rule_entry_value($scope, array $entry) {
         return null;
     }
 
-    $field = $map[$scope];
-
-    return isset($entry[$field]) ? $entry[$field] : '';
+    return isset($entry[$map[$scope]]) ? $entry[$map[$scope]] : '';
 }
 
 function registrarc_entry_rule_matches($scope, $matches, array $entry) {
@@ -800,7 +786,6 @@ function registrarc_apply_tarif_rules(array $entry, array $rules) {
 
         if (isset($rule['action']['type']) && $rule['action']['type'] === 'fixed_price') {
             $value = isset($rule['action']['value']) ? (float)$rule['action']['value'] : 0;
-
             $total += $value;
             $matchedCount++;
 
@@ -812,10 +797,10 @@ function registrarc_apply_tarif_rules(array $entry, array $rules) {
 
     return [
         'matched' => $matchedCount > 0,
-        'label'   => implode(' + ', $labels),
-        'amount'  => $total,
-        'count'   => $matchedCount,
-        'labels'  => $labels,
+        'label' => implode(' + ', $labels),
+        'amount' => $total,
+        'count' => $matchedCount,
+        'labels' => $labels,
     ];
 }
 
@@ -855,21 +840,28 @@ function registrarc_redirect_params($filters, $sortColumn, $sortDirection) {
     $params = [];
 
     foreach ($filters as $key => $value) {
+        $value = trim((string)$value);
+
+        if ($value === '' || $value === 'all') {
+            continue;
+        }
+
         if ($key === 'search') {
-            if ($value !== '') {
-                $params['search'] = $value;
-            }
-        } elseif ($value !== 'all') {
-            if ($key === 'session') {
-                $params['session_filter'] = $value;
-            } else {
-                $params[$key . '_filter'] = $value;
-            }
+            $params['search'] = $value;
+        } elseif ($key === 'session') {
+            $params['session_filter'] = $value;
+        } else {
+            $params[$key . '_filter'] = $value;
         }
     }
 
-    $params['sort'] = $sortColumn;
-    $params['dir']  = $sortDirection;
+    $sortColumn = trim((string)$sortColumn);
+    $sortDirection = strtolower(trim((string)$sortDirection)) === 'desc' ? 'desc' : 'asc';
+
+    if ($sortColumn !== '') {
+        $params['sort'] = $sortColumn;
+        $params['dir'] = $sortDirection;
+    }
 
     return http_build_query($params);
 }
@@ -930,7 +922,7 @@ $tarifRules = registrarc_load_tarif_rules($TourId);
 $dataDirStatus = registrarc_data_dir_status();
 
 // ---------------------------------------------------------------------------
-// POST : paiements + import inscriptions + groupes chèques
+// POST : paiements + import inscriptions
 // ---------------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $redirectQuery = registrarc_redirect_params($filters, $sortColumn, $sortDirection);
@@ -944,7 +936,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (isset($_POST['import_registrations'])) {
         if (empty($_FILES['registrations_file']['tmp_name']) || !is_uploaded_file($_FILES['registrations_file']['tmp_name'])) {
-            $_SESSION['RegistrArc_payment_message'] = 'Aucun fichier JSON sélectionné pour l\'import inscriptions.';
+            $_SESSION['RegistrArc_payment_message'] = "Aucun fichier JSON sélectionné pour l'import inscriptions.";
             $_SESSION['RegistrArc_message_type'] = 'error';
             header('Location: ' . $_SERVER['PHP_SELF'] . ($redirectQuery ? '?' . $redirectQuery : ''));
             exit();
@@ -954,7 +946,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $data = json_decode($json, true);
 
         if (!is_array($data) || empty($data['registrations']) || !is_array($data['registrations'])) {
-            $_SESSION['RegistrArc_payment_message'] = 'Le fichier importé n\'est pas un JSON inscriptions valide.';
+            $_SESSION['RegistrArc_payment_message'] = "Le fichier importé n'est pas un JSON inscriptions valide.";
             $_SESSION['RegistrArc_message_type'] = 'error';
             header('Location: ' . $_SERVER['PHP_SELF'] . ($redirectQuery ? '?' . $redirectQuery : ''));
             exit();
@@ -1031,9 +1023,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $payment = isset($reg['payment']) && is_array($reg['payment']) ? $reg['payment'] : [];
             $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
             $method = isset($payment['method']) ? registrarc_clean_payment_method($payment['method'], $paymentModes) : '';
+            $receiptRequired = !empty($payment['receipt_required']);
 
             if ($status === 'PAYE') {
-                registrarc_set_payment_in_array($payments, $engagementId, $method !== '' ? $method : 'ESP');
+                registrarc_set_payment_in_array($payments, $engagementId, $method !== '' ? $method : 'ESP', $receiptRequired);
                 $paidImported++;
             } else {
                 registrarc_unset_payment_in_array($payments, $engagementId);
@@ -1097,7 +1090,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!empty($ids)) {
             if ($action === 'validate') {
-                $saved = registrarc_set_payment_bulk($TourId, $ids, $bulkMethod);
+                $saved = registrarc_set_payment_bulk($TourId, $ids, $bulkMethod, false);
 
                 if ($saved) {
                     if ($createChequeGroupAfterPayment && count($ids) >= 2) {
@@ -1108,7 +1101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $_SESSION['RegistrArc_payment_message'] = 'Paiement validé et remise groupée créée. Elle sera visible dans la remise de chèque.';
                             $_SESSION['RegistrArc_message_type'] = 'success';
                         } else {
-                            $_SESSION['RegistrArc_payment_message'] = 'Paiement validé, mais la remise groupée n’a pas pu être créée : ' . $result['message'];
+                            $_SESSION['RegistrArc_payment_message'] = 'Paiement validé, mais la remise groupée n\'a pas pu être créée : ' . $result['message'];
                             $_SESSION['RegistrArc_message_type'] = 'warning';
                         }
                     } else {
@@ -1147,9 +1140,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ? registrarc_clean_payment_method($_POST['payment_method'], $paymentModes)
             : 'ESP';
 
+        $receiptRequired = !empty($_POST['receipt_required']);
+
         if ($engagementId > 0) {
             if ($action === 'validate') {
-                $saved = registrarc_set_payment($TourId, $engagementId, $method);
+                $saved = registrarc_set_payment($TourId, $engagementId, $method, $receiptRequired);
 
                 if ($saved) {
                     $_SESSION['RegistrArc_payment_message'] = 'Paiement de cet engagement validé.';
@@ -1223,6 +1218,7 @@ if ($Rs) {
 
         $paymentStatus = isset($payment['status']) && $payment['status'] === 'PAYE' ? 1 : 0;
         $paymentMethod = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
+        $receiptRequired = !empty($payment['receipt_required']);
 
         $session = trim((string)$row->session_no);
         $target = $row->target;
@@ -1266,6 +1262,7 @@ if ($Rs) {
             'target_is_unassigned' => $targetIsUnassigned,
             'payment_status'       => $paymentStatus,
             'payment_method'       => $paymentMethod,
+            'receipt_required'     => $receiptRequired,
             'EnIndClEvent'         => $row->EnIndClEvent,
             'EnTeamClEvent'        => $row->EnTeamClEvent,
             'EnIndFEvent'          => $row->EnIndFEvent,
@@ -1276,7 +1273,7 @@ if ($Rs) {
 }
 
 // ---------------------------------------------------------------------------
-// Numérotation + montant + type tarif
+// Numérotation + montant + tarif
 // ---------------------------------------------------------------------------
 $counterByLicence = [];
 
@@ -1295,14 +1292,6 @@ foreach ($engagementsData as $idx => $e) {
     if (!empty($ruleResult['matched'])) {
         $montantBase = (float)$ruleResult['amount'];
         $ruleLabel = $ruleResult['label'];
-
-        if (!empty($ruleResult['count']) && intval($ruleResult['count']) > 1) {
-            $tarifTypeLabel = 'Cumul : ' . $ruleLabel;
-        } else {
-            $tarifTypeLabel = $ruleLabel !== '' ? $ruleLabel : 'Spécial';
-        }
-
-        $tarifTypeClass = 'chip-rule';
     } else {
         $montantBase = registrarc_prix_engagement(
             $e['country_code'],
@@ -1311,10 +1300,7 @@ foreach ($engagementsData as $idx => $e) {
             $tarifs,
             $organizerClubCode
         );
-
         $ruleLabel = '';
-        $tarifTypeLabel = 'Standard';
-        $tarifTypeClass = 'chip-standard';
     }
 
     $mode = strtoupper((string)$e['payment_method']);
@@ -1324,8 +1310,6 @@ foreach ($engagementsData as $idx => $e) {
     $engagementsData[$idx]['montant_base'] = $montantBase;
     $engagementsData[$idx]['montant'] = $montant;
     $engagementsData[$idx]['tarif_rule_label'] = $ruleLabel;
-    $engagementsData[$idx]['tarif_type_label'] = $tarifTypeLabel;
-    $engagementsData[$idx]['tarif_type_class'] = $tarifTypeClass;
 }
 
 // ---------------------------------------------------------------------------
@@ -1394,8 +1378,7 @@ foreach ($engagementsData as $e) {
             $e['prenom'] . ' ' .
             $e['club'] . ' ' .
             $e['country_code'] . ' ' .
-            $e['categorie'] . ' ' .
-            $e['tarif_type_label']
+            $e['categorie']
         );
 
         if (strpos($haystack, $searchFilter) === false) {
@@ -1440,9 +1423,6 @@ usort($displayEngagements, function($a, $b) use ($sortColumn, $sortDirection) {
         case 'montant':
             return $dir * ($a['montant'] <=> $b['montant']);
 
-        case 'tarif':
-            return $dir * strcmp(mb_strtolower((string)$a['tarif_type_label']), mb_strtolower((string)$b['tarif_type_label']));
-
         case 'statut':
             return $dir * ($a['payment_status'] <=> $b['payment_status']);
 
@@ -1479,14 +1459,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_registrations') {
                 'EnTeamFEvent' => $e['EnTeamFEvent'],
                 'EnTeamMixEvent' => $e['EnTeamMixEvent'],
             ],
-            'tarif' => [
-                'label' => $e['tarif_type_label'],
-                'rule_label' => $e['tarif_rule_label'],
-                'amount' => $e['montant'],
-            ],
             'payment' => [
                 'status' => $e['payment_status'] ? 'PAYE' : 'NON_PAYE',
                 'method' => $e['payment_status'] ? $e['payment_method'] : '',
+                'receipt_required' => !empty($e['receipt_required']),
             ],
         ];
     }
@@ -1528,6 +1504,8 @@ include('Common/Templates/head.php');
         --danger-color: #dc2626;
         --invoice-color: #475569;
         --invoice-dark: #334155;
+        --invoice-receipt-color: #f59e0b;
+        --invoice-receipt-dark: #d97706;
         --print-color: #0f766e;
         --print-dark: #115e59;
         --warning-color: #d97706;
@@ -1537,6 +1515,8 @@ include('Common/Templates/head.php');
         --import-dark: #9d174d;
         --settings-color: #0891b2;
         --settings-dark: #0e7490;
+        --kiosk-color: #ea580c;
+        --kiosk-dark: #c2410c;
         --cheque-color: #0d9488;
         --cheque-dark: #0f766e;
         --border-radius: 6px;
@@ -1562,7 +1542,8 @@ include('Common/Templates/head.php');
     .filters-row,
     .filter-actions,
     .payment-actions,
-    .payment-actions form {
+    .payment-actions form,
+    .header-actions {
         display: flex;
         flex-wrap: nowrap;
         gap: 8px;
@@ -1573,6 +1554,11 @@ include('Common/Templates/head.php');
         justify-content: space-between;
         margin-bottom: 16px;
         width: 100%;
+    }
+
+    .header-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
     }
 
     .registrarc-header-title {
@@ -1596,6 +1582,7 @@ include('Common/Templates/head.php');
     .btn-export,
     .btn-import,
     .btn-settings,
+    .btn-kiosk,
     .btn-cheque {
         display: inline-flex;
         align-items: center;
@@ -1646,6 +1633,15 @@ include('Common/Templates/head.php');
         background: var(--invoice-dark);
     }
 
+    .btn-invoice-receipt {
+        background: var(--invoice-receipt-color) !important;
+        color: #fff;
+    }
+
+    .btn-invoice-receipt:hover {
+        background: var(--invoice-receipt-dark) !important;
+    }
+
     .btn-print-list {
         background: var(--print-color);
         color: #fff;
@@ -1685,6 +1681,15 @@ include('Common/Templates/head.php');
 
     .btn-settings:hover {
         background: var(--settings-dark);
+    }
+
+    .btn-kiosk {
+        background: var(--kiosk-color);
+        color: #fff;
+    }
+
+    .btn-kiosk:hover {
+        background: var(--kiosk-dark);
     }
 
     .btn-cheque {
@@ -1920,12 +1925,6 @@ include('Common/Templates/head.php');
         font-weight: 700;
     }
 
-    .chip-standard {
-        background: #e0f2fe;
-        color: #075985;
-        font-weight: 700;
-    }
-
     .payment-actions {
         width: max-content;
         max-width: none;
@@ -1946,6 +1945,18 @@ include('Common/Templates/head.php');
         border-radius: 999px;
         background: #dcfce7;
         color: #166534;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .payment-receipt-label {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: #ffedd5;
+        color: #c2410c;
         font-size: 11px;
         font-weight: 700;
         white-space: nowrap;
@@ -2003,7 +2014,11 @@ include('Common/Templates/head.php');
             <div class="registrarc-header-sub">Le module de Greffe pour I@nseo</div>
         </div>
 
-        <div>
+        <div class="header-actions">
+            <a href="kiosk.php" class="btn-kiosk">
+                Mode Kiosk
+            </a>
+
             <a href="<?php echo $CFG->ROOT_DIR; ?>Modules/Custom/RegistrArc/config_tarifs.php?ToId=<?php echo $TourId; ?>" class="btn-settings">
                 ⚙ Paramétrer tarifs & paiements
             </a>
@@ -2197,7 +2212,6 @@ include('Common/Templates/head.php');
                         <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'depart', 'dir' => ($sortColumn == 'depart' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Départ</a></th>
                         <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'cible', 'dir' => ($sortColumn == 'cible' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Cible</a></th>
                         <th style="text-align:right;"><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'montant', 'dir' => ($sortColumn == 'montant' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Montant</a></th>
-                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'tarif', 'dir' => ($sortColumn == 'tarif' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Tarif</a></th>
                         <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'statut', 'dir' => ($sortColumn == 'statut' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Statut</a></th>
                         <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'paiement', 'dir' => ($sortColumn == 'paiement' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Paiement / Actions</a></th>
                     </tr>
@@ -2226,7 +2240,14 @@ include('Common/Templates/head.php');
                             <td><?php echo htmlspecialchars($e['nom']); ?></td>
                             <td><?php echo htmlspecialchars($e['prenom']); ?></td>
                             <td><?php echo htmlspecialchars(trim($e['country_code'] . ' - ' . $e['club'])); ?></td>
-                            <td><?php echo htmlspecialchars($e['categorie']); ?></td>
+                            <td>
+                                <?php echo htmlspecialchars($e['categorie']); ?>
+                                <?php if (!empty($e['tarif_rule_label'])): ?>
+                                    <span class="chip chip-rule" title="Règle tarifaire appliquée">
+                                        <?php echo htmlspecialchars($e['tarif_rule_label']); ?>
+                                    </span>
+                                <?php endif; ?>
+                            </td>
                             <td><?php echo ($e['session'] !== '') ? 'Départ ' . htmlspecialchars($e['session']) : '—'; ?></td>
 
                             <td>
@@ -2240,12 +2261,6 @@ include('Common/Templates/head.php');
                             <td style="text-align:right;"><?php echo registrarc_format_montant($e['montant']); ?> €</td>
 
                             <td>
-                                <span class="chip <?php echo htmlspecialchars($e['tarif_type_class']); ?>" title="<?php echo htmlspecialchars($e['tarif_rule_label']); ?>">
-                                    <?php echo htmlspecialchars($e['tarif_type_label']); ?>
-                                </span>
-                            </td>
-
-                            <td>
                                 <span class="<?php echo $isPaid ? 'status-paid' : 'status-unpaid'; ?>">
                                     <?php echo $isPaid ? 'Payé' : 'Non payé'; ?>
                                 </span>
@@ -2255,6 +2270,10 @@ include('Common/Templates/head.php');
                                 <div class="payment-actions">
                                     <?php if ($isPaid): ?>
                                         <span class="payment-method-label"><?php echo htmlspecialchars($e['payment_method'] ?: '—'); ?></span>
+
+                                        <?php if (!empty($e['receipt_required'])): ?>
+                                            <span class="payment-receipt-label">Reçu</span>
+                                        <?php endif; ?>
 
                                         <form method="POST">
                                             <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
@@ -2309,7 +2328,7 @@ include('Common/Templates/head.php');
                     <?php if ($displayCount === 0): ?>
                         <tr>
                             <td class="col-check"></td>
-                            <td colspan="12" style="text-align:center;padding:20px;">Aucun engagement trouvé.</td>
+                            <td colspan="11" style="text-align:center;padding:20px;">Aucun engagement trouvé.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
@@ -2320,7 +2339,7 @@ include('Common/Templates/head.php');
                             <td class="col-check"></td>
                             <td colspan="8" style="text-align:right;font-weight:600;">Total affiché :</td>
                             <td style="text-align:right;font-weight:600;"><?php echo registrarc_format_montant($total); ?> €</td>
-                            <td colspan="3"></td>
+                            <td colspan="2"></td>
                         </tr>
                     </tfoot>
                 <?php endif; ?>
@@ -2519,7 +2538,29 @@ function printGreffeList() {
         cells = row.querySelectorAll('th, td');
 
         if (cells.length >= 8) {
+            const departCell = cells[6];
+            const cibleCell = cells[7];
+
+            if (departCell && cibleCell) {
+                const departText = departCell.textContent.trim();
+                const cibleText = cibleCell.textContent.trim();
+
+                if (departText !== '' && departText !== '—' && cibleText !== '') {
+                    cibleCell.textContent = departText + ' - ' + cibleText;
+                } else if (cibleText !== '') {
+                    cibleCell.textContent = cibleText;
+                } else {
+                    cibleCell.textContent = departText;
+                }
+            }
+
             cells[6].remove();
+        }
+
+        cells = row.querySelectorAll('th, td');
+
+        if (cells.length >= 10) {
+            cells[8].remove();
         }
     });
 
@@ -2528,6 +2569,10 @@ function printGreffeList() {
 
         if (cells.length > 0) {
             cells[0].textContent = 'Eng.';
+        }
+
+        if (cells.length > 6) {
+            cells[6].textContent = 'Départ - Cible';
         }
 
         const paiementTh = document.createElement('th');
@@ -2566,6 +2611,58 @@ function printGreffeList() {
     clonedTable.querySelectorAll('button, input, select, form').forEach(el => {
         el.remove();
     });
+
+    const tbody = clonedTable.querySelector('tbody');
+
+    if (tbody) {
+        let currentLetter = '';
+
+        Array.from(tbody.querySelectorAll('tr')).forEach(row => {
+            const cells = row.querySelectorAll('td');
+
+            if (cells.length <= 1) {
+                return;
+            }
+
+            const nomCell = cells[2];
+
+            if (!nomCell) {
+                return;
+            }
+
+            const rawName = nomCell.textContent.trim();
+
+            if (rawName === '') {
+                return;
+            }
+
+            let firstLetter = rawName.charAt(0).toUpperCase();
+
+            if (firstLetter.normalize) {
+                firstLetter = firstLetter
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '');
+            }
+
+            if (!/^[A-Z]$/.test(firstLetter)) {
+                firstLetter = '#';
+            }
+
+            if (firstLetter !== currentLetter) {
+                currentLetter = firstLetter;
+
+                const letterRow = document.createElement('tr');
+                letterRow.className = 'letter-separator-row';
+
+                const letterCell = document.createElement('td');
+                letterCell.colSpan = cells.length;
+                letterCell.textContent = currentLetter;
+
+                letterRow.appendChild(letterCell);
+                tbody.insertBefore(letterRow, row);
+            }
+        });
+    }
 
     const printWindow = window.open('', '_blank', 'width=1200,height=900');
 
@@ -2650,6 +2747,18 @@ function printGreffeList() {
                     border-bottom: 2px solid #333;
                 }
 
+                .letter-separator-row td {
+                    background: #111827 !important;
+                    color: #fff;
+                    font-size: 10px;
+                    font-weight: 800;
+                    text-align: left;
+                    padding: 3px 2px;
+                    padding-left: 5px;
+                    border: 1px solid #111827;
+                    letter-spacing: 0.08em;
+                }
+
                 th:nth-child(1),
                 td:nth-child(1) {
                     width: 3.5%;
@@ -2688,7 +2797,7 @@ function printGreffeList() {
 
                 th:nth-child(7),
                 td:nth-child(7) {
-                    width: 10%;
+                    width: 12%;
                 }
 
                 th:nth-child(8),
@@ -2705,7 +2814,7 @@ function printGreffeList() {
 
                 th:nth-child(10),
                 td:nth-child(10) {
-                    width: 15%;
+                    width: 13%;
                 }
 
                 th:nth-child(11),
@@ -2723,7 +2832,8 @@ function printGreffeList() {
 
                 .chip,
                 .chip-engagement,
-                .payment-method-label {
+                .payment-method-label,
+                .payment-receipt-label {
                     display: inline;
                     padding: 0;
                     background: transparent;

@@ -146,3 +146,6 @@ La plupart des écrans (factures, remises de chèques, listes d'engagements) dis
 ---
 
 *Module développé pour la gestion des compétitions de tir à l'arc via I@nseo.*
+
+
+Made with <3 avec Open WebUI
