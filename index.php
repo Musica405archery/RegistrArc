@@ -442,6 +442,85 @@ function registrarc_default_tarifs() {
     ];
 }
 
+function registrarc_default_age_classes() {
+    return [
+        'jeunes' => ['U11', 'U13', 'U15', 'U18'],
+        'adultes' => ['U21', 'S1', 'S2', 'S3', 'Senior', 'Scratch'],
+    ];
+}
+
+function registrarc_split_age_class_string($value) {
+    $value = trim((string)$value);
+
+    if ($value === '') {
+        return [];
+    }
+
+    $parts = preg_split('/[,;\r\n]+/', $value);
+    $out = [];
+
+    foreach ($parts as $part) {
+        $part = strtoupper(trim((string)$part));
+
+        if ($part !== '') {
+            $out[] = $part;
+        }
+    }
+
+    return array_values(array_unique($out));
+}
+
+function registrarc_normalize_age_classes($ageClasses) {
+    $default = registrarc_default_age_classes();
+
+    if (!is_array($ageClasses)) {
+        return $default;
+    }
+
+    $jeunes = isset($ageClasses['jeunes']) ? $ageClasses['jeunes'] : [];
+    $adultes = isset($ageClasses['adultes']) ? $ageClasses['adultes'] : [];
+
+    if (!is_array($jeunes)) {
+        $jeunes = registrarc_split_age_class_string($jeunes);
+    }
+
+    if (!is_array($adultes)) {
+        $adultes = registrarc_split_age_class_string($adultes);
+    }
+
+    $cleanJeunes = [];
+    foreach ($jeunes as $cat) {
+        $cat = strtoupper(trim((string)$cat));
+        if ($cat !== '') {
+            $cleanJeunes[] = $cat;
+        }
+    }
+
+    $cleanAdultes = [];
+    foreach ($adultes as $cat) {
+        $cat = strtoupper(trim((string)$cat));
+        if ($cat !== '') {
+            $cleanAdultes[] = $cat;
+        }
+    }
+
+    $cleanJeunes = array_values(array_unique($cleanJeunes));
+    $cleanAdultes = array_values(array_unique($cleanAdultes));
+
+    if (empty($cleanJeunes)) {
+        $cleanJeunes = $default['jeunes'];
+    }
+
+    if (empty($cleanAdultes)) {
+        $cleanAdultes = $default['adultes'];
+    }
+
+    return [
+        'jeunes' => $cleanJeunes,
+        'adultes' => $cleanAdultes,
+    ];
+}
+
 function registrarc_default_payment_modes() {
     return [
         'ESP' => 'Espèces',
@@ -493,6 +572,7 @@ function registrarc_normalize_payment_modes($modes) {
 function registrarc_normalize_settings($TourId, $settings) {
     $out = [
         'tarifs' => registrarc_default_tarifs(),
+        'age_classes' => registrarc_default_age_classes(),
         'payment_modes' => registrarc_default_payment_modes(),
         'rules' => [],
     ];
@@ -503,6 +583,10 @@ function registrarc_normalize_settings($TourId, $settings) {
 
     if (isset($settings['tarifs']) && is_array($settings['tarifs'])) {
         $out['tarifs'] = $settings['tarifs'];
+    }
+
+    if (isset($settings['age_classes'])) {
+        $out['age_classes'] = registrarc_normalize_age_classes($settings['age_classes']);
     }
 
     if (isset($settings['payment_modes']) && is_array($settings['payment_modes'])) {
@@ -577,6 +661,16 @@ function registrarc_load_tarifs($TourId, $organizerClubCode, $organizerClubName)
     return $default;
 }
 
+function registrarc_load_age_classes($TourId) {
+    $settings = registrarc_load_settings($TourId);
+
+    if (isset($settings['age_classes'])) {
+        return registrarc_normalize_age_classes($settings['age_classes']);
+    }
+
+    return registrarc_default_age_classes();
+}
+
 function registrarc_load_payment_modes($TourId) {
     $settings = registrarc_load_settings($TourId);
 
@@ -600,11 +694,17 @@ function registrarc_load_tarif_rules($TourId) {
 // ---------------------------------------------------------------------------
 // Tarifs / règles avancées
 // ---------------------------------------------------------------------------
-function registrarc_age_category($categorie) {
+function registrarc_age_category($categorie, $ageClasses = null) {
     $categorie = (string)$categorie;
 
-    foreach (['U11', 'U13', 'U15', 'U18'] as $c) {
-        if (stripos($categorie, $c) !== false) {
+    if (!is_array($ageClasses) || !isset($ageClasses['jeunes'])) {
+        $ageClasses = registrarc_default_age_classes();
+    }
+
+    foreach ($ageClasses['jeunes'] as $c) {
+        $c = trim((string)$c);
+
+        if ($c !== '' && stripos($categorie, $c) !== false) {
             return 'jeunes';
         }
     }
@@ -804,9 +904,9 @@ function registrarc_apply_tarif_rules(array $entry, array $rules) {
     ];
 }
 
-function registrarc_prix_engagement($clubCode, $categorie, $numeroEngagement, $tarifs, $organizerClubCode) {
+function registrarc_prix_engagement($clubCode, $categorie, $numeroEngagement, $tarifs, $organizerClubCode, $ageClasses = null) {
     $isOrganizer = ($clubCode == $organizerClubCode);
-    $age = registrarc_age_category($categorie);
+    $age = registrarc_age_category($categorie, $ageClasses);
 
     if ($isOrganizer) {
         $p1 = isset($tarifs['organizer'][$age][1]) ? floatval($tarifs['organizer'][$age][1]) : 0;
@@ -917,6 +1017,7 @@ if ($t = safe_fetch($tournamentRs)) {
 }
 
 $tarifs = registrarc_load_tarifs($TourId, $organizerClubCode, $organizerClubName);
+$ageClasses = registrarc_load_age_classes($TourId);
 $paymentModes = registrarc_load_payment_modes($TourId);
 $tarifRules = registrarc_load_tarif_rules($TourId);
 $dataDirStatus = registrarc_data_dir_status();
@@ -1298,7 +1399,8 @@ foreach ($engagementsData as $idx => $e) {
             $e['categorie'],
             $numero,
             $tarifs,
-            $organizerClubCode
+            $organizerClubCode,
+            $ageClasses
         );
         $ruleLabel = '';
     }
