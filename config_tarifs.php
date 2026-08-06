@@ -1,7 +1,7 @@
 <?php
 // ============================================================================
 // RegistrArc - config_tarifs.php
-// Configuration des tarifs, moyens de paiement et règles avancées
+// Configuration des tarifs, moyens de paiement, classes d'âge et règles avancées
 //
 // Stockage principal en JSON local :
 // Modules/Custom/RegistrArc/data/settings_<TourId>.json
@@ -10,6 +10,11 @@
 // - inclut le code tournoi pour faciliter l'échange entre installations
 // - alerte si le fichier importé semble plus ancien
 // - alerte si le code tournoi importé diffère du code tournoi courant
+//
+// Classes d'âge :
+// - l'utilisateur définit quelles catégories sont "jeunes"
+// - l'utilisateur définit quelles catégories sont "adultes"
+// - les valeurs sont stockées dans age_classes.jeunes et age_classes.adultes
 //
 // Règles avancées :
 // - Catégorie
@@ -20,9 +25,6 @@
 // - Finale individuelle si Events contient EvTeamEvent = 0 pour le tournoi
 // - Finale équipe si Events contient EvTeamEvent = 1 pour le tournoi
 // - Double mixte si Events contient EvTeamEvent = 1 et EvMixedTeam = 1
-//
-// La structure des règles reste : scope / match / action fixed_price,
-// comme dans la logique initiale des règles avancées du module.
 // ============================================================================
 
 define('debug', false);
@@ -242,6 +244,52 @@ $finalPresence = registrarc_get_events_final_presence($TourId);
 $allowedRuleScopes = registrarc_allowed_rule_scopes($finalPresence);
 
 // ---------------------------------------------------------------------------
+// Catégories (Classes) existantes pour le tournoi
+// ---------------------------------------------------------------------------
+function registrarc_get_tournament_classes($TourId) {
+    $TourId = intval($TourId);
+    $classes = [];
+
+    // On ne garde que les catégories réellement utilisées par des athlètes
+    // (ClAthlete != '0') pour ce tournoi précis.
+    $query = "
+        SELECT ClId, ClDescription
+        FROM Classes
+        WHERE ClTournament = $TourId
+          AND ClAthlete != '0'
+        ORDER BY ClViewOrder ASC, ClId ASC
+    ";
+
+    $rs = safe_r_sql($query);
+
+    while ($row = safe_fetch($rs)) {
+        $classes[] = [
+            'id' => trim((string)$row->ClId),
+            'description' => trim((string)$row->ClDescription),
+        ];
+    }
+
+    return $classes;
+}
+
+$tournamentClasses = registrarc_get_tournament_classes($TourId);
+
+function registrarc_render_age_card($classId, $classLabel, $group) {
+    $otherGroup = ($group === 'jeunes') ? 'adultes' : 'jeunes';
+    $arrow = ($group === 'jeunes') ? '←' : '→';
+    $otherLabelText = ($otherGroup === 'jeunes') ? 'Jeunes' : 'Adultes';
+
+    $html = '<div class="age-card" draggable="true" data-class-id="' . htmlspecialchars($classId) . '" data-group="' . htmlspecialchars($group) . '"';
+    $html .= ' ondragstart="handleAgeCardDragStart(event);" ondragend="handleAgeCardDragEnd(event);">';
+    $html .= '<span class="age-card-label" title="' . htmlspecialchars($classLabel) . '">' . htmlspecialchars($classLabel) . '</span>';
+    $html .= '<button type="button" class="age-card-move" data-target="' . htmlspecialchars($otherGroup) . '"';
+    $html .= ' title="Déplacer vers ' . htmlspecialchars($otherLabelText) . '" onclick="handleAgeCardMoveClick(this);">' . $arrow . '</button>';
+    $html .= '</div>';
+
+    return $html;
+}
+
+// ---------------------------------------------------------------------------
 // Valeurs par défaut
 // ---------------------------------------------------------------------------
 function registrarc_default_tarifs() {
@@ -266,14 +314,22 @@ function registrarc_default_payment_modes() {
     ];
 }
 
+function registrarc_default_age_classes() {
+    return [
+        'jeunes' => ['U11', 'U13', 'U15', 'U18'],
+        'adultes' => ['U21', 'S1', 'S2', 'S3', 'Senior', 'Scratch'],
+    ];
+}
+
 function registrarc_default_settings($TourId) {
     return [
         'module' => 'RegistrArc',
-        'version' => 1,
+        'version' => 2,
         'tour_id' => intval($TourId),
         'tournament_code' => registrarc_current_tournament_code(),
         'exported_at' => null,
         'saved_at' => null,
+        'age_classes' => registrarc_default_age_classes(),
         'tarifs' => registrarc_default_tarifs(),
         'payment_modes' => registrarc_default_payment_modes(),
         'rules' => [],
@@ -373,6 +429,78 @@ function registrarc_normalize_tarifs($tarifs) {
     }
 
     return $out;
+}
+
+function registrarc_split_age_class_string($value) {
+    $value = trim((string)$value);
+
+    if ($value === '') {
+        return [];
+    }
+
+    $parts = preg_split('/[,;\r\n]+/', $value);
+    $out = [];
+
+    foreach ($parts as $part) {
+        $part = strtoupper(trim((string)$part));
+
+        if ($part !== '') {
+            $out[] = $part;
+        }
+    }
+
+    return array_values(array_unique($out));
+}
+
+function registrarc_normalize_age_classes($ageClasses) {
+    $default = registrarc_default_age_classes();
+
+    if (!is_array($ageClasses)) {
+        return $default;
+    }
+
+    $jeunes = isset($ageClasses['jeunes']) ? $ageClasses['jeunes'] : [];
+    $adultes = isset($ageClasses['adultes']) ? $ageClasses['adultes'] : [];
+
+    if (!is_array($jeunes)) {
+        $jeunes = registrarc_split_age_class_string($jeunes);
+    }
+
+    if (!is_array($adultes)) {
+        $adultes = registrarc_split_age_class_string($adultes);
+    }
+
+    $cleanJeunes = [];
+    foreach ($jeunes as $cat) {
+        $cat = strtoupper(trim((string)$cat));
+        if ($cat !== '') {
+            $cleanJeunes[] = $cat;
+        }
+    }
+
+    $cleanAdultes = [];
+    foreach ($adultes as $cat) {
+        $cat = strtoupper(trim((string)$cat));
+        if ($cat !== '') {
+            $cleanAdultes[] = $cat;
+        }
+    }
+
+    $cleanJeunes = array_values(array_unique($cleanJeunes));
+    $cleanAdultes = array_values(array_unique($cleanAdultes));
+
+    if (empty($cleanJeunes)) {
+        $cleanJeunes = $default['jeunes'];
+    }
+
+    if (empty($cleanAdultes)) {
+        $cleanAdultes = $default['adultes'];
+    }
+
+    return [
+        'jeunes' => $cleanJeunes,
+        'adultes' => $cleanAdultes,
+    ];
 }
 
 function registrarc_normalize_payment_modes($modes) {
@@ -504,7 +632,7 @@ function registrarc_normalize_settings($TourId, $settings, array $allowedRuleSco
     $out = $default;
 
     $out['module'] = isset($settings['module']) ? trim((string)$settings['module']) : 'RegistrArc';
-    $out['version'] = isset($settings['version']) ? (int)$settings['version'] : 1;
+    $out['version'] = isset($settings['version']) ? (int)$settings['version'] : 2;
     $out['tour_id'] = intval($TourId);
     $out['tournament_code'] = registrarc_extract_tournament_code_from_settings($settings);
     $out['exported_at'] = isset($settings['exported_at']) ? $settings['exported_at'] : null;
@@ -514,6 +642,7 @@ function registrarc_normalize_settings($TourId, $settings, array $allowedRuleSco
         $out['tournament_code'] = registrarc_current_tournament_code();
     }
 
+    $out['age_classes'] = registrarc_normalize_age_classes(isset($settings['age_classes']) ? $settings['age_classes'] : null);
     $out['tarifs'] = registrarc_normalize_tarifs(isset($settings['tarifs']) ? $settings['tarifs'] : null);
     $out['payment_modes'] = registrarc_normalize_payment_modes(isset($settings['payment_modes']) ? $settings['payment_modes'] : null);
     $out['rules'] = registrarc_normalize_rules(isset($settings['rules']) ? $settings['rules'] : [], $allowedRuleScopes);
@@ -684,6 +813,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $PAA1 = isset($_POST['PAA1']) ? (int)$_POST['PAA1'] : 0;
             $PAA2 = isset($_POST['PAA2']) ? (int)$_POST['PAA2'] : 0;
 
+            $ageClasses = [
+                'jeunes' => isset($_POST['age_classes_jeunes']) ? registrarc_split_age_class_string($_POST['age_classes_jeunes']) : [],
+                'adultes' => isset($_POST['age_classes_adultes']) ? registrarc_split_age_class_string($_POST['age_classes_adultes']) : [],
+            ];
+
             $tarifs = [
                 'clubs_autres' => [
                     'jeunes' => [1 => $OJA1, 2 => $OJA1 + $OJA2],
@@ -768,10 +902,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $settings = [
                 'module' => 'RegistrArc',
-                'version' => 1,
+                'version' => 2,
                 'tour_id' => $TourId,
                 'tournament_code' => $tournamentCode,
                 'exported_at' => null,
+                'age_classes' => $ageClasses,
                 'tarifs' => $tarifs,
                 'payment_modes' => $modes,
                 'rules' => $rules,
@@ -794,12 +929,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Valeurs actuelles
 // ---------------------------------------------------------------------------
 $currentSettings = registrarc_load_settings($TourId, $allowedRuleScopes);
+$currentAgeClasses = isset($currentSettings['age_classes']) ? registrarc_normalize_age_classes($currentSettings['age_classes']) : registrarc_default_age_classes();
 $currentTarifs = $currentSettings['tarifs'];
 $currentModes = $currentSettings['payment_modes'];
 $currentRules = $currentSettings['rules'];
 
 $currentSettingsTimestamp = registrarc_settings_timestamp($currentSettings, registrarc_settings_file_path($TourId));
 $currentSettingsTimestampLabel = registrarc_format_timestamp_for_message($currentSettingsTimestamp);
+
+$ageClassesJeunesText = implode(', ', $currentAgeClasses['jeunes']);
+$ageClassesAdultesText = implode(', ', $currentAgeClasses['adultes']);
 
 $OJA1 = (int)$currentTarifs['clubs_autres']['jeunes'][1];
 $OJA2 = (int)$currentTarifs['clubs_autres']['jeunes'][2] - $OJA1;
@@ -879,6 +1018,7 @@ include('Common/Templates/head.php');
         font-size: 12px;
         color: var(--text-muted);
         margin-bottom: 8px;
+        line-height: 1.45;
     }
 
     .grid-2,
@@ -982,7 +1122,8 @@ include('Common/Templates/head.php');
     input[type="text"],
     input[type="number"],
     select,
-    .import-input {
+    .import-input,
+    textarea {
         width: 100%;
         box-sizing: border-box;
         padding: 5px 7px;
@@ -990,6 +1131,13 @@ include('Common/Templates/head.php');
         border: 1px solid #d1d5db;
         font-size: 12px;
         background: #f9fafb;
+    }
+
+    textarea {
+        border-radius: 10px;
+        min-height: 74px;
+        resize: vertical;
+        line-height: 1.4;
     }
 
     input[readonly] {
@@ -1040,10 +1188,165 @@ include('Common/Templates/head.php');
         color: #374151;
     }
 
+    .age-preview {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 6px;
+    }
+
+    .age-chip-jeune {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
+
+    .age-chip-adulte {
+        background: #dcfce7;
+        color: #166534;
+    }
+
     @media (max-width: 768px) {
         .grid-2,
         .import-export-row {
             grid-template-columns: 1fr;
+        }
+    }
+
+    /* --- Transfert de catégories (Classes d'âge) --- */
+    .age-search-input {
+        margin-bottom: 10px;
+    }
+
+    .age-transfer {
+        display: flex;
+        gap: 16px;
+        align-items: stretch;
+        flex-wrap: wrap;
+    }
+
+    .age-transfer-col {
+        flex: 1;
+        min-width: 240px;
+        background: linear-gradient(180deg, #f9fafb 0%, #ffffff 60%);
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .age-transfer-col-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 2px 6px 10px 6px;
+        margin-bottom: 8px;
+        border-bottom: 1px dashed #e5e7eb;
+    }
+
+    .age-transfer-col-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text-strong);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .age-transfer-count {
+        font-size: 11px;
+        font-weight: 700;
+        background: #eef2ff;
+        color: var(--primary-dark);
+        padding: 2px 9px;
+        border-radius: 999px;
+        min-width: 20px;
+        text-align: center;
+    }
+
+    .age-dropzone {
+        flex: 1;
+        min-height: 220px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 4px;
+        border-radius: 12px;
+        transition: background 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .age-dropzone.drag-over {
+        background: #eff6ff;
+        box-shadow: inset 0 0 0 2px var(--primary-color);
+    }
+
+    .age-dropzone-empty {
+        font-size: 12px;
+        color: var(--text-muted);
+        text-align: center;
+        padding: 20px 6px;
+        border: 1px dashed #d1d5db;
+        border-radius: 12px;
+    }
+
+    .age-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 8px 8px 8px 12px;
+        font-size: 12.5px;
+        color: var(--text-strong);
+        cursor: grab;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        transition: box-shadow 0.15s ease, transform 0.1s ease, border-color 0.15s ease;
+    }
+
+    .age-card:hover {
+        border-color: var(--primary-color);
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.15);
+        transform: translateY(-1px);
+    }
+
+    .age-card.dragging {
+        opacity: 0.4;
+    }
+
+    .age-card-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .age-card-move {
+        flex-shrink: 0;
+        border: none;
+        background: #f3f4f6;
+        color: var(--primary-color);
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        font-size: 14px;
+        line-height: 1;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+    }
+
+    .age-card-move:hover {
+        background: var(--primary-color);
+        color: #fff;
+        transform: scale(1.1);
+    }
+
+    @media (max-width: 768px) {
+        .age-transfer {
+            flex-direction: column;
         }
     }
 </style>
@@ -1070,7 +1373,7 @@ include('Common/Templates/head.php');
     <div class="card">
         <div class="card-title">Export / Import du paramétrage</div>
         <div class="card-help">
-            Les tarifs, moyens de paiement et règles avancées sont enregistrés dans un fichier JSON local.
+            Les classes d'âge, tarifs, moyens de paiement et règles avancées sont enregistrés dans un fichier JSON local.
         </div>
 
         <div class="import-export-row">
@@ -1101,7 +1404,102 @@ include('Common/Templates/head.php');
         </div>
     </div>
 
-    <form method="POST">
+    <form method="POST" id="mainSettingsForm">
+        <div class="card">
+            <div class="card-title">Classes d'âge</div>
+            <div class="card-help">
+                Toutes les catégories réellement présentes dans ce tournoi (table <strong>Classes</strong>) sont réparties
+                dans l'une des deux colonnes ci-dessous. <strong>Glisse-dépose</strong> une catégorie d'une colonne à l'autre,
+                ou clique sur la flèche de sa carte pour la faire basculer instantanément.
+            </div>
+
+            <!-- Ces deux champs cachés contiennent la liste finale (jeunes / adultes), reconstruite automatiquement
+                 à partir du contenu des deux colonnes ci-dessous. Ils sont utilisés tels quels par le reste du code (sauvegarde). -->
+            <input type="hidden" name="age_classes_jeunes" id="age_classes_jeunes" value="<?php echo htmlspecialchars($ageClassesJeunesText); ?>">
+            <input type="hidden" name="age_classes_adultes" id="age_classes_adultes" value="<?php echo htmlspecialchars($ageClassesAdultesText); ?>">
+
+            <?php if (empty($tournamentClasses)): ?>
+                <div class="card-help" style="color:#a33;">
+                    Aucune catégorie avec engagement (ClAthlete ≠ 0) n'a été trouvée dans la table <code>Classes</code> pour ce tournoi.
+                </div>
+            <?php else: ?>
+                <input
+                    type="text"
+                    class="age-search-input"
+                    placeholder="🔎 Filtrer les catégories..."
+                    oninput="filterAgeCards(this.value);"
+                >
+
+                <div class="age-transfer">
+                    <div class="age-transfer-col">
+                        <div class="age-transfer-col-header">
+                            <span class="age-transfer-col-title">🧓 Adultes</span>
+                            <span class="age-transfer-count" id="adultesCount">0</span>
+                        </div>
+                        <div
+                            class="age-dropzone"
+                            data-group="adultes"
+                            id="adultesZone"
+                            ondragover="handleZoneDragOver(event);"
+                            ondragleave="handleZoneDragLeave(event);"
+                            ondrop="handleZoneDrop(event);"
+                        >
+                            <?php foreach ($tournamentClasses as $class):
+                                $classId = $class['id'];
+                                $classLabel = $classId . ($class['description'] !== '' ? ' — ' . $class['description'] : '');
+                                $isJeune = in_array(strtoupper($classId), array_map('strtoupper', $currentAgeClasses['jeunes']), true);
+
+                                if ($isJeune) {
+                                    continue;
+                                }
+
+                                echo registrarc_render_age_card($classId, $classLabel, 'adultes');
+                            endforeach; ?>
+                        </div>
+                    </div>
+
+                    <div class="age-transfer-col">
+                        <div class="age-transfer-col-header">
+                            <span class="age-transfer-col-title">🏹 Jeunes</span>
+                            <span class="age-transfer-count" id="jeunesCount">0</span>
+                        </div>
+                        <div
+                            class="age-dropzone"
+                            data-group="jeunes"
+                            id="jeunesZone"
+                            ondragover="handleZoneDragOver(event);"
+                            ondragleave="handleZoneDragLeave(event);"
+                            ondrop="handleZoneDrop(event);"
+                        >
+                            <?php foreach ($tournamentClasses as $class):
+                                $classId = $class['id'];
+                                $classLabel = $classId . ($class['description'] !== '' ? ' — ' . $class['description'] : '');
+                                $isJeune = in_array(strtoupper($classId), array_map('strtoupper', $currentAgeClasses['jeunes']), true);
+
+                                if (!$isJeune) {
+                                    continue;
+                                }
+
+                                echo registrarc_render_age_card($classId, $classLabel, 'jeunes');
+                            endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <div class="grid-2">
+                <div>
+                    <strong>Aperçu Jeunes</strong>
+                    <div class="age-preview" id="agePreviewJeunes"></div>
+                </div>
+
+                <div>
+                    <strong>Aperçu Adultes</strong>
+                    <div class="age-preview" id="agePreviewAdultes"></div>
+                </div>
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-title">Tarifs d'inscription</div>
             <div class="card-help">
@@ -1115,7 +1513,7 @@ include('Common/Templates/head.php');
                     <table>
                         <thead>
                             <tr>
-                                <th>Catégorie</th>
+                                <th>Classe d'âge</th>
                                 <th>1er départ</th>
                                 <th>Supplément</th>
                                 <th>Total 2 départs</th>
@@ -1143,7 +1541,7 @@ include('Common/Templates/head.php');
                     <table>
                         <thead>
                             <tr>
-                                <th>Catégorie</th>
+                                <th>Classe d'âge</th>
                                 <th>1er départ</th>
                                 <th>Supplément</th>
                                 <th>Total 2 départs</th>
@@ -1366,6 +1764,200 @@ Object.keys(registrarcAllowedRuleScopes).forEach(function(scopeCode) {
         registrarcDefaultRuleMatches[scopeCode] = 'OUI';
     }
 });
+
+function splitAgeClasses(value) {
+    if (!value) {
+        return [];
+    }
+
+    const parts = String(value).split(/[,;\r\n]+/);
+    const out = [];
+    const seen = new Set();
+
+    parts.forEach(function(part) {
+        const clean = String(part || '').trim().toUpperCase();
+
+        if (clean !== '' && !seen.has(clean)) {
+            seen.add(clean);
+            out.push(clean);
+        }
+    });
+
+    return out;
+}
+
+function renderAgeChips(containerId, inputId, className) {
+    const container = document.getElementById(containerId);
+    const input = document.getElementById(inputId);
+
+    if (!container || !input) {
+        return;
+    }
+
+    const values = splitAgeClasses(input.value);
+    let html = '';
+
+    values.forEach(function(value) {
+        html += '<span class="chip ' + className + '">' + escapeHtml(value) + '</span>';
+    });
+
+    container.innerHTML = html;
+}
+
+function updateAgePreview() {
+    renderAgeChips('agePreviewJeunes', 'age_classes_jeunes', 'age-chip-jeune');
+    renderAgeChips('agePreviewAdultes', 'age_classes_adultes', 'age-chip-adulte');
+}
+
+function syncAgeClassesFromLists() {
+    const jeunesZone = document.getElementById('jeunesZone');
+    const adultesZone = document.getElementById('adultesZone');
+
+    const jeunes = jeunesZone ? Array.from(jeunesZone.querySelectorAll('.age-card')).map(function(card) { return card.dataset.classId; }) : [];
+    const adultes = adultesZone ? Array.from(adultesZone.querySelectorAll('.age-card')).map(function(card) { return card.dataset.classId; }) : [];
+
+    const jeunesInput = document.getElementById('age_classes_jeunes');
+    const adultesInput = document.getElementById('age_classes_adultes');
+
+    if (jeunesInput) {
+        jeunesInput.value = jeunes.join(', ');
+    }
+
+    if (adultesInput) {
+        adultesInput.value = adultes.join(', ');
+    }
+
+    const jeunesCount = document.getElementById('jeunesCount');
+    const adultesCount = document.getElementById('adultesCount');
+
+    if (jeunesCount) {
+        jeunesCount.textContent = jeunes.length;
+    }
+
+    if (adultesCount) {
+        adultesCount.textContent = adultes.length;
+    }
+
+    updateAgePreview();
+    updateAgeDropzoneEmptyStates();
+}
+
+function updateAgeDropzoneEmptyStates() {
+    document.querySelectorAll('.age-dropzone').forEach(function(zone) {
+        const hasCards = zone.querySelector('.age-card') !== null;
+        let emptyEl = zone.querySelector('.age-dropzone-empty');
+
+        if (!hasCards) {
+            if (!emptyEl) {
+                emptyEl = document.createElement('div');
+                emptyEl.className = 'age-dropzone-empty';
+                emptyEl.textContent = 'Glisse une catégorie ici';
+                zone.appendChild(emptyEl);
+            }
+        } else if (emptyEl) {
+            emptyEl.remove();
+        }
+    });
+}
+
+function refreshAgeCard(card) {
+    const zone = card.closest('.age-dropzone');
+
+    if (!zone) {
+        return;
+    }
+
+    const group = zone.dataset.group;
+    const otherGroup = (group === 'jeunes') ? 'adultes' : 'jeunes';
+    card.dataset.group = group;
+
+    const btn = card.querySelector('.age-card-move');
+
+    if (btn) {
+        btn.textContent = (group === 'jeunes') ? '←' : '→';
+        btn.title = 'Déplacer vers ' + (otherGroup === 'jeunes' ? 'Jeunes' : 'Adultes');
+        btn.dataset.target = otherGroup;
+    }
+}
+
+function moveAgeCardTo(card, targetGroup) {
+    const targetZone = document.querySelector('.age-dropzone[data-group="' + targetGroup + '"]');
+
+    if (!targetZone || !card) {
+        return;
+    }
+
+    targetZone.appendChild(card);
+    refreshAgeCard(card);
+    syncAgeClassesFromLists();
+}
+
+function handleAgeCardMoveClick(btn) {
+    const card = btn.closest('.age-card');
+
+    if (!card) {
+        return;
+    }
+
+    moveAgeCardTo(card, btn.dataset.target);
+}
+
+let draggedAgeCard = null;
+
+function handleAgeCardDragStart(e) {
+    draggedAgeCard = e.currentTarget;
+    e.currentTarget.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+
+    try {
+        e.dataTransfer.setData('text/plain', e.currentTarget.dataset.classId || '');
+    } catch (err) {
+        // Certains navigateurs sont plus stricts sur setData, on ignore l'erreur sans bloquer le drag.
+    }
+}
+
+function handleAgeCardDragEnd(e) {
+    e.currentTarget.classList.remove('dragging');
+    draggedAgeCard = null;
+}
+
+function handleZoneDragOver(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
+}
+
+function handleZoneDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+}
+
+function handleZoneDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+
+    if (draggedAgeCard) {
+        e.currentTarget.appendChild(draggedAgeCard);
+        refreshAgeCard(draggedAgeCard);
+        syncAgeClassesFromLists();
+    }
+}
+
+function filterAgeCards(term) {
+    term = term.trim().toLowerCase();
+
+    document.querySelectorAll('.age-card').forEach(function(card) {
+        const text = card.textContent.toLowerCase();
+        card.style.display = (term === '' || text.includes(term)) ? '' : 'none';
+    });
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
 function buildRuleScopeOptionsHtml(selectedValue) {
     let html = '';
@@ -1668,6 +2260,16 @@ document.addEventListener('DOMContentLoaded', function() {
     if (importForm) {
         importForm.addEventListener('submit', handleImportSubmit);
     }
+
+    const mainForm = document.getElementById('mainSettingsForm');
+
+    if (mainForm) {
+        mainForm.addEventListener('submit', function() {
+            syncAgeClassesFromLists();
+        });
+    }
+
+    syncAgeClassesFromLists();
 });
 </script>
 
