@@ -299,7 +299,7 @@ function registrarc_enrich_invoice_rows(array $rows, array $tarifs, $organizerCl
         $row['numero_engagement'] = $numeroEngagement;
         $row['session_label'] = $sessionLabel;
         $row['target_label'] = $targetLabel;
-        $row['payment_status_label'] = $isPaid ? 'Payé' : 'Non payé';
+        $row['payment_status_label'] = $isPaid ? 'Payé' : (registrarc_nothing_due($amountBase) ? 'Gratuit' : 'Non payé');
         $row['payment_method'] = $method;
         $row['payment_method_label'] = $methodLabel;
         $row['tarif_rule_label'] = $ruleLabel;
@@ -979,7 +979,7 @@ Date : <?php echo htmlspecialchars($tournament['when_label']); ?>
                             </span>
                         </td>
                         <td>
-                            <span class="<?php echo ($row['payment_status_label'] === 'Payé') ? 'status-paid' : 'status-unpaid'; ?>">
+                            <span class="<?php echo ($row['payment_status_label'] !== 'Non payé') ? 'status-paid' : 'status-unpaid'; ?>">
                                 <?php echo htmlspecialchars($row['payment_status_label']); ?>
                             </span>
                         </td>

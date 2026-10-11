@@ -106,6 +106,8 @@ Le **club organisateur** est celui déclaré comme organisateur dans les informa
 
 Les modes Espèces (`ESP`), Chèque (`CHQ`), Virement (`VIR`) et Gratuit (`GRA`) sont proposés par défaut ; vous pouvez en ajouter (par exemple `CB` pour la carte bancaire) ou modifier leurs libellés. Le mode **Gratuit** est protégé : un engagement réglé en `GRA` compte pour 0 €. Le mode **Chèque** est celui qui alimente la remise de chèques.
 
+**Engagements gratuits.** Un engagement dont le tarif est de 0 € (tarif de base à 0, ou règle avancée à 0 €) n'a rien à payer : il est affiché **Gratuit**, ne compte pas parmi les archers à encaisser et n'a pas de bouton Valider. Il n'est pas nécessaire de le valider en mode `GRA`.
+
 N'oubliez pas de cliquer sur **Enregistrer les paramètres** en bas de la page.
 
 ### Exporter ou importer les paramètres
@@ -116,7 +118,7 @@ En haut de la page Paramètres, **Exporter le JSON** télécharge toute la confi
 
 C'est l'écran principal (capture en haut de cette page). Chaque ligne correspond à un départ d'un archer : numéro d'engagement, licence, nom, club, catégorie, départ, cible, montant, statut et paiement.
 
-- **Filtres** : club, catégorie, départ, statut de paiement et recherche libre (licence, nom, prénom, club). Ils sont mémorisés séparément pour chaque tournoi ; **Réinitialiser** les efface.
+- **Filtres** : club, catégorie, départ, statut de paiement (payés, non payés, gratuits) et recherche libre (licence, nom, prénom, club). Ils sont mémorisés séparément pour chaque tournoi ; **Réinitialiser** les efface.
 - **Tri** : cliquez sur l'en-tête d'une colonne ; un second clic inverse l'ordre.
 - **Indications** : « Archer non affecté » signale un archer sans cible ; un badge violet rappelle qu'une règle avancée s'applique.
 
@@ -139,8 +141,8 @@ Le bouton **Mode Kiosk** ouvre un écran pensé pour encaisser debout, sur un t�
 |---|---|
 | ![Mode Kiosk](docs/images/kiosk.png) | ![Encaissement dans le mode Kiosk](docs/images/kiosk-encaissement.png) |
 
-1. Cherchez l'archer (nom, licence ou club) ou filtrez par départ. Par défaut, seuls les archers **à payer** sont affichés ; cochez **Afficher les payés** pour voir tout le monde.
-2. Touchez une ou plusieurs lignes : le total s'affiche en bas.
+1. Cherchez l'archer (nom, licence ou club) ou filtrez par départ. Par défaut, seuls les archers **à payer** sont affichés ; cochez **Afficher payés et gratuits** pour voir tout le monde.
+2. Touchez une ou plusieurs lignes, ou **Tout sélectionner** pour cocher toutes les lignes affichées : le total s'affiche en bas.
 3. Choisissez le mode de paiement, cochez **Reçu demandé** si l'archer veut un reçu, puis **Encaisser**.
 
 Chaque ligne indique la cible, le départ, la catégorie, le club, le montant et le statut. Le résumé en haut donne le nombre d'engagements à encaisser, le montant restant dû, le nombre d'engagements payés et le nombre de reçus demandés. Les filtres sont mémorisés sur l'appareil, pour chaque tournoi.

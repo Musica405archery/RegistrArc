@@ -1030,6 +1030,12 @@ function registrarc_is_free_method($method) {
     return in_array($method, ['GRA', 'GRATUIT'], true);
 }
 
+// Engagement gratuit (montant dû à 0 €) : l'archer n'a rien à payer,
+// il n'est ni "à payer" ni en attente d'encaissement.
+function registrarc_nothing_due($amount) {
+    return (float)$amount <= 0;
+}
+
 function registrarc_is_null_empty_or_zero($value) {
     if ($value === null) {
         return true;

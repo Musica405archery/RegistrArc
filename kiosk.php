@@ -286,6 +286,7 @@ if ($rs) {
             'tarif_label' => $tarifLabel,
             'has_special_tarif' => $hasSpecialTarif,
             'is_free' => $isFree,
+            'nothing_due' => registrarc_nothing_due($amountDue),
         ];
     }
 }
@@ -320,6 +321,7 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
 }
 
 $paidRows = 0;
+$freeRows = 0;
 $unpaidRows = 0;
 $receiptRows = 0;
 $unpaidAmount = 0;
@@ -327,6 +329,8 @@ $unpaidAmount = 0;
 foreach ($rows as $r) {
     if ($r['payment_status'] === 'PAYE') {
         $paidRows++;
+    } elseif (!empty($r['nothing_due'])) {
+        $freeRows++;
     } else {
         $unpaidRows++;
         $unpaidAmount += (float)$r['amount_due'];
@@ -352,10 +356,12 @@ foreach ($rows as $r) {
             --muted: #6b7280;
             --line: #e5e7eb;
             --line-strong: #d1d5db;
-            --bg: #f3f4f6;
+            --bg: #eef1f6;
             --surface: #ffffff;
-            --accent: #1d4ed8;
-            --accent-soft: #eff4ff;
+            --accent: #14336b;
+            --accent-soft: #e9effa;
+            --on-accent: #ffffff;
+            --on-accent-muted: #c9d5ec;
             --paid: #15803d;
             --unpaid: #b91c1c;
             --warn: #b45309;
@@ -411,9 +417,9 @@ foreach ($rows as $r) {
 
         /* --- En-tête ---------------------------------------------------------- */
         .topbar {
-            background: var(--surface);
-            border-bottom: 1px solid var(--line);
-            padding: 12px 14px 10px;
+            background: var(--accent);
+            color: var(--on-accent);
+            padding: 12px 14px 14px;
         }
 
         .topbar-line {
@@ -429,13 +435,13 @@ foreach ($rows as $r) {
         }
 
         .subtitle {
-            color: var(--muted);
+            color: var(--on-accent-muted);
             font-size: 13px;
             margin-top: 1px;
         }
 
         .topbar a {
-            color: var(--accent);
+            color: var(--on-accent);
             font-size: 14px;
             text-decoration: none;
             white-space: nowrap;
@@ -447,20 +453,20 @@ foreach ($rows as $r) {
             gap: 4px 16px;
             margin-top: 8px;
             font-size: 13px;
-            color: var(--muted);
+            color: var(--on-accent-muted);
         }
 
         .summary strong {
-            color: var(--text);
+            color: var(--on-accent);
             font-weight: 600;
         }
 
         .summary .is-unpaid strong {
-            color: var(--unpaid);
+            color: #ffb4b4;
         }
 
         .summary .is-paid strong {
-            color: var(--paid);
+            color: #9ff0bd;
         }
 
         /* --- Recherche et filtres --------------------------------------------- */
@@ -568,10 +574,34 @@ foreach ($rows as $r) {
             accent-color: var(--accent);
         }
 
-        .results-count {
+        .results {
             margin-left: auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .results-count {
             color: var(--muted);
             font-size: 13px;
+        }
+
+        .select-all {
+            min-height: 36px;
+            padding: 0 12px;
+            border: 1px solid var(--accent);
+            border-radius: var(--radius);
+            background: var(--surface);
+            color: var(--accent);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .select-all:disabled {
+            border-color: var(--line-strong);
+            color: var(--muted);
+            cursor: default;
         }
 
         /* --- Liste ------------------------------------------------------------ */
@@ -595,8 +625,8 @@ foreach ($rows as $r) {
 
         .list {
             background: var(--surface);
-            border: 1px solid var(--line);
             border-radius: var(--radius);
+            box-shadow: 0 1px 2px rgba(20, 51, 107, 0.12);
             overflow: hidden;
         }
 
@@ -627,6 +657,7 @@ foreach ($rows as $r) {
         }
 
         .row-target {
+            color: var(--accent);
             font-size: 17px;
             font-weight: 700;
             text-align: center;
@@ -763,8 +794,8 @@ foreach ($rows as $r) {
             height: 48px;
             border: none;
             border-radius: var(--radius);
-            background: var(--paid);
-            color: #fff;
+            background: var(--accent);
+            color: var(--on-accent);
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
@@ -789,13 +820,13 @@ foreach ($rows as $r) {
             }
 
             .list {
-                border-left: none;
-                border-right: none;
                 border-radius: 0;
             }
 
-            .results-count {
+            .results {
                 margin-left: 0;
+                width: 100%;
+                justify-content: space-between;
             }
         }
     </style>
@@ -817,6 +848,9 @@ foreach ($rows as $r) {
                 <span class="is-unpaid"><strong><?php echo intval($unpaidRows); ?></strong> à encaisser</span>
                 <span><strong><?php echo registrarc_format_montant($unpaidAmount); ?> €</strong> restant dû</span>
                 <span class="is-paid"><strong><?php echo intval($paidRows); ?></strong> payé(s)</span>
+                <?php if ($freeRows > 0): ?>
+                    <span class="is-paid"><strong><?php echo intval($freeRows); ?></strong> gratuit(s)</span>
+                <?php endif; ?>
                 <span><strong><?php echo intval($receiptRows); ?></strong> reçu(s) demandé(s)</span>
             </div>
         </header>
@@ -848,10 +882,13 @@ foreach ($rows as $r) {
 
                 <label class="check switch">
                     <input type="checkbox" id="showPaidCheckbox" autocomplete="off" onchange="filterCards();">
-                    Afficher les payés
+                    Afficher payés et gratuits
                 </label>
 
-                <span class="results-count num"><span id="visibleCount"><?php echo count($rows); ?></span> affiché(s)</span>
+                <div class="results">
+                    <span class="results-count num"><span id="visibleCount"><?php echo count($rows); ?></span> affiché(s)</span>
+                    <button type="button" id="selectAllBtn" class="select-all" onclick="toggleSelectAllVisible();">Tout sélectionner</button>
+                </div>
             </div>
         </div>
 
@@ -879,6 +916,9 @@ foreach ($rows as $r) {
                 <?php foreach ($rows as $row): ?>
                     <?php
                     $isPaid = ($row['payment_status'] === 'PAYE');
+                    $isFreeDue = !$isPaid && !empty($row['nothing_due']);
+                    // Payé ou gratuit : rien à encaisser, masqué par défaut comme les payés
+                    $isSettled = $isPaid || $isFreeDue;
                     $amountData = number_format((float)$row['amount_due'], 2, '.', '');
                     $searchText = mb_strtolower(
                         $row['licence'] . ' ' .
@@ -897,10 +937,10 @@ foreach ($rows as $r) {
                     ]);
                     ?>
                     <div
-                        class="kiosk-card <?php echo $isPaid ? 'is-paid' : ''; ?>"
+                        class="kiosk-card <?php echo $isSettled ? 'is-paid' : ''; ?>"
                         data-search="<?php echo htmlspecialchars($searchText); ?>"
                         data-session="<?php echo htmlspecialchars($row['session']); ?>"
-                        data-paid="<?php echo $isPaid ? '1' : '0'; ?>"
+                        data-paid="<?php echo $isSettled ? '1' : '0'; ?>"
                         data-amount="<?php echo htmlspecialchars($amountData); ?>"
                         onclick="toggleCardSelection(event, this);"
                     >
@@ -948,10 +988,12 @@ foreach ($rows as $r) {
                             <div class="amount num">
                                 <?php echo !empty($row['is_free']) ? 'Gratuit' : registrarc_format_montant($row['amount_due']) . ' €'; ?>
                             </div>
-                            <div class="state <?php echo $isPaid ? 'state-paid' : 'state-unpaid'; ?>">
+                            <div class="state <?php echo $isSettled ? 'state-paid' : 'state-unpaid'; ?>">
                                 <?php
                                 if ($isPaid) {
                                     echo htmlspecialchars('Payé' . ($row['payment_method_label'] !== '' ? ' · ' . $row['payment_method_label'] : ''));
+                                } elseif ($isFreeDue) {
+                                    echo 'Rien à payer';
                                 } else {
                                     echo 'À payer';
                                 }
@@ -1263,6 +1305,40 @@ foreach ($rows as $r) {
             return total;
         }
 
+        function visibleCards() {
+            return Array.from(document.querySelectorAll('.kiosk-card')).filter(card => card.style.display !== 'none');
+        }
+
+        // Coche toutes les lignes affichées, ou les décoche si elles le sont déjà toutes
+        function toggleSelectAllVisible() {
+            const boxes = visibleCards()
+                .map(card => card.querySelector('.bulk-checkbox'))
+                .filter(cb => cb);
+            const allChecked = boxes.length > 0 && boxes.every(cb => cb.checked);
+
+            boxes.forEach(cb => {
+                cb.checked = !allChecked;
+            });
+
+            updateBulkSummary();
+        }
+
+        function updateSelectAllButton() {
+            const btn = document.getElementById('selectAllBtn');
+
+            if (!btn) {
+                return;
+            }
+
+            const boxes = visibleCards()
+                .map(card => card.querySelector('.bulk-checkbox'))
+                .filter(cb => cb);
+            const allChecked = boxes.length > 0 && boxes.every(cb => cb.checked);
+
+            btn.disabled = boxes.length === 0;
+            btn.textContent = allChecked ? 'Tout désélectionner' : 'Tout sélectionner';
+        }
+
         function updateBulkSummary() {
             const count = selectedBulkCount();
             const total = selectedBulkTotal();
@@ -1302,6 +1378,8 @@ foreach ($rows as $r) {
                     card.classList.remove('is-selected');
                 }
             });
+
+            updateSelectAllButton();
         }
 
         function currentBulkPaymentMethod() {

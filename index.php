@@ -628,6 +628,10 @@ foreach ($engagementsData as $idx => $e) {
     $engagementsData[$idx]['montant_base'] = $montantBase;
     $engagementsData[$idx]['montant'] = $montant;
     $engagementsData[$idx]['tarif_rule_label'] = $ruleLabel;
+    $engagementsData[$idx]['is_free'] = registrarc_nothing_due($montantBase);
+
+    // Ordre du tri par statut : non payé, gratuit, payé
+    $engagementsData[$idx]['status_rank'] = $e['payment_status'] ? 2 : ($engagementsData[$idx]['is_free'] ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -681,7 +685,13 @@ foreach ($engagementsData as $e) {
         continue;
     }
 
-    if ($filters['payment'] === 'unpaid' && $isPaid) {
+    $isFree = !$isPaid && !empty($e['is_free']);
+
+    if ($filters['payment'] === 'unpaid' && ($isPaid || $isFree)) {
+        continue;
+    }
+
+    if ($filters['payment'] === 'free' && !$isFree) {
         continue;
     }
 
@@ -742,7 +752,7 @@ usort($displayEngagements, function($a, $b) use ($sortColumn, $sortDirection) {
             return $dir * ($a['montant'] <=> $b['montant']);
 
         case 'statut':
-            return $dir * ($a['payment_status'] <=> $b['payment_status']);
+            return $dir * ($a['status_rank'] <=> $b['status_rank']);
 
         case 'paiement':
             return $dir * strcmp((string)$a['payment_method'], (string)$b['payment_method']);
@@ -1431,6 +1441,7 @@ include('Common/Templates/head.php');
                         <option value="all" <?php echo ($filters['payment'] === 'all') ? 'selected' : ''; ?>>Tous</option>
                         <option value="paid" <?php echo ($filters['payment'] === 'paid') ? 'selected' : ''; ?>>Payés</option>
                         <option value="unpaid" <?php echo ($filters['payment'] === 'unpaid') ? 'selected' : ''; ?>>Non payés</option>
+                        <option value="free" <?php echo ($filters['payment'] === 'free') ? 'selected' : ''; ?>>Gratuits</option>
                     </select>
                 </div>
 
@@ -1565,6 +1576,7 @@ include('Common/Templates/head.php');
                     <?php foreach ($displayEngagements as $e): ?>
                         <?php
                         $isPaid = ($e['payment_status'] == 1);
+                        $isFree = !$isPaid && !empty($e['is_free']);
                         $archerLabel = trim($e['nom'] . ' ' . $e['prenom']);
                         ?>
                         <tr>
@@ -1605,8 +1617,8 @@ include('Common/Templates/head.php');
                             <td style="text-align:right;"><?php echo registrarc_format_montant($e['montant']); ?> €</td>
 
                             <td>
-                                <span class="<?php echo $isPaid ? 'status-paid' : 'status-unpaid'; ?>">
-                                    <?php echo $isPaid ? 'Payé' : 'Non payé'; ?>
+                                <span class="<?php echo ($isPaid || $isFree) ? 'status-paid' : 'status-unpaid'; ?>">
+                                    <?php echo $isPaid ? 'Payé' : ($isFree ? 'Gratuit' : 'Non payé'); ?>
                                 </span>
                             </td>
 
@@ -1635,7 +1647,7 @@ include('Common/Templates/head.php');
                                             </button>
                                         </form>
                                         <?php endif; ?>
-                                    <?php elseif ($canWrite): ?>
+                                    <?php elseif ($canWrite && !$isFree): ?>
                                         <form method="POST">
                                             <?php echo registrarc_form_fields($TourId); ?>
                                             <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
