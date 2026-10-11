@@ -246,8 +246,26 @@ function registrarc_save_payments($TourId, array $data) {
     return registrarc_save_json_file(registrarc_payments_file_path($TourId), $data);
 }
 
+// Toute modification de paiement resynchronise les groupes de chèques
 function registrarc_update_payments($TourId, callable $mutator) {
-    return registrarc_update_json_file(registrarc_payments_file_path($TourId), $mutator);
+    $saved = registrarc_update_json_file(registrarc_payments_file_path($TourId), $mutator);
+
+    if ($saved) {
+        registrarc_sync_cheque_groups($TourId);
+    }
+
+    return $saved;
+}
+
+function registrarc_is_cheque_payment($payments, $engagementId) {
+    $payment = isset($payments[(string)$engagementId]) && is_array($payments[(string)$engagementId])
+        ? $payments[(string)$engagementId]
+        : [];
+
+    $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
+    $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
+
+    return $status === 'PAYE' && $method === 'CHQ';
 }
 
 function registrarc_set_payment_in_array(array &$data, $engagementId, $method, $receiptRequired = false) {
@@ -337,14 +355,7 @@ function registrarc_create_cheque_group($TourId, array $ids, array $payments) {
     $invalid = [];
 
     foreach ($ids as $id) {
-        $payment = isset($payments[(string)$id]) && is_array($payments[(string)$id])
-            ? $payments[(string)$id]
-            : [];
-
-        $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
-        $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
-
-        if ($status !== 'PAYE' || $method !== 'CHQ') {
+        if (!registrarc_is_cheque_payment($payments, $id)) {
             $invalid[] = $id;
         }
     }
@@ -358,10 +369,25 @@ function registrarc_create_cheque_group($TourId, array $ids, array $payments) {
     }
 
     $groupId = '';
+    $conflictGroups = [];
+    $conflictCount = 0;
 
     $saved = registrarc_update_json_file(
         registrarc_cheque_groups_file_path($TourId),
-        function (array &$groups) use ($ids, &$groupId) {
+        function (array &$groups) use ($ids, &$groupId, &$conflictGroups, &$conflictCount) {
+            $alreadyGrouped = registrarc_cheque_group_membership($groups);
+
+            foreach ($ids as $id) {
+                if (isset($alreadyGrouped[$id])) {
+                    $conflictCount++;
+                    $conflictGroups[$alreadyGrouped[$id]] = true;
+                }
+            }
+
+            if ($conflictCount > 0) {
+                return false;
+            }
+
             $groupId = registrarc_generate_cheque_group_id($groups);
 
             $groups[$groupId] = [
@@ -383,11 +409,92 @@ function registrarc_create_cheque_group($TourId, array $ids, array $payments) {
         ];
     }
 
+    if ($conflictCount > 0) {
+        return [
+            'ok' => false,
+            'message' => $conflictCount . " engagement(s) sélectionné(s) font déjà partie d'une remise groupée ("
+                . implode(', ', array_keys($conflictGroups)) . ").",
+            'group_id' => '',
+        ];
+    }
+
     return [
         'ok' => true,
         'message' => 'Remise groupée créée.',
         'group_id' => $groupId,
     ];
+}
+
+// [EnId => id du groupe] pour tous les engagements déjà groupés
+function registrarc_cheque_group_membership(array $groups) {
+    $map = [];
+
+    foreach ($groups as $groupId => $group) {
+        $ids = is_array($group) && isset($group['engagement_ids']) && is_array($group['engagement_ids'])
+            ? $group['engagement_ids']
+            : [];
+
+        foreach ($ids as $id) {
+            $id = intval($id);
+
+            if ($id > 0 && !isset($map[$id])) {
+                $map[$id] = $groupId;
+            }
+        }
+    }
+
+    return $map;
+}
+
+// Retire des groupes les engagements qui ne sont plus payés par chèque ou qui
+// figurent déjà dans un groupe plus ancien ; supprime les groupes devenus
+// inférieurs à 2 engagements (même règle qu'à la création).
+function registrarc_sync_cheque_groups($TourId) {
+    $file = registrarc_cheque_groups_file_path($TourId);
+
+    if (!is_file($file)) {
+        return true;
+    }
+
+    $payments = registrarc_load_payments($TourId);
+
+    return registrarc_update_json_file($file, function (array &$groups) use ($payments) {
+        $seen = [];
+        $changed = false;
+
+        foreach ($groups as $groupId => $group) {
+            if (!is_array($group)) {
+                continue;
+            }
+
+            $ids = isset($group['engagement_ids']) && is_array($group['engagement_ids'])
+                ? array_map('intval', $group['engagement_ids'])
+                : [];
+
+            $kept = [];
+
+            foreach ($ids as $id) {
+                if ($id <= 0 || isset($seen[$id]) || !registrarc_is_cheque_payment($payments, $id)) {
+                    continue;
+                }
+
+                $seen[$id] = true;
+                $kept[] = $id;
+            }
+
+            if (count($kept) < 2) {
+                unset($groups[$groupId]);
+                $changed = true;
+            } elseif ($kept !== $ids) {
+                $groups[$groupId]['engagement_ids'] = $kept;
+                $groups[$groupId]['archers_count'] = count($kept);
+                $groups[$groupId]['updated_at'] = date('Y-m-d H:i:s');
+                $changed = true;
+            }
+        }
+
+        return $changed ? null : false;
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -939,4 +1046,61 @@ function registrarc_format_montant($montant) {
     }
 
     return number_format($montant, 2, ',', ' ');
+}
+
+// ---------------------------------------------------------------------------
+// Sécurité des formulaires
+// - jeton anti-CSRF propre à la session
+// - tournoi affiché à l'écran : refuse un envoi fait depuis un onglet resté
+//   ouvert sur un autre tournoi que celui actuellement ouvert en session
+// ---------------------------------------------------------------------------
+function registrarc_form_token() {
+    if (empty($_SESSION['RegistrArc_form_token'])) {
+        $_SESSION['RegistrArc_form_token'] = bin2hex(random_bytes(32));
+    }
+
+    return $_SESSION['RegistrArc_form_token'];
+}
+
+// Champs cachés à placer dans chaque formulaire POST
+function registrarc_form_fields($TourId) {
+    return '<input type="hidden" name="registrarc_token" value="' . htmlspecialchars(registrarc_form_token()) . '">'
+        . '<input type="hidden" name="registrarc_tour" value="' . intval($TourId) . '">';
+}
+
+// Jeton seul, pour les pages qui ne dépendent pas d'un tournoi (mise à jour)
+// Retourne '' si l'envoi est valide, sinon le message d'erreur à afficher
+function registrarc_check_token() {
+    if (empty($_POST) && !empty($_SERVER['CONTENT_LENGTH'])) {
+        return "Envoi rejeté : les données dépassent la taille maximale acceptée par le serveur (post_max_size).";
+    }
+
+    $token = isset($_POST['registrarc_token']) ? (string)$_POST['registrarc_token'] : '';
+
+    if ($token === '' || empty($_SESSION['RegistrArc_form_token']) || !hash_equals($_SESSION['RegistrArc_form_token'], $token)) {
+        return "Formulaire expiré ou invalide : aucune modification enregistrée. Recharge la page et recommence.";
+    }
+
+    return '';
+}
+
+// Retourne '' si l'envoi est valide, sinon le message d'erreur à afficher
+function registrarc_check_form($TourId) {
+    $tokenError = registrarc_check_token();
+
+    if ($tokenError !== '') {
+        return $tokenError;
+    }
+
+    $postedTour = isset($_POST['registrarc_tour']) ? intval($_POST['registrarc_tour']) : 0;
+
+    if ($postedTour !== intval($TourId)) {
+        $code = registrarc_current_tournament_code();
+
+        return "Le tournoi ouvert a changé depuis l'affichage de cette page"
+            . ($code !== '' ? " (tournoi actuellement ouvert : " . $code . ")" : '')
+            . " : aucune modification enregistrée. Recharge la page.";
+    }
+
+    return '';
 }

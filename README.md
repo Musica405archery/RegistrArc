@@ -59,11 +59,13 @@ Les tarifs sont définis selon deux critères :
 |---|---|
 | Type de club | Club organisateur / Autres clubs |
 | Catégorie d'âge | Jeunes / Adultes |
-| Nombre d'engagements | 1er engagement / 2ème engagement (et suivants) |
+| Nombre d'engagements | 1er départ / supplément pour chaque départ suivant |
+
+L'archer paie le tarif du 1er départ, puis le supplément pour **chacun** de ses autres départs : pour n départs, le total est `1er départ + (n − 1) × supplément`.
 
 Par exemple, par défaut :
-- Un jeune d'un club extérieur paiera **8 €** pour son 1er engagement et **14 €** pour un 2ème.
-- Un adulte du club organisateur paiera **5 €** pour son 1er engagement et **10 €** pour un 2ème.
+- Un jeune d'un club extérieur paiera **8 €** pour son 1er départ, puis **6 €** par départ supplémentaire (14 € pour 2 départs, 20 € pour 3).
+- Un adulte du club organisateur paiera **5 €** pour son 1er départ, puis **5 €** par départ supplémentaire (10 € pour 2 départs, 15 € pour 3).
 
 👉 Ces montants sont entièrement modifiables depuis la page de paramétrage, selon les tarifs décidés par votre club pour la compétition.
 
@@ -136,6 +138,23 @@ RegistrArc apparaît dans le menu **Greffe** de l'interface I@nseo, dans la sect
 ## 🖨️ Impression
 
 La plupart des écrans (factures, remises de chèques, listes d'engagements) disposent d'une mise en page optimisée pour l'impression au format A4, directement depuis le navigateur (Ctrl+P ou bouton d'impression dédié).
+
+## 🔄 Mise à jour du module
+
+Lorsqu'une version plus récente est publiée sur GitHub, un bouton vert **⬆ Mise à jour** apparaît en haut de la liste des engagements, à gauche du bouton Mode Kiosk. Il n'est visible que pour un administrateur I@nseo.
+
+La page de mise à jour affiche la version installée, la version disponible et ses notes. L'installation :
+- télécharge d'abord tous les fichiers ; si un seul téléchargement échoue, rien n'est modifié ;
+- sauvegarde les fichiers remplacés dans `data/backup_<version>_<date>/` ;
+- ne touche jamais aux données (`data/`) ni à `module.json`.
+
+La vérification est mise en cache (6 h, ou 30 min après un échec) : sans connexion internet, le module fonctionne normalement et le bouton n'apparaît simplement pas.
+
+**Fichiers concernés :**
+- `module.json` : dépôt et branche d'origine (par défaut `main`). Configuration locale, jamais écrasée.
+- `version.json` : numéro de version et liste des fichiers du module (`files`).
+
+**Publier une nouvelle version :** sur la branche `main`, augmenter `version` dans `version.json` (format `1.2.3`), mettre à jour `date` et `notes`, et ajouter dans `files` tout nouveau fichier du module. Les installations le proposent ensuite au prochain contrôle.
 
 ## 📝 Notes importantes
 

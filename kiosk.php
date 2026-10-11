@@ -79,6 +79,15 @@ $canWrite = hasACL(AclParticipants, AclReadWrite);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkACL(AclParticipants, AclReadWrite);
 
+    $formError = registrarc_check_form($TourId);
+
+    if ($formError !== '') {
+        $_SESSION['RegistrArc_kiosk_message'] = $formError;
+        $_SESSION['RegistrArc_kiosk_message_type'] = 'error';
+        header('Location: kiosk.php');
+        exit();
+    }
+
     if (!$dataDirStatus['ok']) {
         $_SESSION['RegistrArc_kiosk_message'] = "Action impossible : le dossier JSON n'est pas accessible en écriture.";
         $_SESSION['RegistrArc_kiosk_message_type'] = 'error';
@@ -1357,6 +1366,7 @@ foreach ($rows as $r) {
     </div>
 
     <form method="POST" id="bulkForm" class="bottom-bulk-bar">
+        <?php echo registrarc_form_fields($TourId); ?>
         <input type="hidden" name="create_cheque_group_after_payment" id="create_cheque_group_after_payment" value="0">
 
         <div class="bottom-bulk-inner">

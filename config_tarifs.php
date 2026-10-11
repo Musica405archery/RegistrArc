@@ -40,7 +40,7 @@ checkACL(AclParticipants, AclReadOnly);
 $ModuleName = 'RegistrArc';
 $LegacyModuleName = 'Greffe2';
 
-$TourId = isset($_GET['ToId']) ? intval($_GET['ToId']) : (isset($_SESSION['TourId']) ? intval($_SESSION['TourId']) : 0);
+$TourId = isset($_SESSION['TourId']) ? intval($_SESSION['TourId']) : 0;
 
 if (!$TourId) {
     die('Tournoi non défini');
@@ -478,7 +478,12 @@ $messageType = 'success';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkACL(AclParticipants, AclReadWrite);
 
-    if (isset($_POST['import_settings'])) {
+    $formError = registrarc_check_form($TourId);
+
+    if ($formError !== '') {
+        $message = $formError;
+        $messageType = 'error';
+    } elseif (isset($_POST['import_settings'])) {
         if (!$dataDirStatus['ok']) {
             $message = "Import impossible : le dossier JSON n'est pas accessible en écriture.";
             $messageType = 'error';
@@ -524,9 +529,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
-    }
-
-    if (isset($_POST['save_settings'])) {
+    } elseif (isset($_POST['save_settings'])) {
         if (!$dataDirStatus['ok']) {
             $message = "Enregistrement impossible : le dossier JSON n'est pas accessible en écriture.";
             $messageType = 'error';
@@ -1107,7 +1110,7 @@ include('Common/Templates/head.php');
         <div class="import-export-row">
             <div>
                 <div style="font-weight:600;margin-bottom:6px;">Exporter</div>
-                <a href="?ToId=<?php echo intval($TourId); ?>&action=export" class="btn-primary">
+                <a href="?action=export" class="btn-primary">
                     Exporter le JSON
                 </a>
             </div>
@@ -1124,6 +1127,7 @@ include('Common/Templates/head.php');
                     data-current-code="<?php echo htmlspecialchars($tournamentCode); ?>"
                     style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;"
                 >
+                    <?php echo registrarc_form_fields($TourId); ?>
                     <input type="file" name="settings_file" id="settings_file" accept="application/json,.json" class="import-input" style="max-width:320px;">
                     <button type="submit" name="import_settings" value="1" class="btn-warning">
                         Importer
@@ -1135,6 +1139,7 @@ include('Common/Templates/head.php');
     </div>
 
     <form method="POST" id="mainSettingsForm">
+        <?php echo registrarc_form_fields($TourId); ?>
         <div class="card">
             <div class="card-title">Classes d'âge</div>
             <div class="card-help">

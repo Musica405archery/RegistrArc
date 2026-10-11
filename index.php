@@ -39,8 +39,10 @@ if (!$TourId) {
 // ---------------------------------------------------------------------------
 // Reset filtres
 // ---------------------------------------------------------------------------
+$filtersKey = 'RegistrArc_filters_' . $TourId;
+
 if (isset($_GET['reset'])) {
-    unset($_SESSION['RegistrArc_filters']);
+    unset($_SESSION[$filtersKey]);
     header('Location: ' . $_SERVER['PHP_SELF']);
     exit();
 }
@@ -49,14 +51,14 @@ if (isset($_GET['reset'])) {
 // Filtres / tri
 // ---------------------------------------------------------------------------
 $filters = [
-    'club'     => isset($_GET['club_filter'])     ? $_GET['club_filter']     : (isset($_SESSION['RegistrArc_filters']['club'])     ? $_SESSION['RegistrArc_filters']['club']     : 'all'),
-    'category' => isset($_GET['category_filter']) ? $_GET['category_filter'] : (isset($_SESSION['RegistrArc_filters']['category']) ? $_SESSION['RegistrArc_filters']['category'] : 'all'),
-    'payment'  => isset($_GET['payment_filter'])  ? $_GET['payment_filter']  : (isset($_SESSION['RegistrArc_filters']['payment'])  ? $_SESSION['RegistrArc_filters']['payment']  : 'all'),
-    'session'  => isset($_GET['session_filter'])  ? $_GET['session_filter']  : (isset($_SESSION['RegistrArc_filters']['session'])  ? $_SESSION['RegistrArc_filters']['session']  : 'all'),
-    'search'   => isset($_GET['search'])          ? trim($_GET['search'])    : (isset($_SESSION['RegistrArc_filters']['search'])   ? $_SESSION['RegistrArc_filters']['search']   : ''),
+    'club'     => isset($_GET['club_filter'])     ? $_GET['club_filter']     : (isset($_SESSION[$filtersKey]['club'])     ? $_SESSION[$filtersKey]['club']     : 'all'),
+    'category' => isset($_GET['category_filter']) ? $_GET['category_filter'] : (isset($_SESSION[$filtersKey]['category']) ? $_SESSION[$filtersKey]['category'] : 'all'),
+    'payment'  => isset($_GET['payment_filter'])  ? $_GET['payment_filter']  : (isset($_SESSION[$filtersKey]['payment'])  ? $_SESSION[$filtersKey]['payment']  : 'all'),
+    'session'  => isset($_GET['session_filter'])  ? $_GET['session_filter']  : (isset($_SESSION[$filtersKey]['session'])  ? $_SESSION[$filtersKey]['session']  : 'all'),
+    'search'   => isset($_GET['search'])          ? trim($_GET['search'])    : (isset($_SESSION[$filtersKey]['search'])   ? $_SESSION[$filtersKey]['search']   : ''),
 ];
 
-$_SESSION['RegistrArc_filters'] = $filters;
+$_SESSION[$filtersKey] = $filters;
 
 $sortColumn = isset($_GET['sort']) ? $_GET['sort'] : 'nom';
 $sortDirection = (isset($_GET['dir']) && strtolower($_GET['dir']) === 'desc') ? 'desc' : 'asc';
@@ -231,6 +233,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkACL(AclParticipants, AclReadWrite);
 
     $redirectQuery = registrarc_redirect_params($filters, $sortColumn, $sortDirection);
+
+    $formError = registrarc_check_form($TourId);
+
+    if ($formError !== '') {
+        $_SESSION['RegistrArc_payment_message'] = $formError;
+        $_SESSION['RegistrArc_message_type'] = 'error';
+        header('Location: ' . $_SERVER['PHP_SELF'] . ($redirectQuery ? '?' . $redirectQuery : ''));
+        exit();
+    }
 
     if (!$dataDirStatus['ok']) {
         $_SESSION['RegistrArc_payment_message'] = "Action impossible : le dossier JSON n'est pas accessible en écriture.";
@@ -890,6 +901,7 @@ include('Common/Templates/head.php');
     .btn-import,
     .btn-settings,
     .btn-kiosk,
+    .btn-update,
     .btn-cheque {
         display: inline-flex;
         align-items: center;
@@ -997,6 +1009,19 @@ include('Common/Templates/head.php');
 
     .btn-kiosk:hover {
         background: var(--kiosk-dark);
+    }
+
+    .btn-update {
+        background: var(--success-color);
+        color: #fff;
+    }
+
+    .btn-update:hover {
+        background: #15803d;
+    }
+
+    .btn-update[hidden] {
+        display: none;
     }
 
     .btn-cheque {
@@ -1322,11 +1347,15 @@ include('Common/Templates/head.php');
         </div>
 
         <div class="header-actions">
+            <a href="update.php" id="registrarcUpdateBtn" class="btn-update" hidden>
+                ⬆ Mise à jour
+            </a>
+
             <a href="kiosk.php" class="btn-kiosk">
                 Mode Kiosk
             </a>
 
-            <a href="<?php echo $CFG->ROOT_DIR; ?>Modules/Custom/RegistrArc/config_tarifs.php?ToId=<?php echo $TourId; ?>" class="btn-settings">
+            <a href="<?php echo $CFG->ROOT_DIR; ?>Modules/Custom/RegistrArc/config_tarifs.php" class="btn-settings">
                 ⚙ Paramétrer tarifs & paiements
             </a>
         </div>
@@ -1422,6 +1451,7 @@ include('Common/Templates/head.php');
         <div class="card-title">Actions sur les engagements sélectionnés</div>
 
         <form method="POST" id="bulkForm">
+            <?php echo registrarc_form_fields($TourId); ?>
             <input type="hidden" name="create_cheque_group_after_payment" id="create_cheque_group_after_payment" value="0">
 
             <div class="filters-row">
@@ -1478,6 +1508,7 @@ include('Common/Templates/head.php');
 
         <?php if ($canWrite): ?>
         <form method="POST" enctype="multipart/form-data" id="importRegistrationsForm" style="display:none;margin-top:10px;">
+            <?php echo registrarc_form_fields($TourId); ?>
             <div class="filters-row">
                 <div class="filter-group">
                     <label for="registrations_file">Fichier JSON inscriptions</label>
@@ -1590,6 +1621,7 @@ include('Common/Templates/head.php');
 
                                         <?php if ($canWrite): ?>
                                         <form method="POST">
+                                            <?php echo registrarc_form_fields($TourId); ?>
                                             <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
                                             <input type="hidden" name="validate_payment" value="unvalidate">
 
@@ -1605,6 +1637,7 @@ include('Common/Templates/head.php');
                                         <?php endif; ?>
                                     <?php elseif ($canWrite): ?>
                                         <form method="POST">
+                                            <?php echo registrarc_form_fields($TourId); ?>
                                             <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
                                             <input type="hidden" name="validate_payment" value="validate">
 
@@ -2218,7 +2251,28 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     updateBulkInvoiceButton();
+    checkModuleUpdate();
 });
+
+// Bouton "Mise à jour" affiché seulement si une version plus récente existe
+function checkModuleUpdate() {
+    const btn = document.getElementById('registrarcUpdateBtn');
+
+    if (!btn || !window.fetch) {
+        return;
+    }
+
+    fetch('update.php?action=check', { credentials: 'same-origin' })
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+            if (data && data.update) {
+                btn.textContent = '⬆ Mise à jour ' + data.remote;
+                btn.title = 'Version installée : ' + data.local;
+                btn.hidden = false;
+            }
+        })
+        .catch(() => {});
+}
 </script>
 
 <?php include('Common/Templates/tail.php'); ?>

@@ -94,6 +94,7 @@ function registrarc_storage_write($file, array $data) {
 }
 
 // $mutator reçoit le contenu courant par référence et le modifie.
+// S'il retourne false, rien n'est écrit (pas une erreur : rien à changer).
 // Tout le cycle est fait sous verrou exclusif.
 function registrarc_storage_update($file, callable $mutator) {
     registrarc_storage_error('');
@@ -122,7 +123,9 @@ function registrarc_storage_update($file, callable $mutator) {
             return false;
         }
 
-        $mutator($data);
+        if ($mutator($data) === false) {
+            return true;
+        }
 
         return registrarc_storage_write($file, $data);
     } finally {

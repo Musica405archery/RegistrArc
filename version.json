@@ -1,0 +1,19 @@
+{
+    "version": "1.0.0",
+    "date": "2026-10-11",
+    "notes": "Première version suivie par le système de mise à jour.\n\n- Stockage JSON fiabilisé : écritures atomiques sous verrou, copie .bak, refus d'écraser un fichier illisible, dossier data/ protégé du web.\n- Écriture réservée aux droits en écriture ; boutons masqués en lecture seule.\n- Formulaires protégés (jeton anti-CSRF) et refus d'un envoi fait depuis un onglet resté sur un autre tournoi.\n- Code commun regroupé dans lib/ ; la remise de chèques utilise les classes d'âge configurées.\n- Groupes de chèques resynchronisés après chaque modification de paiement, doublons refusés.\n- Mise à jour du module depuis GitHub.",
+    "files": [
+        "index.php",
+        "kiosk.php",
+        "config_tarifs.php",
+        "invoice.php",
+        "bankchequedeposite.php",
+        "update.php",
+        "menu.php",
+        "lib/registrarc.inc.php",
+        "lib/registrarc_storage.inc.php",
+        "lib/registrarc_update.inc.php",
+        "README.md",
+        "version.json"
+    ]
+}
