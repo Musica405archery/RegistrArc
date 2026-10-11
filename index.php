@@ -22,6 +22,7 @@ define('debug', false);
 require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
 require_once('Common/Fun_Various.inc.php');
 require_once('Common/Fun_Sessions.inc.php');
+require_once(dirname(__FILE__) . '/lib/registrarc.inc.php');
 
 CheckTourSession(true);
 checkACL(AclParticipants, AclReadOnly);
@@ -38,8 +39,10 @@ if (!$TourId) {
 // ---------------------------------------------------------------------------
 // Reset filtres
 // ---------------------------------------------------------------------------
+$filtersKey = 'RegistrArc_filters_' . $TourId;
+
 if (isset($_GET['reset'])) {
-    unset($_SESSION['RegistrArc_filters']);
+    unset($_SESSION[$filtersKey]);
     header('Location: ' . $_SERVER['PHP_SELF']);
     exit();
 }
@@ -48,149 +51,21 @@ if (isset($_GET['reset'])) {
 // Filtres / tri
 // ---------------------------------------------------------------------------
 $filters = [
-    'club'     => isset($_GET['club_filter'])     ? $_GET['club_filter']     : (isset($_SESSION['RegistrArc_filters']['club'])     ? $_SESSION['RegistrArc_filters']['club']     : 'all'),
-    'category' => isset($_GET['category_filter']) ? $_GET['category_filter'] : (isset($_SESSION['RegistrArc_filters']['category']) ? $_SESSION['RegistrArc_filters']['category'] : 'all'),
-    'payment'  => isset($_GET['payment_filter'])  ? $_GET['payment_filter']  : (isset($_SESSION['RegistrArc_filters']['payment'])  ? $_SESSION['RegistrArc_filters']['payment']  : 'all'),
-    'session'  => isset($_GET['session_filter'])  ? $_GET['session_filter']  : (isset($_SESSION['RegistrArc_filters']['session'])  ? $_SESSION['RegistrArc_filters']['session']  : 'all'),
-    'search'   => isset($_GET['search'])          ? trim($_GET['search'])    : (isset($_SESSION['RegistrArc_filters']['search'])   ? $_SESSION['RegistrArc_filters']['search']   : ''),
+    'club'     => isset($_GET['club_filter'])     ? $_GET['club_filter']     : (isset($_SESSION[$filtersKey]['club'])     ? $_SESSION[$filtersKey]['club']     : 'all'),
+    'category' => isset($_GET['category_filter']) ? $_GET['category_filter'] : (isset($_SESSION[$filtersKey]['category']) ? $_SESSION[$filtersKey]['category'] : 'all'),
+    'payment'  => isset($_GET['payment_filter'])  ? $_GET['payment_filter']  : (isset($_SESSION[$filtersKey]['payment'])  ? $_SESSION[$filtersKey]['payment']  : 'all'),
+    'session'  => isset($_GET['session_filter'])  ? $_GET['session_filter']  : (isset($_SESSION[$filtersKey]['session'])  ? $_SESSION[$filtersKey]['session']  : 'all'),
+    'search'   => isset($_GET['search'])          ? trim($_GET['search'])    : (isset($_SESSION[$filtersKey]['search'])   ? $_SESSION[$filtersKey]['search']   : ''),
 ];
 
-$_SESSION['RegistrArc_filters'] = $filters;
+$_SESSION[$filtersKey] = $filters;
 
 $sortColumn = isset($_GET['sort']) ? $_GET['sort'] : 'nom';
 $sortDirection = (isset($_GET['dir']) && strtolower($_GET['dir']) === 'desc') ? 'desc' : 'asc';
 
 // ---------------------------------------------------------------------------
-// Paramètres module avec fallback ancien Greffe2
-// ---------------------------------------------------------------------------
-function registrarc_get_module_parameter($name, $default = '') {
-    global $ModuleName, $LegacyModuleName;
-
-    $value = getModuleParameter($ModuleName, $name, '');
-
-    if ($value !== '' && $value !== null) {
-        return $value;
-    }
-
-    return getModuleParameter($LegacyModuleName, $name, $default);
-}
-
-// ---------------------------------------------------------------------------
-// Dossiers / fichiers JSON
-// ---------------------------------------------------------------------------
-function registrarc_data_dir() {
-    return dirname(__FILE__) . '/data';
-}
-
-function registrarc_payments_file_path($TourId) {
-    return registrarc_data_dir() . '/payments_' . intval($TourId) . '.json';
-}
-
-function registrarc_settings_file_path($TourId) {
-    return registrarc_data_dir() . '/settings_' . intval($TourId) . '.json';
-}
-
-function registrarc_cheque_groups_file_path($TourId) {
-    return registrarc_data_dir() . '/cheque_groups_' . intval($TourId) . '.json';
-}
-
-function registrarc_data_dir_status() {
-    $dir = registrarc_data_dir();
-
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0775, true);
-    }
-
-    if (!is_dir($dir)) {
-        return [
-            'ok' => false,
-            'path' => $dir,
-            'message' => "Le dossier de stockage JSON n'existe pas et n'a pas pu être créé automatiquement.",
-        ];
-    }
-
-    if (!is_writable($dir)) {
-        return [
-            'ok' => false,
-            'path' => $dir,
-            'message' => "Le dossier de stockage JSON existe, mais il n'est pas accessible en écriture.",
-        ];
-    }
-
-    $testFile = $dir . '/.registrarc_write_test';
-
-    if (@file_put_contents($testFile, 'ok', LOCK_EX) === false) {
-        return [
-            'ok' => false,
-            'path' => $dir,
-            'message' => "Le dossier de stockage JSON semble accessible, mais l'écriture d'un fichier de test a échoué.",
-        ];
-    }
-
-    @unlink($testFile);
-
-    return [
-        'ok' => true,
-        'path' => $dir,
-        'message' => '',
-    ];
-}
-
-function registrarc_ensure_data_dir() {
-    $status = registrarc_data_dir_status();
-    return !empty($status['ok']);
-}
-
-// ---------------------------------------------------------------------------
-// JSON générique
-// ---------------------------------------------------------------------------
-function registrarc_load_json_file($file) {
-    if (!is_file($file)) {
-        return [];
-    }
-
-    $json = file_get_contents($file);
-    $data = json_decode($json, true);
-
-    return is_array($data) ? $data : [];
-}
-
-function registrarc_save_json_file($file, array $data) {
-    if (!registrarc_ensure_data_dir()) {
-        return false;
-    }
-
-    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-
-    return file_put_contents($file, $json, LOCK_EX) !== false;
-}
-
-// ---------------------------------------------------------------------------
 // Code tournoi
 // ---------------------------------------------------------------------------
-function registrarc_current_tournament_code() {
-    if (!empty($_SESSION['TourCodeSafe'])) {
-        return trim((string)$_SESSION['TourCodeSafe']);
-    }
-
-    if (!empty($_SESSION['TourCode'])) {
-        return trim((string)$_SESSION['TourCode']);
-    }
-
-    return '';
-}
-
-function registrarc_safe_filename_part($value) {
-    $value = trim((string)$value);
-
-    if ($value === '') {
-        return '';
-    }
-
-    $value = preg_replace('/[^A-Za-z0-9_\-]+/', '_', $value);
-    return trim($value, '_');
-}
-
 function registrarc_extract_tournament_code_from_export($data) {
     if (!is_array($data)) {
         return '';
@@ -210,18 +85,6 @@ function registrarc_extract_tournament_code_from_export($data) {
 // ---------------------------------------------------------------------------
 // Dates export/import
 // ---------------------------------------------------------------------------
-function registrarc_timestamp_from_value($value) {
-    $value = trim((string)$value);
-
-    if ($value === '') {
-        return 0;
-    }
-
-    $ts = strtotime($value);
-
-    return $ts ? $ts : 0;
-}
-
 function registrarc_export_timestamp(array $data, $fallbackFile = '') {
     $savedAt = isset($data['saved_at']) ? registrarc_timestamp_from_value($data['saved_at']) : 0;
 
@@ -249,688 +112,28 @@ function registrarc_export_timestamp(array $data, $fallbackFile = '') {
 // ---------------------------------------------------------------------------
 // Paiements JSON
 // ---------------------------------------------------------------------------
-function registrarc_load_payments($TourId) {
-    return registrarc_load_json_file(registrarc_payments_file_path($TourId));
-}
-
-function registrarc_save_payments($TourId, array $data) {
-    return registrarc_save_json_file(registrarc_payments_file_path($TourId), $data);
-}
-
-function registrarc_normalize_payment_code($code) {
-    $code = strtoupper(trim((string)$code));
-
-    $map = [
-        'ESPECE'   => 'ESP',
-        'ESPECES'  => 'ESP',
-        'ESPÈCE'   => 'ESP',
-        'ESPÈCES'  => 'ESP',
-        'CHEQUE'   => 'CHQ',
-        'CHÈQUE'   => 'CHQ',
-        'VIREMENT' => 'VIR',
-        'GRATUIT'  => 'GRA',
-    ];
-
-    return isset($map[$code]) ? $map[$code] : $code;
-}
-
-function registrarc_set_payment_in_array(array &$data, $engagementId, $method, $receiptRequired = false) {
-    $engagementId = intval($engagementId);
-
-    if ($engagementId <= 0) {
-        return false;
-    }
-
-    $method = registrarc_normalize_payment_code($method);
-
-    $data[(string)$engagementId] = [
-        'status' => 'PAYE',
-        'method' => $method,
-        'receipt_required' => !empty($receiptRequired),
-        'updated_at' => date('Y-m-d H:i:s'),
-    ];
-
-    return true;
-}
-
-function registrarc_unset_payment_in_array(array &$data, $engagementId) {
-    $engagementId = intval($engagementId);
-
-    if ($engagementId <= 0) {
-        return false;
-    }
-
-    $data[(string)$engagementId] = [
-        'status' => 'NON_PAYE',
-        'method' => '',
-        'receipt_required' => false,
-        'updated_at' => date('Y-m-d H:i:s'),
-    ];
-
-    return true;
-}
-
 function registrarc_set_payment($TourId, $engagementId, $method, $receiptRequired = false) {
-    $data = registrarc_load_payments($TourId);
-    registrarc_set_payment_in_array($data, $engagementId, $method, $receiptRequired);
-    return registrarc_save_payments($TourId, $data);
+    return registrarc_set_payment_bulk($TourId, [$engagementId], $method, $receiptRequired);
 }
 
 function registrarc_unset_payment($TourId, $engagementId) {
-    $data = registrarc_load_payments($TourId);
-    registrarc_unset_payment_in_array($data, $engagementId);
-    return registrarc_save_payments($TourId, $data);
+    return registrarc_unset_payment_bulk($TourId, [$engagementId]);
 }
 
 function registrarc_set_payment_bulk($TourId, array $ids, $method, $receiptRequired = false) {
-    $data = registrarc_load_payments($TourId);
-
-    foreach ($ids as $id) {
-        registrarc_set_payment_in_array($data, $id, $method, $receiptRequired);
-    }
-
-    return registrarc_save_payments($TourId, $data);
+    return registrarc_update_payments($TourId, function (array &$data) use ($ids, $method, $receiptRequired) {
+        foreach ($ids as $id) {
+            registrarc_set_payment_in_array($data, $id, $method, $receiptRequired);
+        }
+    });
 }
 
 function registrarc_unset_payment_bulk($TourId, array $ids) {
-    $data = registrarc_load_payments($TourId);
-
-    foreach ($ids as $id) {
-        registrarc_unset_payment_in_array($data, $id);
-    }
-
-    return registrarc_save_payments($TourId, $data);
-}
-
-// ---------------------------------------------------------------------------
-// Groupes de chèques JSON
-// ---------------------------------------------------------------------------
-function registrarc_load_cheque_groups($TourId) {
-    return registrarc_load_json_file(registrarc_cheque_groups_file_path($TourId));
-}
-
-function registrarc_save_cheque_groups($TourId, array $data) {
-    return registrarc_save_json_file(registrarc_cheque_groups_file_path($TourId), $data);
-}
-
-function registrarc_generate_cheque_group_id(array $groups) {
-    $base = 'CG-' . date('Ymd-His');
-    $idx = 1;
-
-    do {
-        $id = $base . '-' . str_pad($idx, 3, '0', STR_PAD_LEFT);
-        $idx++;
-    } while (isset($groups[$id]));
-
-    return $id;
-}
-
-function registrarc_create_cheque_group($TourId, array $ids, array $payments) {
-    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
-
-    if (count($ids) < 2) {
-        return [
-            'ok' => false,
-            'message' => 'Sélectionne au moins 2 engagements pour créer une remise groupée.',
-            'group_id' => '',
-        ];
-    }
-
-    $invalid = [];
-
-    foreach ($ids as $id) {
-        $payment = isset($payments[(string)$id]) && is_array($payments[(string)$id])
-            ? $payments[(string)$id]
-            : [];
-
-        $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
-        $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
-
-        if ($status !== 'PAYE' || $method !== 'CHQ') {
-            $invalid[] = $id;
+    return registrarc_update_payments($TourId, function (array &$data) use ($ids) {
+        foreach ($ids as $id) {
+            registrarc_unset_payment_in_array($data, $id);
         }
-    }
-
-    if (!empty($invalid)) {
-        return [
-            'ok' => false,
-            'message' => 'Tous les engagements sélectionnés doivent être payés par chèque.',
-            'group_id' => '',
-        ];
-    }
-
-    $groups = registrarc_load_cheque_groups($TourId);
-    $groupId = registrarc_generate_cheque_group_id($groups);
-
-    $groups[$groupId] = [
-        'id' => $groupId,
-        'created_at' => date('Y-m-d H:i:s'),
-        'updated_at' => date('Y-m-d H:i:s'),
-        'label' => 'Chèque groupé',
-        'engagement_ids' => $ids,
-        'archers_count' => count($ids),
-    ];
-
-    if (!registrarc_save_cheque_groups($TourId, $groups)) {
-        return [
-            'ok' => false,
-            'message' => "Erreur : impossible d'écrire le fichier JSON des remises de chèques.",
-            'group_id' => '',
-        ];
-    }
-
-    return [
-        'ok' => true,
-        'message' => 'Remise groupée créée.',
-        'group_id' => $groupId,
-    ];
-}
-
-// ---------------------------------------------------------------------------
-// Paramètres JSON : tarifs / modes / règles
-// ---------------------------------------------------------------------------
-function registrarc_default_tarifs() {
-    return [
-        'clubs_autres' => [
-            'jeunes' => [1 => 8, 2 => 14],
-            'adultes' => [1 => 10, 2 => 18],
-        ],
-        'organizer' => [
-            'jeunes' => [1 => 4, 2 => 8],
-            'adultes' => [1 => 5, 2 => 10],
-        ],
-    ];
-}
-
-function registrarc_default_age_classes() {
-    return [
-        'jeunes' => ['U11', 'U13', 'U15', 'U18'],
-        'adultes' => ['U21', 'S1', 'S2', 'S3', 'Senior', 'Scratch'],
-    ];
-}
-
-function registrarc_split_age_class_string($value) {
-    $value = trim((string)$value);
-
-    if ($value === '') {
-        return [];
-    }
-
-    $parts = preg_split('/[,;\r\n]+/', $value);
-    $out = [];
-
-    foreach ($parts as $part) {
-        $part = strtoupper(trim((string)$part));
-
-        if ($part !== '') {
-            $out[] = $part;
-        }
-    }
-
-    return array_values(array_unique($out));
-}
-
-function registrarc_normalize_age_classes($ageClasses) {
-    $default = registrarc_default_age_classes();
-
-    if (!is_array($ageClasses)) {
-        return $default;
-    }
-
-    $jeunes = isset($ageClasses['jeunes']) ? $ageClasses['jeunes'] : [];
-    $adultes = isset($ageClasses['adultes']) ? $ageClasses['adultes'] : [];
-
-    if (!is_array($jeunes)) {
-        $jeunes = registrarc_split_age_class_string($jeunes);
-    }
-
-    if (!is_array($adultes)) {
-        $adultes = registrarc_split_age_class_string($adultes);
-    }
-
-    $cleanJeunes = [];
-    foreach ($jeunes as $cat) {
-        $cat = strtoupper(trim((string)$cat));
-        if ($cat !== '') {
-            $cleanJeunes[] = $cat;
-        }
-    }
-
-    $cleanAdultes = [];
-    foreach ($adultes as $cat) {
-        $cat = strtoupper(trim((string)$cat));
-        if ($cat !== '') {
-            $cleanAdultes[] = $cat;
-        }
-    }
-
-    $cleanJeunes = array_values(array_unique($cleanJeunes));
-    $cleanAdultes = array_values(array_unique($cleanAdultes));
-
-    if (empty($cleanJeunes)) {
-        $cleanJeunes = $default['jeunes'];
-    }
-
-    if (empty($cleanAdultes)) {
-        $cleanAdultes = $default['adultes'];
-    }
-
-    return [
-        'jeunes' => $cleanJeunes,
-        'adultes' => $cleanAdultes,
-    ];
-}
-
-function registrarc_default_payment_modes() {
-    return [
-        'ESP' => 'Espèces',
-        'CHQ' => 'Chèque',
-        'VIR' => 'Virement',
-        'GRA' => 'Gratuit',
-    ];
-}
-
-function registrarc_normalize_payment_modes($modes) {
-    if (!is_array($modes) || empty($modes)) {
-        return registrarc_default_payment_modes();
-    }
-
-    $clean = [];
-
-    foreach ($modes as $code => $label) {
-        $code = registrarc_normalize_payment_code($code);
-        $label = trim((string)$label);
-
-        if ($code === '') {
-            continue;
-        }
-
-        if ($label === '') {
-            if ($code === 'ESP') {
-                $label = 'Espèces';
-            } elseif ($code === 'CHQ') {
-                $label = 'Chèque';
-            } elseif ($code === 'VIR') {
-                $label = 'Virement';
-            } elseif ($code === 'GRA') {
-                $label = 'Gratuit';
-            } else {
-                $label = $code;
-            }
-        }
-
-        $clean[$code] = $label;
-    }
-
-    if (!isset($clean['GRA'])) {
-        $clean['GRA'] = 'Gratuit';
-    }
-
-    return empty($clean) ? registrarc_default_payment_modes() : $clean;
-}
-
-function registrarc_normalize_settings($TourId, $settings) {
-    $out = [
-        'tarifs' => registrarc_default_tarifs(),
-        'age_classes' => registrarc_default_age_classes(),
-        'payment_modes' => registrarc_default_payment_modes(),
-        'rules' => [],
-    ];
-
-    if (!is_array($settings)) {
-        return $out;
-    }
-
-    if (isset($settings['tarifs']) && is_array($settings['tarifs'])) {
-        $out['tarifs'] = $settings['tarifs'];
-    }
-
-    if (isset($settings['age_classes'])) {
-        $out['age_classes'] = registrarc_normalize_age_classes($settings['age_classes']);
-    }
-
-    if (isset($settings['payment_modes']) && is_array($settings['payment_modes'])) {
-        $out['payment_modes'] = registrarc_normalize_payment_modes($settings['payment_modes']);
-    }
-
-    if (isset($settings['rules']) && is_array($settings['rules'])) {
-        $out['rules'] = $settings['rules'];
-    }
-
-    return $out;
-}
-
-function registrarc_load_settings($TourId) {
-    $file = registrarc_settings_file_path($TourId);
-
-    if (is_file($file)) {
-        $json = file_get_contents($file);
-        $data = json_decode($json, true);
-
-        if (is_array($data)) {
-            return registrarc_normalize_settings($TourId, $data);
-        }
-    }
-
-    $settings = [
-        'tarifs' => registrarc_default_tarifs(),
-        'payment_modes' => registrarc_default_payment_modes(),
-        'rules' => [],
-    ];
-
-    $tarifsJson = registrarc_get_module_parameter('Tarifs_' . intval($TourId), '');
-    if ($tarifsJson) {
-        $tarifsData = json_decode($tarifsJson, true);
-        if (is_array($tarifsData) && isset($tarifsData['clubs_autres'], $tarifsData['organizer'])) {
-            $settings['tarifs'] = $tarifsData;
-        }
-    }
-
-    $modesJson = registrarc_get_module_parameter('PaymentModes_' . intval($TourId), '');
-    if ($modesJson) {
-        $modesData = json_decode($modesJson, true);
-        if (is_array($modesData)) {
-            $settings['payment_modes'] = registrarc_normalize_payment_modes($modesData);
-        }
-    }
-
-    $rulesJson = registrarc_get_module_parameter('TarifsRules_' . intval($TourId), '');
-    if ($rulesJson) {
-        $rulesData = json_decode($rulesJson, true);
-        if (is_array($rulesData)) {
-            $settings['rules'] = $rulesData;
-        }
-    }
-
-    return registrarc_normalize_settings($TourId, $settings);
-}
-
-function registrarc_load_tarifs($TourId, $organizerClubCode, $organizerClubName) {
-    $settings = registrarc_load_settings($TourId);
-
-    if (isset($settings['tarifs']) && is_array($settings['tarifs']) && isset($settings['tarifs']['clubs_autres'], $settings['tarifs']['organizer'])) {
-        $settings['tarifs']['organizer_club_code'] = $organizerClubCode;
-        $settings['tarifs']['organizer_club_name'] = $organizerClubName;
-        return $settings['tarifs'];
-    }
-
-    $default = registrarc_default_tarifs();
-    $default['organizer_club_code'] = $organizerClubCode;
-    $default['organizer_club_name'] = $organizerClubName;
-
-    return $default;
-}
-
-function registrarc_load_age_classes($TourId) {
-    $settings = registrarc_load_settings($TourId);
-
-    if (isset($settings['age_classes'])) {
-        return registrarc_normalize_age_classes($settings['age_classes']);
-    }
-
-    return registrarc_default_age_classes();
-}
-
-function registrarc_load_payment_modes($TourId) {
-    $settings = registrarc_load_settings($TourId);
-
-    if (isset($settings['payment_modes']) && is_array($settings['payment_modes'])) {
-        return registrarc_normalize_payment_modes($settings['payment_modes']);
-    }
-
-    return registrarc_default_payment_modes();
-}
-
-function registrarc_load_tarif_rules($TourId) {
-    $settings = registrarc_load_settings($TourId);
-
-    if (isset($settings['rules']) && is_array($settings['rules'])) {
-        return $settings['rules'];
-    }
-
-    return [];
-}
-
-// ---------------------------------------------------------------------------
-// Tarifs / règles avancées
-// ---------------------------------------------------------------------------
-function registrarc_age_category($categorie, $ageClasses = null) {
-    $categorie = (string)$categorie;
-
-    if (!is_array($ageClasses) || !isset($ageClasses['jeunes'])) {
-        $ageClasses = registrarc_default_age_classes();
-    }
-
-    foreach ($ageClasses['jeunes'] as $c) {
-        $c = trim((string)$c);
-
-        if ($c !== '' && stripos($categorie, $c) !== false) {
-            return 'jeunes';
-        }
-    }
-
-    return 'adultes';
-}
-
-function registrarc_is_free_method($method) {
-    $method = registrarc_normalize_payment_code($method);
-    return in_array($method, ['GRA', 'GRATUIT'], true);
-}
-
-function registrarc_clean_payment_method($method, $paymentModes) {
-    $method = registrarc_normalize_payment_code($method);
-
-    if ($method === '') {
-        return 'ESP';
-    }
-
-    if (!isset($paymentModes[$method])) {
-        return 'ESP';
-    }
-
-    return $method;
-}
-
-function registrarc_is_null_empty_or_zero($value) {
-    if ($value === null) {
-        return true;
-    }
-
-    $value = trim((string)$value);
-
-    if ($value === '') {
-        return true;
-    }
-
-    if (is_numeric($value) && floatval($value) == 0) {
-        return true;
-    }
-
-    return false;
-}
-
-function registrarc_rule_entry_value($scope, array $entry) {
-    $map = [
-        'qualif_ind' => 'EnIndClEvent',
-        'qualif_team' => 'EnTeamClEvent',
-        'finale_ind' => 'EnIndFEvent',
-        'finale_team' => 'EnTeamFEvent',
-        'double_mixte' => 'EnTeamMixEvent',
-        'finales_ind' => 'EnIndFEvent',
-        'finales_team' => 'EnTeamFEvent',
-        'finales_mix' => 'EnTeamMixEvent',
-    ];
-
-    if ($scope === 'finales') {
-        $values = [
-            isset($entry['EnIndFEvent']) ? $entry['EnIndFEvent'] : '',
-            isset($entry['EnTeamFEvent']) ? $entry['EnTeamFEvent'] : '',
-            isset($entry['EnTeamMixEvent']) ? $entry['EnTeamMixEvent'] : '',
-        ];
-
-        foreach ($values as $v) {
-            if (!registrarc_is_null_empty_or_zero($v)) {
-                return 'OUI';
-            }
-        }
-
-        return 'NON';
-    }
-
-    if (!isset($map[$scope])) {
-        return null;
-    }
-
-    return isset($entry[$map[$scope]]) ? $entry[$map[$scope]] : '';
-}
-
-function registrarc_entry_rule_matches($scope, $matches, array $entry) {
-    $scope = trim((string)$scope);
-
-    if (!is_array($matches)) {
-        $matches = [$matches];
-    }
-
-    if ($scope === 'categorie') {
-        $categorie = strtoupper((string)$entry['categorie']);
-
-        foreach ($matches as $match) {
-            $match = strtoupper(trim((string)$match));
-
-            if ($match !== '' && stripos($categorie, $match) !== false) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    if ($scope === 'region') {
-        $clubCode = preg_replace('/\D+/', '', (string)$entry['country_code']);
-        $region = strlen($clubCode) >= 2 ? substr($clubCode, 0, 2) : '';
-
-        foreach ($matches as $match) {
-            $match = preg_replace('/\D+/', '', (string)$match);
-
-            if ($match !== '' && $region === $match) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    if ($scope === 'departement') {
-        $clubCode = preg_replace('/\D+/', '', (string)$entry['country_code']);
-        $departement = strlen($clubCode) >= 4 ? substr($clubCode, 2, 2) : '';
-
-        foreach ($matches as $match) {
-            $match = preg_replace('/\D+/', '', (string)$match);
-
-            if ($match !== '' && $departement === $match) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    $value = registrarc_rule_entry_value($scope, $entry);
-
-    if ($value === null) {
-        return false;
-    }
-
-    $valueString = strtoupper(trim((string)$value));
-    $hasValue = !registrarc_is_null_empty_or_zero($value);
-
-    foreach ($matches as $match) {
-        $match = strtoupper(trim((string)$match));
-
-        if ($match === '') {
-            continue;
-        }
-
-        if ($match === 'OUI' || $match === 'YES' || $match === '1') {
-            if ($hasValue) {
-                return true;
-            }
-        } elseif ($match === 'NON' || $match === 'NO' || $match === '0') {
-            if (!$hasValue) {
-                return true;
-            }
-        } elseif ($valueString === $match) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-function registrarc_apply_tarif_rules(array $entry, array $rules) {
-    $total = 0;
-    $labels = [];
-    $matchedCount = 0;
-
-    foreach ($rules as $rule) {
-        if (empty($rule['active'])) {
-            continue;
-        }
-
-        $scope = isset($rule['scope']) ? $rule['scope'] : '';
-        $matches = isset($rule['match']) ? $rule['match'] : [];
-
-        if (!registrarc_entry_rule_matches($scope, $matches, $entry)) {
-            continue;
-        }
-
-        if (isset($rule['action']['type']) && $rule['action']['type'] === 'fixed_price') {
-            $value = isset($rule['action']['value']) ? (float)$rule['action']['value'] : 0;
-            $total += $value;
-            $matchedCount++;
-
-            if (!empty($rule['label'])) {
-                $labels[] = trim((string)$rule['label']);
-            }
-        }
-    }
-
-    return [
-        'matched' => $matchedCount > 0,
-        'label' => implode(' + ', $labels),
-        'amount' => $total,
-        'count' => $matchedCount,
-        'labels' => $labels,
-    ];
-}
-
-function registrarc_prix_engagement($clubCode, $categorie, $numeroEngagement, $tarifs, $organizerClubCode, $ageClasses = null) {
-    $isOrganizer = ($clubCode == $organizerClubCode);
-    $age = registrarc_age_category($categorie, $ageClasses);
-
-    if ($isOrganizer) {
-        $p1 = isset($tarifs['organizer'][$age][1]) ? floatval($tarifs['organizer'][$age][1]) : 0;
-        $p2 = isset($tarifs['organizer'][$age][2]) ? floatval($tarifs['organizer'][$age][2]) : $p1;
-    } else {
-        $p1 = isset($tarifs['clubs_autres'][$age][1]) ? floatval($tarifs['clubs_autres'][$age][1]) : 0;
-        $p2 = isset($tarifs['clubs_autres'][$age][2]) ? floatval($tarifs['clubs_autres'][$age][2]) : $p1;
-    }
-
-    if ($numeroEngagement <= 1) {
-        return $p1;
-    }
-
-    return $p2 - $p1;
-}
-
-function registrarc_format_montant($montant) {
-    $montant = floatval($montant);
-
-    if (floor($montant) == $montant) {
-        return intval($montant);
-    }
-
-    return number_format($montant, 2, ',', ' ');
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1021,12 +224,24 @@ $ageClasses = registrarc_load_age_classes($TourId);
 $paymentModes = registrarc_load_payment_modes($TourId);
 $tarifRules = registrarc_load_tarif_rules($TourId);
 $dataDirStatus = registrarc_data_dir_status();
+$canWrite = hasACL(AclParticipants, AclReadWrite);
 
 // ---------------------------------------------------------------------------
 // POST : paiements + import inscriptions
 // ---------------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    checkACL(AclParticipants, AclReadWrite);
+
     $redirectQuery = registrarc_redirect_params($filters, $sortColumn, $sortDirection);
+
+    $formError = registrarc_check_form($TourId);
+
+    if ($formError !== '') {
+        $_SESSION['RegistrArc_payment_message'] = $formError;
+        $_SESSION['RegistrArc_message_type'] = 'error';
+        header('Location: ' . $_SERVER['PHP_SELF'] . ($redirectQuery ? '?' . $redirectQuery : ''));
+        exit();
+    }
 
     if (!$dataDirStatus['ok']) {
         $_SESSION['RegistrArc_payment_message'] = "Action impossible : le dossier JSON n'est pas accessible en écriture.";
@@ -1091,53 +306,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        $payments = registrarc_load_payments($TourId);
         $matched = 0;
         $unmatched = 0;
         $paidImported = 0;
         $unpaidImported = 0;
 
-        foreach ($data['registrations'] as $reg) {
-            if (!is_array($reg)) {
-                $unmatched++;
-                continue;
+        $saved = registrarc_update_payments($TourId, function (array &$payments) use ($data, $localMap, $paymentModes, &$matched, &$unmatched, &$paidImported, &$unpaidImported) {
+            foreach ($data['registrations'] as $reg) {
+                if (!is_array($reg)) {
+                    $unmatched++;
+                    continue;
+                }
+
+                $key = isset($reg['key']) ? trim((string)$reg['key']) : '';
+
+                if ($key === '') {
+                    $key = registrarc_registration_key(
+                        isset($reg['licence']) ? $reg['licence'] : '',
+                        isset($reg['categorie']) ? $reg['categorie'] : '',
+                        isset($reg['session']) ? $reg['session'] : '',
+                        isset($reg['target']) ? $reg['target'] : '',
+                        isset($reg['letter']) ? $reg['letter'] : ''
+                    );
+                }
+
+                if (!isset($localMap[$key])) {
+                    $unmatched++;
+                    continue;
+                }
+
+                $engagementId = $localMap[$key];
+                $payment = isset($reg['payment']) && is_array($reg['payment']) ? $reg['payment'] : [];
+                $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
+                $method = isset($payment['method']) ? registrarc_clean_payment_method($payment['method'], $paymentModes) : '';
+                $receiptRequired = !empty($payment['receipt_required']);
+
+                if ($status === 'PAYE') {
+                    registrarc_set_payment_in_array($payments, $engagementId, $method !== '' ? $method : 'ESP', $receiptRequired);
+                    $paidImported++;
+                } else {
+                    registrarc_unset_payment_in_array($payments, $engagementId);
+                    $unpaidImported++;
+                }
+
+                $matched++;
             }
+        });
 
-            $key = isset($reg['key']) ? trim((string)$reg['key']) : '';
-
-            if ($key === '') {
-                $key = registrarc_registration_key(
-                    isset($reg['licence']) ? $reg['licence'] : '',
-                    isset($reg['categorie']) ? $reg['categorie'] : '',
-                    isset($reg['session']) ? $reg['session'] : '',
-                    isset($reg['target']) ? $reg['target'] : '',
-                    isset($reg['letter']) ? $reg['letter'] : ''
-                );
-            }
-
-            if (!isset($localMap[$key])) {
-                $unmatched++;
-                continue;
-            }
-
-            $engagementId = $localMap[$key];
-            $payment = isset($reg['payment']) && is_array($reg['payment']) ? $reg['payment'] : [];
-            $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
-            $method = isset($payment['method']) ? registrarc_clean_payment_method($payment['method'], $paymentModes) : '';
-            $receiptRequired = !empty($payment['receipt_required']);
-
-            if ($status === 'PAYE') {
-                registrarc_set_payment_in_array($payments, $engagementId, $method !== '' ? $method : 'ESP', $receiptRequired);
-                $paidImported++;
-            } else {
-                registrarc_unset_payment_in_array($payments, $engagementId);
-                $unpaidImported++;
-            }
-
-            $matched++;
-        }
-
-        if (registrarc_save_payments($TourId, $payments)) {
+        if ($saved) {
             $warnings = [];
 
             if ($importCode !== '' && $currentCode !== '' && strtoupper($importCode) !== strtoupper($currentCode)) {
@@ -1159,7 +375,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $_SESSION['RegistrArc_payment_message'] = $msg;
         } else {
-            $_SESSION['RegistrArc_payment_message'] = "Import impossible : erreur lors de l'écriture du JSON paiements.";
+            $_SESSION['RegistrArc_payment_message'] = "Import impossible : erreur lors de l'écriture du JSON paiements." . registrarc_storage_error_suffix();
             $_SESSION['RegistrArc_message_type'] = 'error';
         }
 
@@ -1210,7 +426,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION['RegistrArc_message_type'] = 'success';
                     }
                 } else {
-                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements.";
+                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements." . registrarc_storage_error_suffix();
                     $_SESSION['RegistrArc_message_type'] = 'error';
                 }
             } else {
@@ -1220,7 +436,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['RegistrArc_payment_message'] = 'Engagements sélectionnés marqués comme non payés.';
                     $_SESSION['RegistrArc_message_type'] = 'info';
                 } else {
-                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements.";
+                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements." . registrarc_storage_error_suffix();
                     $_SESSION['RegistrArc_message_type'] = 'error';
                 }
             }
@@ -1251,7 +467,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['RegistrArc_payment_message'] = 'Paiement de cet engagement validé.';
                     $_SESSION['RegistrArc_message_type'] = 'success';
                 } else {
-                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements.";
+                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements." . registrarc_storage_error_suffix();
                     $_SESSION['RegistrArc_message_type'] = 'error';
                 }
             } else {
@@ -1261,7 +477,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['RegistrArc_payment_message'] = 'Cet engagement est maintenant marqué comme non payé.';
                     $_SESSION['RegistrArc_message_type'] = 'info';
                 } else {
-                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements.";
+                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements." . registrarc_storage_error_suffix();
                     $_SESSION['RegistrArc_message_type'] = 'error';
                 }
             }
@@ -1412,6 +628,10 @@ foreach ($engagementsData as $idx => $e) {
     $engagementsData[$idx]['montant_base'] = $montantBase;
     $engagementsData[$idx]['montant'] = $montant;
     $engagementsData[$idx]['tarif_rule_label'] = $ruleLabel;
+    $engagementsData[$idx]['is_free'] = registrarc_nothing_due($montantBase);
+
+    // Ordre du tri par statut : non payé, gratuit, payé
+    $engagementsData[$idx]['status_rank'] = $e['payment_status'] ? 2 : ($engagementsData[$idx]['is_free'] ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -1465,7 +685,13 @@ foreach ($engagementsData as $e) {
         continue;
     }
 
-    if ($filters['payment'] === 'unpaid' && $isPaid) {
+    $isFree = !$isPaid && !empty($e['is_free']);
+
+    if ($filters['payment'] === 'unpaid' && ($isPaid || $isFree)) {
+        continue;
+    }
+
+    if ($filters['payment'] === 'free' && !$isFree) {
         continue;
     }
 
@@ -1526,7 +752,7 @@ usort($displayEngagements, function($a, $b) use ($sortColumn, $sortDirection) {
             return $dir * ($a['montant'] <=> $b['montant']);
 
         case 'statut':
-            return $dir * ($a['payment_status'] <=> $b['payment_status']);
+            return $dir * ($a['status_rank'] <=> $b['status_rank']);
 
         case 'paiement':
             return $dir * strcmp((string)$a['payment_method'], (string)$b['payment_method']);
@@ -1685,6 +911,7 @@ include('Common/Templates/head.php');
     .btn-import,
     .btn-settings,
     .btn-kiosk,
+    .btn-update,
     .btn-cheque {
         display: inline-flex;
         align-items: center;
@@ -1792,6 +1019,19 @@ include('Common/Templates/head.php');
 
     .btn-kiosk:hover {
         background: var(--kiosk-dark);
+    }
+
+    .btn-update {
+        background: var(--success-color);
+        color: #fff;
+    }
+
+    .btn-update:hover {
+        background: #15803d;
+    }
+
+    .btn-update[hidden] {
+        display: none;
     }
 
     .btn-cheque {
@@ -2117,11 +1357,15 @@ include('Common/Templates/head.php');
         </div>
 
         <div class="header-actions">
+            <a href="update.php" id="registrarcUpdateBtn" class="btn-update" hidden>
+                ⬆ Mise à jour
+            </a>
+
             <a href="kiosk.php" class="btn-kiosk">
                 Mode Kiosk
             </a>
 
-            <a href="<?php echo $CFG->ROOT_DIR; ?>Modules/Custom/RegistrArc/config_tarifs.php?ToId=<?php echo $TourId; ?>" class="btn-settings">
+            <a href="<?php echo $CFG->ROOT_DIR; ?>Modules/Custom/RegistrArc/config_tarifs.php" class="btn-settings">
                 ⚙ Paramétrer tarifs & paiements
             </a>
         </div>
@@ -2197,6 +1441,7 @@ include('Common/Templates/head.php');
                         <option value="all" <?php echo ($filters['payment'] === 'all') ? 'selected' : ''; ?>>Tous</option>
                         <option value="paid" <?php echo ($filters['payment'] === 'paid') ? 'selected' : ''; ?>>Payés</option>
                         <option value="unpaid" <?php echo ($filters['payment'] === 'unpaid') ? 'selected' : ''; ?>>Non payés</option>
+                        <option value="free" <?php echo ($filters['payment'] === 'free') ? 'selected' : ''; ?>>Gratuits</option>
                     </select>
                 </div>
 
@@ -2217,6 +1462,7 @@ include('Common/Templates/head.php');
         <div class="card-title">Actions sur les engagements sélectionnés</div>
 
         <form method="POST" id="bulkForm">
+            <?php echo registrarc_form_fields($TourId); ?>
             <input type="hidden" name="create_cheque_group_after_payment" id="create_cheque_group_after_payment" value="0">
 
             <div class="filters-row">
@@ -2232,13 +1478,15 @@ include('Common/Templates/head.php');
                 </div>
 
                 <div class="filter-actions">
-                    <button type="submit" name="bulk_action" value="validate" class="btn-success" onclick="return confirmBulkAction('validate');">
-                        Valider paiement
-                    </button>
+                    <?php if ($canWrite): ?>
+                        <button type="submit" name="bulk_action" value="validate" class="btn-success" onclick="return confirmBulkAction('validate');">
+                            Valider paiement
+                        </button>
 
-                    <button type="submit" name="bulk_action" value="unvalidate" class="btn-danger" onclick="return confirmBulkAction('unvalidate');">
-                        Retirer paiement
-                    </button>
+                        <button type="submit" name="bulk_action" value="unvalidate" class="btn-danger" onclick="return confirmBulkAction('unvalidate');">
+                            Retirer paiement
+                        </button>
+                    <?php endif; ?>
 
                     <button type="button" id="bulk_invoice_btn" class="btn-invoice bulk-invoice-button" onclick="return factureGroupePrompt();">
                         Facture groupée
@@ -2252,9 +1500,11 @@ include('Common/Templates/head.php');
                         Exporter inscriptions
                     </a>
 
-                    <button type="button" class="btn-import" onclick="toggleImportRegistrations();">
-                        Importer inscriptions
-                    </button>
+                    <?php if ($canWrite): ?>
+                        <button type="button" class="btn-import" onclick="toggleImportRegistrations();">
+                            Importer inscriptions
+                        </button>
+                    <?php endif; ?>
 
                     <button type="button" class="btn-cheque" onclick="return openChequeDeposit();">
                         Remise de chèque
@@ -2267,7 +1517,9 @@ include('Common/Templates/head.php');
             </div>
         </form>
 
+        <?php if ($canWrite): ?>
         <form method="POST" enctype="multipart/form-data" id="importRegistrationsForm" style="display:none;margin-top:10px;">
+            <?php echo registrarc_form_fields($TourId); ?>
             <div class="filters-row">
                 <div class="filter-group">
                     <label for="registrations_file">Fichier JSON inscriptions</label>
@@ -2285,6 +1537,7 @@ include('Common/Templates/head.php');
                 </div>
             </div>
         </form>
+        <?php endif; ?>
     </div>
 
     <?php
@@ -2323,6 +1576,7 @@ include('Common/Templates/head.php');
                     <?php foreach ($displayEngagements as $e): ?>
                         <?php
                         $isPaid = ($e['payment_status'] == 1);
+                        $isFree = !$isPaid && !empty($e['is_free']);
                         $archerLabel = trim($e['nom'] . ' ' . $e['prenom']);
                         ?>
                         <tr>
@@ -2363,8 +1617,8 @@ include('Common/Templates/head.php');
                             <td style="text-align:right;"><?php echo registrarc_format_montant($e['montant']); ?> €</td>
 
                             <td>
-                                <span class="<?php echo $isPaid ? 'status-paid' : 'status-unpaid'; ?>">
-                                    <?php echo $isPaid ? 'Payé' : 'Non payé'; ?>
+                                <span class="<?php echo ($isPaid || $isFree) ? 'status-paid' : 'status-unpaid'; ?>">
+                                    <?php echo $isPaid ? 'Payé' : ($isFree ? 'Gratuit' : 'Non payé'); ?>
                                 </span>
                             </td>
 
@@ -2377,7 +1631,9 @@ include('Common/Templates/head.php');
                                             <span class="payment-receipt-label">Reçu</span>
                                         <?php endif; ?>
 
+                                        <?php if ($canWrite): ?>
                                         <form method="POST">
+                                            <?php echo registrarc_form_fields($TourId); ?>
                                             <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
                                             <input type="hidden" name="validate_payment" value="unvalidate">
 
@@ -2385,13 +1641,15 @@ include('Common/Templates/head.php');
                                                 type="submit"
                                                 class="btn-ghost"
                                                 style="padding:3px 8px;font-size:11px;border-radius:999px;border-color:#fecaca;color:#b91c1c;"
-                                                onclick="return confirm('Annuler le paiement de <?php echo htmlspecialchars($archerLabel, ENT_QUOTES); ?> ?');"
+                                                onclick="return confirm(<?php echo htmlspecialchars(json_encode('Annuler le paiement de ' . $archerLabel . ' ?'), ENT_QUOTES); ?>);"
                                             >
                                                 Annuler
                                             </button>
                                         </form>
-                                    <?php else: ?>
+                                        <?php endif; ?>
+                                    <?php elseif ($canWrite && !$isFree): ?>
                                         <form method="POST">
+                                            <?php echo registrarc_form_fields($TourId); ?>
                                             <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
                                             <input type="hidden" name="validate_payment" value="validate">
 
@@ -2407,7 +1665,7 @@ include('Common/Templates/head.php');
                                                 type="submit"
                                                 class="btn-success"
                                                 style="padding:3px 8px;font-size:11px;border-radius:999px;"
-                                                onclick="return confirm('Valider le paiement de <?php echo htmlspecialchars($archerLabel, ENT_QUOTES); ?> ?');"
+                                                onclick="return confirm(<?php echo htmlspecialchars(json_encode('Valider le paiement de ' . $archerLabel . ' ?'), ENT_QUOTES); ?>);"
                                             >
                                                 Valider
                                             </button>
@@ -3005,7 +2263,28 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     updateBulkInvoiceButton();
+    checkModuleUpdate();
 });
+
+// Bouton "Mise à jour" affiché seulement si une version plus récente existe
+function checkModuleUpdate() {
+    const btn = document.getElementById('registrarcUpdateBtn');
+
+    if (!btn || !window.fetch) {
+        return;
+    }
+
+    fetch('update.php?action=check', { credentials: 'same-origin' })
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+            if (data && data.update) {
+                btn.textContent = '⬆ Mise à jour ' + data.remote;
+                btn.title = 'Version installée : ' + data.local;
+                btn.hidden = false;
+            }
+        })
+        .catch(() => {});
+}
 </script>
 
 <?php include('Common/Templates/tail.php'); ?>

@@ -32,6 +32,7 @@ define('debug', false);
 require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
 require_once('Common/Fun_Various.inc.php');
 require_once('Common/Fun_Sessions.inc.php');
+require_once(dirname(__FILE__) . '/lib/registrarc.inc.php');
 
 CheckTourSession(true);
 checkACL(AclParticipants, AclReadOnly);
@@ -39,85 +40,15 @@ checkACL(AclParticipants, AclReadOnly);
 $ModuleName = 'RegistrArc';
 $LegacyModuleName = 'Greffe2';
 
-$TourId = isset($_GET['ToId']) ? intval($_GET['ToId']) : (isset($_SESSION['TourId']) ? intval($_SESSION['TourId']) : 0);
+$TourId = isset($_SESSION['TourId']) ? intval($_SESSION['TourId']) : 0;
 
 if (!$TourId) {
     die('Tournoi non défini');
 }
 
 // ---------------------------------------------------------------------------
-// Dossier / fichier JSON
-// ---------------------------------------------------------------------------
-function registrarc_data_dir() {
-    return dirname(__FILE__) . '/data';
-}
-
-function registrarc_settings_file_path($TourId) {
-    return registrarc_data_dir() . '/settings_' . intval($TourId) . '.json';
-}
-
-function registrarc_data_dir_status() {
-    $dir = registrarc_data_dir();
-
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0775, true);
-    }
-
-    if (!is_dir($dir)) {
-        return [
-            'ok' => false,
-            'path' => $dir,
-            'message' => "Le dossier de stockage JSON n'existe pas et n'a pas pu être créé automatiquement.",
-        ];
-    }
-
-    if (!is_writable($dir)) {
-        return [
-            'ok' => false,
-            'path' => $dir,
-            'message' => "Le dossier de stockage JSON existe, mais il n'est pas accessible en écriture.",
-        ];
-    }
-
-    $testFile = $dir . '/.registrarc_settings_write_test';
-
-    if (@file_put_contents($testFile, 'ok', LOCK_EX) === false) {
-        return [
-            'ok' => false,
-            'path' => $dir,
-            'message' => "Le dossier de stockage JSON semble accessible, mais l'écriture d'un fichier de test a échoué.",
-        ];
-    }
-
-    @unlink($testFile);
-
-    return [
-        'ok' => true,
-        'path' => $dir,
-        'message' => '',
-    ];
-}
-
-function registrarc_ensure_data_dir() {
-    $status = registrarc_data_dir_status();
-    return !empty($status['ok']);
-}
-
-// ---------------------------------------------------------------------------
 // Paramètres module avec compatibilité ancien Greffe2
 // ---------------------------------------------------------------------------
-function registrarc_get_module_parameter($name, $default = '') {
-    global $ModuleName, $LegacyModuleName;
-
-    $value = getModuleParameter($ModuleName, $name, '');
-
-    if ($value !== '' && $value !== null) {
-        return $value;
-    }
-
-    return getModuleParameter($LegacyModuleName, $name, $default);
-}
-
 function registrarc_set_module_parameter($name, $value) {
     global $ModuleName;
 
@@ -127,29 +58,6 @@ function registrarc_set_module_parameter($name, $value) {
 // ---------------------------------------------------------------------------
 // Code tournoi
 // ---------------------------------------------------------------------------
-function registrarc_current_tournament_code() {
-    if (!empty($_SESSION['TourCodeSafe'])) {
-        return trim((string)$_SESSION['TourCodeSafe']);
-    }
-
-    if (!empty($_SESSION['TourCode'])) {
-        return trim((string)$_SESSION['TourCode']);
-    }
-
-    return '';
-}
-
-function registrarc_safe_filename_part($value) {
-    $value = trim((string)$value);
-
-    if ($value === '') {
-        return '';
-    }
-
-    $value = preg_replace('/[^A-Za-z0-9_\-]+/', '_', $value);
-    return trim($value, '_');
-}
-
 function registrarc_extract_tournament_code_from_settings($settings) {
     if (!is_array($settings)) {
         return '';
@@ -276,7 +184,7 @@ $tournamentClasses = registrarc_get_tournament_classes($TourId);
 
 function registrarc_render_age_card($classId, $classLabel, $group) {
     $otherGroup = ($group === 'jeunes') ? 'adultes' : 'jeunes';
-    $arrow = ($group === 'jeunes') ? '←' : '→';
+    $arrow = ($group === 'jeunes') ? '→' : '←';
     $otherLabelText = ($otherGroup === 'jeunes') ? 'Jeunes' : 'Adultes';
 
     $html = '<div class="age-card" draggable="true" data-class-id="' . htmlspecialchars($classId) . '" data-group="' . htmlspecialchars($group) . '"';
@@ -292,35 +200,6 @@ function registrarc_render_age_card($classId, $classLabel, $group) {
 // ---------------------------------------------------------------------------
 // Valeurs par défaut
 // ---------------------------------------------------------------------------
-function registrarc_default_tarifs() {
-    return [
-        'clubs_autres' => [
-            'jeunes' => [1 => 8, 2 => 14],
-            'adultes' => [1 => 10, 2 => 18],
-        ],
-        'organizer' => [
-            'jeunes' => [1 => 4, 2 => 8],
-            'adultes' => [1 => 5, 2 => 10],
-        ],
-    ];
-}
-
-function registrarc_default_payment_modes() {
-    return [
-        'ESP' => 'Espèces',
-        'CHQ' => 'Chèque',
-        'VIR' => 'Virement',
-        'GRA' => 'Gratuit',
-    ];
-}
-
-function registrarc_default_age_classes() {
-    return [
-        'jeunes' => ['U11', 'U13', 'U15', 'U18'],
-        'adultes' => ['U21', 'S1', 'S2', 'S3', 'Senior', 'Scratch'],
-    ];
-}
-
 function registrarc_default_settings($TourId) {
     return [
         'module' => 'RegistrArc',
@@ -337,39 +216,8 @@ function registrarc_default_settings($TourId) {
 }
 
 // ---------------------------------------------------------------------------
-// Codes paiement
-// ---------------------------------------------------------------------------
-function registrarc_normalize_payment_code($code) {
-    $code = strtoupper(trim((string)$code));
-
-    $map = [
-        'ESPECE' => 'ESP',
-        'ESPECES' => 'ESP',
-        'ESPÈCE' => 'ESP',
-        'ESPÈCES' => 'ESP',
-        'CHEQUE' => 'CHQ',
-        'CHÈQUE' => 'CHQ',
-        'VIREMENT' => 'VIR',
-        'GRATUIT' => 'GRA',
-    ];
-
-    return isset($map[$code]) ? $map[$code] : $code;
-}
-
-// ---------------------------------------------------------------------------
 // Dates
 // ---------------------------------------------------------------------------
-function registrarc_timestamp_from_value($value) {
-    $value = trim((string)$value);
-
-    if ($value === '') {
-        return 0;
-    }
-
-    $ts = strtotime($value);
-    return $ts ? $ts : 0;
-}
-
 function registrarc_settings_timestamp(array $settings, $fallbackFile = '') {
     $savedAt = isset($settings['saved_at']) ? registrarc_timestamp_from_value($settings['saved_at']) : 0;
 
@@ -429,121 +277,6 @@ function registrarc_normalize_tarifs($tarifs) {
     }
 
     return $out;
-}
-
-function registrarc_split_age_class_string($value) {
-    $value = trim((string)$value);
-
-    if ($value === '') {
-        return [];
-    }
-
-    $parts = preg_split('/[,;\r\n]+/', $value);
-    $out = [];
-
-    foreach ($parts as $part) {
-        $part = strtoupper(trim((string)$part));
-
-        if ($part !== '') {
-            $out[] = $part;
-        }
-    }
-
-    return array_values(array_unique($out));
-}
-
-function registrarc_normalize_age_classes($ageClasses) {
-    $default = registrarc_default_age_classes();
-
-    if (!is_array($ageClasses)) {
-        return $default;
-    }
-
-    $jeunes = isset($ageClasses['jeunes']) ? $ageClasses['jeunes'] : [];
-    $adultes = isset($ageClasses['adultes']) ? $ageClasses['adultes'] : [];
-
-    if (!is_array($jeunes)) {
-        $jeunes = registrarc_split_age_class_string($jeunes);
-    }
-
-    if (!is_array($adultes)) {
-        $adultes = registrarc_split_age_class_string($adultes);
-    }
-
-    $cleanJeunes = [];
-    foreach ($jeunes as $cat) {
-        $cat = strtoupper(trim((string)$cat));
-        if ($cat !== '') {
-            $cleanJeunes[] = $cat;
-        }
-    }
-
-    $cleanAdultes = [];
-    foreach ($adultes as $cat) {
-        $cat = strtoupper(trim((string)$cat));
-        if ($cat !== '') {
-            $cleanAdultes[] = $cat;
-        }
-    }
-
-    $cleanJeunes = array_values(array_unique($cleanJeunes));
-    $cleanAdultes = array_values(array_unique($cleanAdultes));
-
-    if (empty($cleanJeunes)) {
-        $cleanJeunes = $default['jeunes'];
-    }
-
-    if (empty($cleanAdultes)) {
-        $cleanAdultes = $default['adultes'];
-    }
-
-    return [
-        'jeunes' => $cleanJeunes,
-        'adultes' => $cleanAdultes,
-    ];
-}
-
-function registrarc_normalize_payment_modes($modes) {
-    if (!is_array($modes) || empty($modes)) {
-        return registrarc_default_payment_modes();
-    }
-
-    $clean = [];
-
-    foreach ($modes as $code => $label) {
-        $code = registrarc_normalize_payment_code($code);
-        $label = trim((string)$label);
-
-        if ($code === '') {
-            continue;
-        }
-
-        if ($label === '') {
-            if ($code === 'ESP') {
-                $label = 'Espèces';
-            } elseif ($code === 'CHQ') {
-                $label = 'Chèque';
-            } elseif ($code === 'VIR') {
-                $label = 'Virement';
-            } elseif ($code === 'GRA') {
-                $label = 'Gratuit';
-            } else {
-                $label = $code;
-            }
-        }
-
-        $clean[$code] = $label;
-    }
-
-    if (!isset($clean['GRA'])) {
-        $clean['GRA'] = 'Gratuit';
-    }
-
-    if (trim((string)$clean['GRA']) === '') {
-        $clean['GRA'] = 'Gratuit';
-    }
-
-    return empty($clean) ? registrarc_default_payment_modes() : $clean;
 }
 
 function registrarc_legacy_scope_to_current($scope, array $allowedRuleScopes) {
@@ -622,7 +355,7 @@ function registrarc_normalize_rules($rules, array $allowedRuleScopes) {
     return $clean;
 }
 
-function registrarc_normalize_settings($TourId, $settings, array $allowedRuleScopes) {
+function registrarc_config_normalize_settings($TourId, $settings, array $allowedRuleScopes) {
     $default = registrarc_default_settings($TourId);
 
     if (!is_array($settings)) {
@@ -653,16 +386,11 @@ function registrarc_normalize_settings($TourId, $settings, array $allowedRuleSco
 // ---------------------------------------------------------------------------
 // Chargement / sauvegarde
 // ---------------------------------------------------------------------------
-function registrarc_load_settings($TourId, array $allowedRuleScopes) {
-    $file = registrarc_settings_file_path($TourId);
+function registrarc_config_load_settings($TourId, array $allowedRuleScopes) {
+    $data = registrarc_storage_read(registrarc_settings_file_path($TourId));
 
-    if (is_file($file)) {
-        $json = file_get_contents($file);
-        $data = json_decode($json, true);
-
-        if (is_array($data)) {
-            return registrarc_normalize_settings($TourId, $data, $allowedRuleScopes);
-        }
+    if (!empty($data)) {
+        return registrarc_config_normalize_settings($TourId, $data, $allowedRuleScopes);
     }
 
     return registrarc_default_settings($TourId);
@@ -673,13 +401,10 @@ function registrarc_save_settings($TourId, array $settings, array $allowedRuleSc
         return false;
     }
 
-    $settings = registrarc_normalize_settings($TourId, $settings, $allowedRuleScopes);
+    $settings = registrarc_config_normalize_settings($TourId, $settings, $allowedRuleScopes);
     $settings['saved_at'] = date('Y-m-d H:i:s');
 
-    $file = registrarc_settings_file_path($TourId);
-    $json = json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-
-    return file_put_contents($file, $json, LOCK_EX) !== false;
+    return registrarc_storage_replace(registrarc_settings_file_path($TourId), $settings);
 }
 
 // ---------------------------------------------------------------------------
@@ -718,12 +443,13 @@ if ($t = safe_fetch($tournamentRs)) {
 }
 
 $dataDirStatus = registrarc_data_dir_status();
+$canWrite = hasACL(AclParticipants, AclReadWrite);
 
 // ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------
 if (isset($_GET['action']) && $_GET['action'] === 'export') {
-    $settings = registrarc_load_settings($TourId, $allowedRuleScopes);
+    $settings = registrarc_config_load_settings($TourId, $allowedRuleScopes);
     $settings['exported_at'] = date('Y-m-d H:i:s');
     $settings['tournament_code'] = $tournamentCode;
     $settings['tournament'] = [
@@ -750,7 +476,14 @@ $message = '';
 $messageType = 'success';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['import_settings'])) {
+    checkACL(AclParticipants, AclReadWrite);
+
+    $formError = registrarc_check_form($TourId);
+
+    if ($formError !== '') {
+        $message = $formError;
+        $messageType = 'error';
+    } elseif (isset($_POST['import_settings'])) {
         if (!$dataDirStatus['ok']) {
             $message = "Import impossible : le dossier JSON n'est pas accessible en écriture.";
             $messageType = 'error';
@@ -765,9 +498,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = "Le fichier importé n'est pas un JSON valide.";
                 $messageType = 'error';
             } else {
-                $currentSettings = registrarc_load_settings($TourId, $allowedRuleScopes);
+                $currentSettings = registrarc_config_load_settings($TourId, $allowedRuleScopes);
                 $currentTimestamp = registrarc_settings_timestamp($currentSettings, registrarc_settings_file_path($TourId));
-                $settings = registrarc_normalize_settings($TourId, $data, $allowedRuleScopes);
+                $settings = registrarc_config_normalize_settings($TourId, $data, $allowedRuleScopes);
                 $importTimestamp = registrarc_settings_timestamp($settings, $_FILES['settings_file']['tmp_name']);
                 $importCode = registrarc_extract_tournament_code_from_settings($data);
                 $currentCode = $tournamentCode;
@@ -791,14 +524,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $messageType = 'success';
                     }
                 } else {
-                    $message = "Erreur lors de l'écriture du fichier JSON.";
+                    $message = "Erreur lors de l'écriture du fichier JSON." . registrarc_storage_error_suffix();
                     $messageType = 'error';
                 }
             }
         }
-    }
-
-    if (isset($_POST['save_settings'])) {
+    } elseif (isset($_POST['save_settings'])) {
         if (!$dataDirStatus['ok']) {
             $message = "Enregistrement impossible : le dossier JSON n'est pas accessible en écriture.";
             $messageType = 'error';
@@ -912,13 +643,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'rules' => $rules,
             ];
 
-            $settings = registrarc_normalize_settings($TourId, $settings, $allowedRuleScopes);
+            $settings = registrarc_config_normalize_settings($TourId, $settings, $allowedRuleScopes);
 
             if (registrarc_save_settings($TourId, $settings, $allowedRuleScopes)) {
                 $message = "Paramètres enregistrés dans le JSON.";
                 $messageType = 'success';
             } else {
-                $message = "Erreur lors de l'écriture du fichier JSON.";
+                $message = "Erreur lors de l'écriture du fichier JSON." . registrarc_storage_error_suffix();
                 $messageType = 'error';
             }
         }
@@ -928,7 +659,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ---------------------------------------------------------------------------
 // Valeurs actuelles
 // ---------------------------------------------------------------------------
-$currentSettings = registrarc_load_settings($TourId, $allowedRuleScopes);
+$currentSettings = registrarc_config_load_settings($TourId, $allowedRuleScopes);
 $currentAgeClasses = isset($currentSettings['age_classes']) ? registrarc_normalize_age_classes($currentSettings['age_classes']) : registrarc_default_age_classes();
 $currentTarifs = $currentSettings['tarifs'];
 $currentModes = $currentSettings['payment_modes'];
@@ -1379,11 +1110,12 @@ include('Common/Templates/head.php');
         <div class="import-export-row">
             <div>
                 <div style="font-weight:600;margin-bottom:6px;">Exporter</div>
-                <a href="?ToId=<?php echo intval($TourId); ?>&action=export" class="btn-primary">
+                <a href="?action=export" class="btn-primary">
                     Exporter le JSON
                 </a>
             </div>
 
+            <?php if ($canWrite): ?>
             <div>
                 <div style="font-weight:600;margin-bottom:6px;">Importer</div>
                 <form
@@ -1395,16 +1127,19 @@ include('Common/Templates/head.php');
                     data-current-code="<?php echo htmlspecialchars($tournamentCode); ?>"
                     style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;"
                 >
+                    <?php echo registrarc_form_fields($TourId); ?>
                     <input type="file" name="settings_file" id="settings_file" accept="application/json,.json" class="import-input" style="max-width:320px;">
                     <button type="submit" name="import_settings" value="1" class="btn-warning">
                         Importer
                     </button>
                 </form>
             </div>
+            <?php endif; ?>
         </div>
     </div>
 
     <form method="POST" id="mainSettingsForm">
+        <?php echo registrarc_form_fields($TourId); ?>
         <div class="card">
             <div class="card-title">Classes d'âge</div>
             <div class="card-help">
@@ -1433,33 +1168,6 @@ include('Common/Templates/head.php');
                 <div class="age-transfer">
                     <div class="age-transfer-col">
                         <div class="age-transfer-col-header">
-                            <span class="age-transfer-col-title">🧓 Adultes</span>
-                            <span class="age-transfer-count" id="adultesCount">0</span>
-                        </div>
-                        <div
-                            class="age-dropzone"
-                            data-group="adultes"
-                            id="adultesZone"
-                            ondragover="handleZoneDragOver(event);"
-                            ondragleave="handleZoneDragLeave(event);"
-                            ondrop="handleZoneDrop(event);"
-                        >
-                            <?php foreach ($tournamentClasses as $class):
-                                $classId = $class['id'];
-                                $classLabel = $classId . ($class['description'] !== '' ? ' — ' . $class['description'] : '');
-                                $isJeune = in_array(strtoupper($classId), array_map('strtoupper', $currentAgeClasses['jeunes']), true);
-
-                                if ($isJeune) {
-                                    continue;
-                                }
-
-                                echo registrarc_render_age_card($classId, $classLabel, 'adultes');
-                            endforeach; ?>
-                        </div>
-                    </div>
-
-                    <div class="age-transfer-col">
-                        <div class="age-transfer-col-header">
                             <span class="age-transfer-col-title">🏹 Jeunes</span>
                             <span class="age-transfer-count" id="jeunesCount">0</span>
                         </div>
@@ -1474,13 +1182,40 @@ include('Common/Templates/head.php');
                             <?php foreach ($tournamentClasses as $class):
                                 $classId = $class['id'];
                                 $classLabel = $classId . ($class['description'] !== '' ? ' — ' . $class['description'] : '');
-                                $isJeune = in_array(strtoupper($classId), array_map('strtoupper', $currentAgeClasses['jeunes']), true);
+                                $isJeune = registrarc_age_category($classId, $currentAgeClasses) === 'jeunes';
 
                                 if (!$isJeune) {
                                     continue;
                                 }
 
                                 echo registrarc_render_age_card($classId, $classLabel, 'jeunes');
+                            endforeach; ?>
+                        </div>
+                    </div>
+
+                    <div class="age-transfer-col">
+                        <div class="age-transfer-col-header">
+                            <span class="age-transfer-col-title">🧓 Adultes</span>
+                            <span class="age-transfer-count" id="adultesCount">0</span>
+                        </div>
+                        <div
+                            class="age-dropzone"
+                            data-group="adultes"
+                            id="adultesZone"
+                            ondragover="handleZoneDragOver(event);"
+                            ondragleave="handleZoneDragLeave(event);"
+                            ondrop="handleZoneDrop(event);"
+                        >
+                            <?php foreach ($tournamentClasses as $class):
+                                $classId = $class['id'];
+                                $classLabel = $classId . ($class['description'] !== '' ? ' — ' . $class['description'] : '');
+                                $isJeune = registrarc_age_category($classId, $currentAgeClasses) === 'jeunes';
+
+                                if ($isJeune) {
+                                    continue;
+                                }
+
+                                echo registrarc_render_age_card($classId, $classLabel, 'adultes');
                             endforeach; ?>
                         </div>
                     </div>
@@ -1740,9 +1475,13 @@ include('Common/Templates/head.php');
         </div>
 
         <div class="form-footer">
-            <button type="submit" name="save_settings" value="1" class="btn-success">
-                Enregistrer les paramètres
-            </button>
+            <?php if ($canWrite): ?>
+                <button type="submit" name="save_settings" value="1" class="btn-success">
+                    Enregistrer les paramètres
+                </button>
+            <?php else: ?>
+                <span class="chip">Lecture seule : modification réservée aux droits en écriture</span>
+            <?php endif; ?>
 
             <a href="index.php" class="back-link">← Retour à la liste des engagements</a>
         </div>
@@ -1874,7 +1613,7 @@ function refreshAgeCard(card) {
     const btn = card.querySelector('.age-card-move');
 
     if (btn) {
-        btn.textContent = (group === 'jeunes') ? '←' : '→';
+        btn.textContent = (group === 'jeunes') ? '→' : '←';
         btn.title = 'Déplacer vers ' + (otherGroup === 'jeunes' ? 'Jeunes' : 'Adultes');
         btn.dataset.target = otherGroup;
     }
