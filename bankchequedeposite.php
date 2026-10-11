@@ -20,6 +20,7 @@ define('debug', false);
 require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
 require_once('Common/Fun_Various.inc.php');
 require_once('Common/Fun_Sessions.inc.php');
+require_once(dirname(__FILE__) . '/lib/registrarc.inc.php');
 
 CheckTourSession(true);
 checkACL(AclParticipants, AclReadOnly);
@@ -56,568 +57,6 @@ if ($idsParam !== '') {
 $isGroupMode = ($groupId !== '');
 $isSelectionMode = !$isGroupMode && !empty($selectedIds);
 $isAllMode = !$isGroupMode && !$isSelectionMode;
-
-// ---------------------------------------------------------------------------
-// Paramètres module
-// ---------------------------------------------------------------------------
-function registrarc_get_module_parameter($name, $default = '') {
-    global $ModuleName, $LegacyModuleName;
-
-    $value = getModuleParameter($ModuleName, $name, '');
-
-    if ($value !== '' && $value !== null) {
-        return $value;
-    }
-
-    return getModuleParameter($LegacyModuleName, $name, $default);
-}
-
-// ---------------------------------------------------------------------------
-// Chemins JSON
-// ---------------------------------------------------------------------------
-function registrarc_data_dir() {
-    return dirname(__FILE__) . '/data';
-}
-
-function registrarc_payments_file_path($TourId) {
-    return registrarc_data_dir() . '/payments_' . intval($TourId) . '.json';
-}
-
-function registrarc_settings_file_path($TourId) {
-    return registrarc_data_dir() . '/settings_' . intval($TourId) . '.json';
-}
-
-function registrarc_cheque_groups_file_path($TourId) {
-    return registrarc_data_dir() . '/cheque_groups_' . intval($TourId) . '.json';
-}
-
-// ---------------------------------------------------------------------------
-// JSON
-// ---------------------------------------------------------------------------
-function registrarc_load_json_file($file) {
-    if (!is_file($file)) {
-        return [];
-    }
-
-    $json = file_get_contents($file);
-    $data = json_decode($json, true);
-
-    return is_array($data) ? $data : [];
-}
-
-function registrarc_load_payments($TourId) {
-    return registrarc_load_json_file(registrarc_payments_file_path($TourId));
-}
-
-function registrarc_load_cheque_groups($TourId) {
-    return registrarc_load_json_file(registrarc_cheque_groups_file_path($TourId));
-}
-
-// ---------------------------------------------------------------------------
-// Paramètres JSON tarifs / paiements / règles
-// ---------------------------------------------------------------------------
-function registrarc_default_tarifs() {
-    return [
-        'clubs_autres' => [
-            'jeunes'  => [1 => 8,  2 => 14],
-            'adultes' => [1 => 10, 2 => 18],
-        ],
-        'organizer' => [
-            'jeunes'  => [1 => 4, 2 => 8],
-            'adultes' => [1 => 5, 2 => 10],
-        ],
-    ];
-}
-
-function registrarc_default_payment_modes() {
-    return [
-        'ESP' => 'Espèces',
-        'CHQ' => 'Chèque',
-        'VIR' => 'Virement',
-        'GRA' => 'Gratuit',
-    ];
-}
-
-function registrarc_normalize_payment_code($code) {
-    $code = strtoupper(trim((string)$code));
-
-    $map = [
-        'ESPECE'   => 'ESP',
-        'ESPECES'  => 'ESP',
-        'ESPÈCE'   => 'ESP',
-        'ESPÈCES'  => 'ESP',
-        'CHEQUE'   => 'CHQ',
-        'CHÈQUE'   => 'CHQ',
-        'VIREMENT' => 'VIR',
-        'GRATUIT'  => 'GRA',
-    ];
-
-    return isset($map[$code]) ? $map[$code] : $code;
-}
-
-function registrarc_normalize_payment_modes($modes) {
-    if (!is_array($modes) || empty($modes)) {
-        return registrarc_default_payment_modes();
-    }
-
-    $clean = [];
-
-    foreach ($modes as $code => $label) {
-        $code = registrarc_normalize_payment_code($code);
-        $label = trim((string)$label);
-
-        if ($code === '') {
-            continue;
-        }
-
-        if ($label === '') {
-            if ($code === 'ESP') {
-                $label = 'Espèces';
-            } elseif ($code === 'CHQ') {
-                $label = 'Chèque';
-            } elseif ($code === 'VIR') {
-                $label = 'Virement';
-            } elseif ($code === 'GRA') {
-                $label = 'Gratuit';
-            } else {
-                $label = $code;
-            }
-        }
-
-        $clean[$code] = $label;
-    }
-
-    return empty($clean) ? registrarc_default_payment_modes() : $clean;
-}
-
-function registrarc_load_settings($TourId) {
-    $file = registrarc_settings_file_path($TourId);
-
-    if (is_file($file)) {
-        $json = file_get_contents($file);
-        $data = json_decode($json, true);
-
-        if (is_array($data)) {
-            if (empty($data['tarifs']) || !is_array($data['tarifs'])) {
-                $data['tarifs'] = registrarc_default_tarifs();
-            }
-
-            if (empty($data['payment_modes']) || !is_array($data['payment_modes'])) {
-                $data['payment_modes'] = registrarc_default_payment_modes();
-            }
-
-            if (empty($data['rules']) || !is_array($data['rules'])) {
-                $data['rules'] = [];
-            }
-
-            return $data;
-        }
-    }
-
-    $settings = [
-        'tarifs' => registrarc_default_tarifs(),
-        'payment_modes' => registrarc_default_payment_modes(),
-        'rules' => [],
-    ];
-
-    $tarifsJson = registrarc_get_module_parameter('Tarifs_' . intval($TourId), '');
-    if ($tarifsJson) {
-        $tarifsData = json_decode($tarifsJson, true);
-        if (is_array($tarifsData) && isset($tarifsData['clubs_autres'], $tarifsData['organizer'])) {
-            $settings['tarifs'] = $tarifsData;
-        }
-    }
-
-    $modesJson = registrarc_get_module_parameter('PaymentModes_' . intval($TourId), '');
-    if ($modesJson) {
-        $modesData = json_decode($modesJson, true);
-        if (is_array($modesData)) {
-            $settings['payment_modes'] = registrarc_normalize_payment_modes($modesData);
-        }
-    }
-
-    $rulesJson = registrarc_get_module_parameter('TarifsRules_' . intval($TourId), '');
-    if ($rulesJson) {
-        $rulesData = json_decode($rulesJson, true);
-        if (is_array($rulesData)) {
-            $settings['rules'] = $rulesData;
-        }
-    }
-
-    return $settings;
-}
-
-function registrarc_load_tarifs($TourId, $organizerClubCode, $organizerClubName) {
-    $settings = registrarc_load_settings($TourId);
-
-    if (isset($settings['tarifs']) && is_array($settings['tarifs']) && isset($settings['tarifs']['clubs_autres'], $settings['tarifs']['organizer'])) {
-        $settings['tarifs']['organizer_club_code'] = $organizerClubCode;
-        $settings['tarifs']['organizer_club_name'] = $organizerClubName;
-        return $settings['tarifs'];
-    }
-
-    $default = registrarc_default_tarifs();
-    $default['organizer_club_code'] = $organizerClubCode;
-    $default['organizer_club_name'] = $organizerClubName;
-    return $default;
-}
-
-function registrarc_load_payment_modes($TourId) {
-    $settings = registrarc_load_settings($TourId);
-
-    if (isset($settings['payment_modes']) && is_array($settings['payment_modes'])) {
-        return registrarc_normalize_payment_modes($settings['payment_modes']);
-    }
-
-    return registrarc_default_payment_modes();
-}
-
-function registrarc_load_tarif_rules($TourId) {
-    $settings = registrarc_load_settings($TourId);
-
-    if (isset($settings['rules']) && is_array($settings['rules'])) {
-        return $settings['rules'];
-    }
-
-    return [];
-}
-
-// ---------------------------------------------------------------------------
-// Tarifs / règles
-// ---------------------------------------------------------------------------
-function registrarc_age_category($categorie) {
-    $categorie = (string)$categorie;
-
-    foreach (['U11', 'U13', 'U15', 'U18'] as $c) {
-        if (stripos($categorie, $c) !== false) {
-            return 'jeunes';
-        }
-    }
-
-    return 'adultes';
-}
-
-function registrarc_is_free_method($method) {
-    $method = registrarc_normalize_payment_code($method);
-    return in_array($method, ['GRA', 'GRATUIT'], true);
-}
-
-function registrarc_is_null_empty_or_zero($value) {
-    if ($value === null) {
-        return true;
-    }
-
-    $value = trim((string)$value);
-
-    if ($value === '') {
-        return true;
-    }
-
-    if (is_numeric($value) && floatval($value) == 0) {
-        return true;
-    }
-
-    return false;
-}
-
-function registrarc_rule_entry_value($scope, array $entry) {
-    $map = [
-        'qualif_ind'    => 'EnIndClEvent',
-        'qualif_team'   => 'EnTeamClEvent',
-        'finale_ind'    => 'EnIndFEvent',
-        'finale_team'   => 'EnTeamFEvent',
-        'double_mixte'  => 'EnTeamMixEvent',
-        'finales_ind'   => 'EnIndFEvent',
-        'finales_team'  => 'EnTeamFEvent',
-        'finales_mix'   => 'EnTeamMixEvent',
-    ];
-
-    if ($scope === 'finales') {
-        $values = [
-            isset($entry['EnIndFEvent']) ? $entry['EnIndFEvent'] : '',
-            isset($entry['EnTeamFEvent']) ? $entry['EnTeamFEvent'] : '',
-            isset($entry['EnTeamMixEvent']) ? $entry['EnTeamMixEvent'] : '',
-        ];
-
-        foreach ($values as $v) {
-            if (!registrarc_is_null_empty_or_zero($v)) {
-                return 'OUI';
-            }
-        }
-
-        return 'NON';
-    }
-
-    if (!isset($map[$scope])) {
-        return null;
-    }
-
-    $field = $map[$scope];
-
-    return isset($entry[$field]) ? $entry[$field] : '';
-}
-
-function registrarc_entry_rule_matches($scope, $matches, array $entry) {
-    $scope = trim((string)$scope);
-
-    if (!is_array($matches)) {
-        $matches = [$matches];
-    }
-
-    if ($scope === 'categorie') {
-        $categorie = strtoupper((string)$entry['categorie']);
-
-        foreach ($matches as $match) {
-            $match = strtoupper(trim((string)$match));
-
-            if ($match !== '' && stripos($categorie, $match) !== false) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    if ($scope === 'region') {
-        $clubCode = preg_replace('/\D+/', '', (string)$entry['country_code']);
-        $region = strlen($clubCode) >= 2 ? substr($clubCode, 0, 2) : '';
-
-        foreach ($matches as $match) {
-            $match = preg_replace('/\D+/', '', (string)$match);
-
-            if ($match !== '' && $region === $match) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    if ($scope === 'departement') {
-        $clubCode = preg_replace('/\D+/', '', (string)$entry['country_code']);
-        $departement = strlen($clubCode) >= 4 ? substr($clubCode, 2, 2) : '';
-
-        foreach ($matches as $match) {
-            $match = preg_replace('/\D+/', '', (string)$match);
-
-            if ($match !== '' && $departement === $match) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    $value = registrarc_rule_entry_value($scope, $entry);
-
-    if ($value === null) {
-        return false;
-    }
-
-    $valueString = strtoupper(trim((string)$value));
-    $hasValue = !registrarc_is_null_empty_or_zero($value);
-
-    foreach ($matches as $match) {
-        $match = strtoupper(trim((string)$match));
-
-        if ($match === '') {
-            continue;
-        }
-
-        if ($match === 'OUI' || $match === 'YES' || $match === '1') {
-            if ($hasValue) {
-                return true;
-            }
-        } elseif ($match === 'NON' || $match === 'NO' || $match === '0') {
-            if (!$hasValue) {
-                return true;
-            }
-        } elseif ($valueString === $match) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-function registrarc_apply_tarif_rules(array $entry, array $rules) {
-    $total = 0;
-    $labels = [];
-    $matchedCount = 0;
-
-    foreach ($rules as $rule) {
-        if (empty($rule['active'])) {
-            continue;
-        }
-
-        $scope = isset($rule['scope']) ? $rule['scope'] : '';
-        $matches = isset($rule['match']) ? $rule['match'] : [];
-
-        if (!registrarc_entry_rule_matches($scope, $matches, $entry)) {
-            continue;
-        }
-
-        if (isset($rule['action']['type']) && $rule['action']['type'] === 'fixed_price') {
-            $value = isset($rule['action']['value']) ? (float)$rule['action']['value'] : 0;
-
-            $total += $value;
-            $matchedCount++;
-
-            if (!empty($rule['label'])) {
-                $labels[] = trim((string)$rule['label']);
-            }
-        }
-    }
-
-    return [
-        'matched' => $matchedCount > 0,
-        'label'   => implode(' + ', $labels),
-        'amount'  => $total,
-        'count'   => $matchedCount,
-    ];
-}
-
-function registrarc_prix_engagement($clubCode, $categorie, $numeroEngagement, $tarifs, $organizerClubCode) {
-    $isOrganizer = ($clubCode == $organizerClubCode);
-    $age = registrarc_age_category($categorie);
-
-    if ($isOrganizer) {
-        $p1 = isset($tarifs['organizer'][$age][1]) ? floatval($tarifs['organizer'][$age][1]) : 0;
-        $p2 = isset($tarifs['organizer'][$age][2]) ? floatval($tarifs['organizer'][$age][2]) : $p1;
-    } else {
-        $p1 = isset($tarifs['clubs_autres'][$age][1]) ? floatval($tarifs['clubs_autres'][$age][1]) : 0;
-        $p2 = isset($tarifs['clubs_autres'][$age][2]) ? floatval($tarifs['clubs_autres'][$age][2]) : $p1;
-    }
-
-    return ($numeroEngagement <= 1) ? $p1 : ($p2 - $p1);
-}
-
-function registrarc_format_montant($montant) {
-    $montant = floatval($montant);
-
-    if (floor($montant) == $montant) {
-        return intval($montant);
-    }
-
-    return number_format($montant, 2, ',', ' ');
-}
-
-// ---------------------------------------------------------------------------
-// Dates / tournoi
-// ---------------------------------------------------------------------------
-function registrarc_format_date_fr($date) {
-    $date = trim((string)$date);
-
-    if ($date === '' || $date === '0000-00-00') {
-        return '';
-    }
-
-    $ts = strtotime($date);
-
-    return $ts ? date('d/m/Y', $ts) : $date;
-}
-
-function registrarc_tournament_date_string($from, $to) {
-    $fromLabel = registrarc_format_date_fr($from);
-    $toLabel = registrarc_format_date_fr($to);
-
-    if ($fromLabel === '' && $toLabel === '') {
-        return '';
-    }
-
-    if ($toLabel === '' || $toLabel === $fromLabel) {
-        return $fromLabel;
-    }
-
-    return 'Du ' . $fromLabel . ' au ' . $toLabel;
-}
-
-function registrarc_get_tournament_info($TourId) {
-    $TourId = intval($TourId);
-
-    $data = [
-        'name' => 'Concours n° ' . $TourId,
-        'where' => '',
-        'when_label' => '',
-        'organizer_code' => '',
-        'organizer_name' => '',
-    ];
-
-    $query = "
-        SELECT ToCommitee, ToComDescr, ToName, ToWhere, ToWhenFrom, ToWhenTo
-        FROM Tournament
-        WHERE ToId = $TourId
-    ";
-
-    $rs = safe_r_sql($query);
-
-    if ($row = safe_fetch($rs)) {
-        $data['name'] = $row->ToName;
-        $data['where'] = $row->ToWhere;
-        $data['when_label'] = registrarc_tournament_date_string($row->ToWhenFrom, $row->ToWhenTo);
-        $data['organizer_code'] = $row->ToCommitee;
-        $data['organizer_name'] = $row->ToComDescr;
-
-        if (empty($data['organizer_name']) && $data['organizer_code']) {
-            $organizerNameQuery = "
-                SELECT CoName
-                FROM Countries
-                WHERE CoCode = " . StrSafe_DB($data['organizer_code']) . "
-                  AND CoTournament = $TourId
-            ";
-
-            $organizerNameRs = safe_r_sql($organizerNameQuery);
-
-            if ($on = safe_fetch($organizerNameRs)) {
-                $data['organizer_name'] = $on->CoName;
-            }
-        }
-    }
-
-    return $data;
-}
-
-// ---------------------------------------------------------------------------
-// Numérotation engagements
-// ---------------------------------------------------------------------------
-function registrarc_get_engagement_numbers($TourId) {
-    $TourId = intval($TourId);
-    $numbers = [];
-    $counterByLicence = [];
-
-    $query = "
-        SELECT
-            e.EnId AS engagement_id,
-            UPPER(TRIM(e.EnCode)) AS licence,
-            q.QuSession AS session_no,
-            q.QuTarget AS target,
-            q.QuLetter AS letter
-        FROM Entries e
-        LEFT JOIN Qualifications q
-            ON e.EnId = q.QuId
-        WHERE e.EnTournament = $TourId
-          AND e.EnAthlete = 1
-          AND TRIM(e.EnCode) <> ''
-        ORDER BY UPPER(TRIM(e.EnCode)), q.QuSession, q.QuTarget, q.QuLetter, e.EnId
-    ";
-
-    $rs = safe_r_sql($query);
-
-    if ($rs) {
-        while ($row = safe_fetch($rs)) {
-            $licence = strtoupper(trim((string)$row->licence));
-
-            if (!isset($counterByLicence[$licence])) {
-                $counterByLicence[$licence] = 0;
-            }
-
-            $counterByLicence[$licence]++;
-            $numbers[intval($row->engagement_id)] = $counterByLicence[$licence];
-        }
-    }
-
-    return $numbers;
-}
 
 // ---------------------------------------------------------------------------
 // Engagements
@@ -692,7 +131,7 @@ function registrarc_get_cheque_engagements($TourId, array $selectedIds) {
     return $rows;
 }
 
-function registrarc_build_cheque_rows(array $rows, array $payments, array $paymentModes, array $tarifs, $organizerClubCode, array $engagementNumbers, array $tarifRules) {
+function registrarc_build_cheque_rows(array $rows, array $payments, array $paymentModes, array $tarifs, $organizerClubCode, array $engagementNumbers, array $tarifRules, $ageClasses = null) {
     $result = [];
 
     foreach ($rows as $row) {
@@ -752,7 +191,8 @@ function registrarc_build_cheque_rows(array $rows, array $payments, array $payme
                 $row['categorie'],
                 $numeroEngagement,
                 $tarifs,
-                $organizerClubCode
+                $organizerClubCode,
+                $ageClasses
             );
 
             $ruleLabel = '';
@@ -904,6 +344,7 @@ $payments = registrarc_load_payments($TourId);
 $paymentModes = registrarc_load_payment_modes($TourId);
 $tarifs = registrarc_load_tarifs($TourId, $tournament['organizer_code'], $tournament['organizer_name']);
 $tarifRules = registrarc_load_tarif_rules($TourId);
+$ageClasses = registrarc_load_age_classes($TourId);
 $engagementNumbers = registrarc_get_engagement_numbers($TourId);
 $chequeGroups = registrarc_load_cheque_groups($TourId);
 
@@ -927,7 +368,8 @@ if ($isGroupMode) {
             $tarifs,
             $tournament['organizer_code'],
             $engagementNumbers,
-            $tarifRules
+            $tarifRules,
+            $ageClasses
         );
 
         $groupBlocks[] = [
@@ -947,7 +389,8 @@ if ($isGroupMode) {
         $tarifs,
         $tournament['organizer_code'],
         $engagementNumbers,
-        $tarifRules
+        $tarifRules,
+        $ageClasses
     );
 } else {
     foreach ($chequeGroups as $id => $group) {
@@ -972,7 +415,8 @@ if ($isGroupMode) {
             $tarifs,
             $tournament['organizer_code'],
             $engagementNumbers,
-            $tarifRules
+            $tarifRules,
+            $ageClasses
         );
 
         if (empty($rows)) {
@@ -997,7 +441,8 @@ if ($isGroupMode) {
         $tarifs,
         $tournament['organizer_code'],
         $engagementNumbers,
-        $tarifRules
+        $tarifRules,
+        $ageClasses
     );
 
     $singleRows = registrarc_filter_rows_not_in_map($allChequeRows, $groupedIdsMap);
