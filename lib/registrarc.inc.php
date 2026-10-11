@@ -784,6 +784,8 @@ function registrarc_load_age_classes($TourId) {
 // ---------------------------------------------------------------------------
 // Tarification
 // ---------------------------------------------------------------------------
+// Ordre : liste "jeunes", puis liste "adultes", puis règle par défaut :
+// une catégorie Uxx en dessous de U21 (U11, U13, U15, U18...) est jeune.
 function registrarc_age_category($categorie, $ageClasses = null) {
     $categorie = (string)$categorie;
 
@@ -791,12 +793,20 @@ function registrarc_age_category($categorie, $ageClasses = null) {
         $ageClasses = registrarc_default_age_classes();
     }
 
-    foreach ($ageClasses['jeunes'] as $c) {
-        $c = trim((string)$c);
+    foreach (['jeunes', 'adultes'] as $group) {
+        $list = isset($ageClasses[$group]) && is_array($ageClasses[$group]) ? $ageClasses[$group] : [];
 
-        if ($c !== '' && stripos($categorie, $c) !== false) {
-            return 'jeunes';
+        foreach ($list as $c) {
+            $c = trim((string)$c);
+
+            if ($c !== '' && stripos($categorie, $c) !== false) {
+                return $group;
+            }
         }
+    }
+
+    if (preg_match('/U(\d{1,2})/i', $categorie, $m) && (int)$m[1] < 21) {
+        return 'jeunes';
     }
 
     return 'adultes';

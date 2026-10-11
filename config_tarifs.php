@@ -184,7 +184,7 @@ $tournamentClasses = registrarc_get_tournament_classes($TourId);
 
 function registrarc_render_age_card($classId, $classLabel, $group) {
     $otherGroup = ($group === 'jeunes') ? 'adultes' : 'jeunes';
-    $arrow = ($group === 'jeunes') ? '←' : '→';
+    $arrow = ($group === 'jeunes') ? '→' : '←';
     $otherLabelText = ($otherGroup === 'jeunes') ? 'Jeunes' : 'Adultes';
 
     $html = '<div class="age-card" draggable="true" data-class-id="' . htmlspecialchars($classId) . '" data-group="' . htmlspecialchars($group) . '"';
@@ -1168,33 +1168,6 @@ include('Common/Templates/head.php');
                 <div class="age-transfer">
                     <div class="age-transfer-col">
                         <div class="age-transfer-col-header">
-                            <span class="age-transfer-col-title">🧓 Adultes</span>
-                            <span class="age-transfer-count" id="adultesCount">0</span>
-                        </div>
-                        <div
-                            class="age-dropzone"
-                            data-group="adultes"
-                            id="adultesZone"
-                            ondragover="handleZoneDragOver(event);"
-                            ondragleave="handleZoneDragLeave(event);"
-                            ondrop="handleZoneDrop(event);"
-                        >
-                            <?php foreach ($tournamentClasses as $class):
-                                $classId = $class['id'];
-                                $classLabel = $classId . ($class['description'] !== '' ? ' — ' . $class['description'] : '');
-                                $isJeune = in_array(strtoupper($classId), array_map('strtoupper', $currentAgeClasses['jeunes']), true);
-
-                                if ($isJeune) {
-                                    continue;
-                                }
-
-                                echo registrarc_render_age_card($classId, $classLabel, 'adultes');
-                            endforeach; ?>
-                        </div>
-                    </div>
-
-                    <div class="age-transfer-col">
-                        <div class="age-transfer-col-header">
                             <span class="age-transfer-col-title">🏹 Jeunes</span>
                             <span class="age-transfer-count" id="jeunesCount">0</span>
                         </div>
@@ -1209,13 +1182,40 @@ include('Common/Templates/head.php');
                             <?php foreach ($tournamentClasses as $class):
                                 $classId = $class['id'];
                                 $classLabel = $classId . ($class['description'] !== '' ? ' — ' . $class['description'] : '');
-                                $isJeune = in_array(strtoupper($classId), array_map('strtoupper', $currentAgeClasses['jeunes']), true);
+                                $isJeune = registrarc_age_category($classId, $currentAgeClasses) === 'jeunes';
 
                                 if (!$isJeune) {
                                     continue;
                                 }
 
                                 echo registrarc_render_age_card($classId, $classLabel, 'jeunes');
+                            endforeach; ?>
+                        </div>
+                    </div>
+
+                    <div class="age-transfer-col">
+                        <div class="age-transfer-col-header">
+                            <span class="age-transfer-col-title">🧓 Adultes</span>
+                            <span class="age-transfer-count" id="adultesCount">0</span>
+                        </div>
+                        <div
+                            class="age-dropzone"
+                            data-group="adultes"
+                            id="adultesZone"
+                            ondragover="handleZoneDragOver(event);"
+                            ondragleave="handleZoneDragLeave(event);"
+                            ondrop="handleZoneDrop(event);"
+                        >
+                            <?php foreach ($tournamentClasses as $class):
+                                $classId = $class['id'];
+                                $classLabel = $classId . ($class['description'] !== '' ? ' — ' . $class['description'] : '');
+                                $isJeune = registrarc_age_category($classId, $currentAgeClasses) === 'jeunes';
+
+                                if ($isJeune) {
+                                    continue;
+                                }
+
+                                echo registrarc_render_age_card($classId, $classLabel, 'adultes');
                             endforeach; ?>
                         </div>
                     </div>
@@ -1613,7 +1613,7 @@ function refreshAgeCard(card) {
     const btn = card.querySelector('.age-card-move');
 
     if (btn) {
-        btn.textContent = (group === 'jeunes') ? '←' : '→';
+        btn.textContent = (group === 'jeunes') ? '→' : '←';
         btn.title = 'Déplacer vers ' + (otherGroup === 'jeunes' ? 'Jeunes' : 'Adultes');
         btn.dataset.target = otherGroup;
     }

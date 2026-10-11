@@ -322,18 +322,22 @@ if (isset($_SESSION['RegistrArc_kiosk_message'])) {
 $paidRows = 0;
 $unpaidRows = 0;
 $receiptRows = 0;
+$unpaidAmount = 0;
 
 foreach ($rows as $r) {
     if ($r['payment_status'] === 'PAYE') {
         $paidRows++;
     } else {
         $unpaidRows++;
+        $unpaidAmount += (float)$r['amount_due'];
     }
 
     if (!empty($r['receipt_required'])) {
         $receiptRows++;
     }
 }
+
+
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -344,16 +348,18 @@ foreach ($rows as $r) {
 
     <style>
         :root {
-            --primary: #2563eb;
-            --success: #16a34a;
-            --danger: #dc2626;
-            --warning: #d97706;
+            --text: #1f2933;
             --muted: #6b7280;
-            --strong: #111827;
-            --bg: #f9fafb;
-            --card: #ffffff;
-            --border: #e5e7eb;
-            --shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+            --line: #e5e7eb;
+            --line-strong: #d1d5db;
+            --bg: #f3f4f6;
+            --surface: #ffffff;
+            --accent: #1d4ed8;
+            --accent-soft: #eff4ff;
+            --paid: #15803d;
+            --unpaid: #b91c1c;
+            --warn: #b45309;
+            --radius: 8px;
             --safe-bottom: env(safe-area-inset-bottom, 0px);
         }
 
@@ -361,251 +367,110 @@ foreach ($rows as $r) {
             box-sizing: border-box;
         }
 
-        html {
+        html,
+        body {
+            margin: 0;
             min-height: 100%;
             background: var(--bg);
         }
 
         body {
-            min-height: 100%;
-            margin: 0;
-            padding: 0;
-            background: var(--bg);
-            color: var(--strong);
-            font-family: Aptos, "Aptos Display", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text);
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-size: 15px;
+            line-height: 1.35;
             -webkit-font-smoothing: antialiased;
         }
 
         button,
         input,
-        select,
-        textarea {
+        select {
             font: inherit;
+            color: inherit;
+        }
+
+        .num {
+            font-variant-numeric: tabular-nums;
+        }
+
+        .sr-only {
+            position: absolute !important;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
         }
 
         .app-shell {
-            max-width: 760px;
+            max-width: 860px;
             margin: 0 auto;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            background: var(--bg);
         }
 
-        .app-header {
-            position: sticky;
-            top: 0;
-            z-index: 50;
-            background: rgba(249, 250, 251, 0.97);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid var(--border);
-            padding: 10px 12px 9px;
+        /* --- En-tête ---------------------------------------------------------- */
+        .topbar {
+            background: var(--surface);
+            border-bottom: 1px solid var(--line);
+            padding: 12px 14px 10px;
         }
 
-        .app-title-line {
+        .topbar-line {
             display: flex;
-            align-items: center;
+            align-items: baseline;
             justify-content: space-between;
-            gap: 10px;
+            gap: 12px;
         }
 
-        .app-title {
-            font-size: 22px;
-            font-weight: 900;
-            line-height: 1.1;
-        }
-
-        .app-subtitle {
-            color: var(--muted);
-            font-size: 12px;
-            margin-top: 3px;
-        }
-
-        .app-header-actions {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-            flex-shrink: 0;
-        }
-
-        .app-content {
-            padding: 10px 12px;
-            padding-bottom: calc(150px + var(--safe-bottom));
-        }
-
-        .btn {
-            border: none;
-            border-radius: 999px;
-            padding: 9px 13px;
-            font-size: 13px;
-            font-weight: 800;
-            text-decoration: none;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            line-height: 1.2;
-            min-height: 38px;
-        }
-
-        .btn-small {
-            min-height: 32px;
-            padding: 7px 10px;
-            font-size: 12px;
-        }
-
-        .btn-success {
-            background: var(--success);
-            color: #fff;
-        }
-
-        .btn-ghost {
-            background: #fff;
-            color: #374151;
-            border: 1px solid #d1d5db;
-        }
-
-        .alert {
-            padding: 10px 12px;
-            border-radius: 12px;
-            font-size: 13px;
-            margin-bottom: 10px;
+        .title {
+            font-size: 18px;
             font-weight: 700;
         }
 
-        .alert-success {
-            background: #dcfce7;
-            border: 1px solid #bbf7d0;
-            color: #166534;
+        .subtitle {
+            color: var(--muted);
+            font-size: 13px;
+            margin-top: 1px;
         }
 
-        .alert-error {
-            background: #fee2e2;
-            border: 1px solid #fecaca;
-            color: #991b1b;
+        .topbar a {
+            color: var(--accent);
+            font-size: 14px;
+            text-decoration: none;
+            white-space: nowrap;
         }
 
-        .alert-info {
-            background: #e0f2fe;
-            border: 1px solid #bae6fd;
-            color: #075985;
-        }
-
-        .alert-warning {
-            background: #fef3c7;
-            border: 1px solid #fde68a;
-            color: #92400e;
-        }
-
-        .status-details {
-            margin-top: 8px;
-            border: 1px solid var(--border);
-            border-radius: 13px;
-            background: #fff;
-            box-shadow: var(--shadow);
-            overflow: hidden;
-        }
-
-        .status-details summary {
-            list-style: none;
-            cursor: pointer;
-            padding: 8px 10px;
+        .summary {
             display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            font-size: 12px;
-            font-weight: 900;
-            color: #374151;
-            user-select: none;
-        }
-
-        .status-details summary::-webkit-details-marker {
-            display: none;
-        }
-
-        .status-summary-left {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            min-width: 0;
-        }
-
-        .status-arrow {
-            display: inline-flex;
-            width: 18px;
-            height: 18px;
-            border-radius: 999px;
-            align-items: center;
-            justify-content: center;
-            background: #eef2ff;
-            color: #3730a3;
-            font-size: 11px;
-            transition: transform .16s ease;
-            flex-shrink: 0;
-        }
-
-        .status-details[open] .status-arrow {
-            transform: rotate(90deg);
-        }
-
-        .status-summary-text {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .status-summary-counts {
+            flex-wrap: wrap;
+            gap: 4px 16px;
+            margin-top: 8px;
+            font-size: 13px;
             color: var(--muted);
-            font-size: 11px;
-            font-weight: 800;
-            white-space: nowrap;
         }
 
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 6px;
-            padding: 0 8px 8px;
+        .summary strong {
+            color: var(--text);
+            font-weight: 600;
         }
 
-        .stat {
-            background: #f9fafb;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 7px 8px;
+        .summary .is-unpaid strong {
+            color: var(--unpaid);
         }
 
-        .stat-label {
-            color: var(--muted);
-            font-size: 9px;
-            font-weight: 950;
-            text-transform: uppercase;
-            letter-spacing: .04em;
+        .summary .is-paid strong {
+            color: var(--paid);
         }
 
-        .stat-value {
-            margin-top: 3px;
-            font-size: 18px;
-            font-weight: 950;
-            line-height: 1;
-        }
-
-        .success-text {
-            color: var(--success);
-        }
-
-        .danger-text {
-            color: var(--danger);
-        }
-
-        .warning-text {
-            color: var(--warning);
-        }
-
-        .search-panel {
-            margin-top: 9px;
+        /* --- Recherche et filtres --------------------------------------------- */
+        .toolbar {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: var(--bg);
+            padding: 10px 14px 8px;
+            border-bottom: 1px solid var(--line);
         }
 
         .search-input-wrap {
@@ -614,520 +479,323 @@ foreach ($rows as $r) {
 
         .search-input-wrap input[type="text"] {
             width: 100%;
-            box-sizing: border-box;
-            padding: 10px 42px 10px 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 999px;
-            background: #fff;
-            font-size: 14px;
-            font-weight: 800;
+            height: 42px;
+            padding: 0 40px 0 12px;
+            border: 1px solid var(--line-strong);
+            border-radius: var(--radius);
+            background: var(--surface);
+            font-size: 16px;
             outline: none;
+        }
+
+        .search-input-wrap input[type="text"]:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
         }
 
         .search-clear {
             position: absolute;
-            right: 6px;
-            top: 50%;
-            transform: translateY(-50%);
+            right: 4px;
+            top: 4px;
+            width: 34px;
+            height: 34px;
             border: none;
-            border-radius: 999px;
-            background: #e5e7eb;
-            color: #374151;
-            font-size: 14px;
-            font-weight: 900;
-            width: 30px;
-            height: 30px;
+            background: none;
+            color: var(--muted);
+            font-size: 20px;
             cursor: pointer;
         }
 
-        .results-count {
-            margin-top: 6px;
-            color: var(--muted);
-            font-size: 12px;
-            font-weight: 700;
-        }
-
-        .card {
-            background: var(--card);
-            border-radius: 13px;
-            box-shadow: var(--shadow);
-            padding: 9px 10px;
-            margin-bottom: 8px;
-            border: 1px solid var(--border);
-        }
-
-        .filter-panel {
-            display: grid;
-            gap: 8px;
-            margin-top: 9px;
-        }
-
-        .filter-title {
-            font-size: 11px;
-            font-weight: 900;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: .04em;
-        }
-
-        .session-list {
+        .filters {
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
+            align-items: center;
+            gap: 8px 14px;
+            margin-top: 8px;
         }
 
-        .session-pill {
+        .segmented {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 1px;
+            background: var(--line-strong);
+            border: 1px solid var(--line-strong);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        .session-pill,
+        .pay-mode {
+            position: relative;
             display: inline-flex;
             align-items: center;
-            gap: 5px;
-            padding: 7px 9px;
-            border-radius: 999px;
-            background: #fff;
-            border: 1px solid #d1d5db;
-            font-size: 12px;
-            font-weight: 900;
-            color: #374151;
+            justify-content: center;
+            min-height: 36px;
+            padding: 0 12px;
+            background: var(--surface);
+            border: none;
+            font-size: 14px;
+            cursor: pointer;
             user-select: none;
         }
 
         .session-pill input {
-            width: 15px;
-            height: 15px;
-            margin: 0;
-            accent-color: var(--primary);
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
         }
 
-        .show-paid-row {
-            display: flex;
+        .session-pill.is-on,
+        .pay-mode.is-active {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .check {
+            display: inline-flex;
             align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            font-weight: 900;
-            color: #374151;
+            gap: 7px;
+            font-size: 14px;
+            cursor: pointer;
             user-select: none;
         }
 
-        .show-paid-row input {
-            width: 18px;
-            height: 18px;
+        .check input,
+        .row-check {
+            width: 20px;
+            height: 20px;
             margin: 0;
-            accent-color: var(--primary);
+            accent-color: var(--accent);
         }
 
-        .row-card {
+        .results-count {
+            margin-left: auto;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        /* --- Liste ------------------------------------------------------------ */
+        .app-content {
+            padding: 12px 14px;
+            padding-bottom: calc(210px + var(--safe-bottom));
+        }
+
+        .alert {
+            padding: 10px 12px;
+            border-radius: var(--radius);
+            border: 1px solid;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .alert-success { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
+        .alert-error { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+        .alert-info { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
+        .alert-warning { background: #fffbeb; border-color: #fde68a; color: #78350f; }
+
+        .list {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        .empty-state {
+            padding: 28px 16px;
+            text-align: center;
+            color: var(--muted);
+        }
+
+        .kiosk-card {
             display: grid;
-            grid-template-columns: auto minmax(0, 1fr);
-            gap: 8px;
-            align-items: start;
+            grid-template-columns: auto 48px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 12px;
+            padding: 11px 14px;
+            border-top: 1px solid var(--line);
             cursor: pointer;
         }
 
-        .row-card.is-paid {
-            opacity: .78;
+        .list > .kiosk-card:first-child,
+        #noResults[hidden] + .kiosk-card {
+            border-top: none;
         }
 
-        .row-card.is-selected {
-            opacity: 1;
-            border-color: var(--primary);
-            background: #eff6ff;
+        .kiosk-card.is-selected {
+            background: var(--accent-soft);
+            box-shadow: inset 3px 0 0 var(--accent);
         }
 
-        .row-check {
-            display: flex;
-            align-items: center;
-            padding-top: 3px;
+        .row-target {
+            font-size: 17px;
+            font-weight: 700;
+            text-align: center;
+            white-space: nowrap;
         }
 
-        .row-check input {
-            width: 23px;
-            height: 23px;
-            accent-color: var(--primary);
+        .row-target.is-unassigned {
+            color: var(--muted);
+            font-weight: 400;
         }
 
         .row-main {
             min-width: 0;
-            display: grid;
-            gap: 6px;
         }
 
-        .row-line-archer {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .archer-identity {
-            min-width: 0;
-            display: flex;
-            align-items: baseline;
-            gap: 6px;
-            flex-wrap: wrap;
-            line-height: 1.1;
-        }
-
-        .archer-name {
-            font-size: 15px;
-            font-weight: 950;
-            min-width: 0;
+        .row-name {
+            font-weight: 600;
+            white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            white-space: nowrap;
         }
 
-        .archer-club {
-            font-size: 12px;
-            font-style: italic;
-            font-weight: 700;
+        .row-name span {
+            font-weight: 400;
+        }
+
+        .row-meta {
+            margin-top: 2px;
             color: var(--muted);
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .status-mini {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 22px;
-            padding: 4px 8px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: 950;
-            white-space: nowrap;
-        }
-
-        .status-mini-paid {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .status-mini-unpaid {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .row-tile-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 6px;
-            min-width: 0;
-        }
-
-        .mini-tile {
-            min-width: 0;
-            min-height: 42px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            padding: 6px 8px;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            background: #f9fafb;
-        }
-
-        .mini-tile-label {
-            color: var(--muted);
-            font-size: 9px;
-            font-weight: 950;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-            line-height: 1;
-        }
-
-        .mini-tile-value {
-            margin-top: 4px;
-            color: #111827;
             font-size: 13px;
-            font-weight: 950;
-            line-height: 1;
+            white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            white-space: nowrap;
         }
 
-        .mini-tile-target {
-            font-size: 20px;
-            letter-spacing: -.04em;
-        }
-
-        .mini-tile-category {
-            font-size: 15px;
-            letter-spacing: -.03em;
-        }
-
-        .mini-tile-price {
-            background: #111827;
-            border-color: #111827;
-        }
-
-        .mini-tile-price .mini-tile-label {
-            color: #cbd5e1;
-        }
-
-        .mini-tile-amount {
-            color: #fff;
-            font-size: 18px;
-            text-align: right;
-            letter-spacing: -.04em;
-        }
-
-        .mini-tile-danger {
-            color: #991b1b;
+        .row-flags {
+            margin-top: 3px;
             font-size: 12px;
-            line-height: 1.05;
-            white-space: normal;
-        }
-
-        .badges {
             display: flex;
             flex-wrap: wrap;
-            gap: 5px;
-            margin-top: 1px;
+            gap: 2px 10px;
         }
 
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 3px 7px;
-            border-radius: 999px;
-            font-size: 10.5px;
-            font-weight: 900;
+        .flag-warn { color: var(--unpaid); }
+        .flag-receipt { color: var(--warn); }
+        .flag-tarif { color: var(--accent); }
+
+        .row-amount {
+            text-align: right;
             white-space: nowrap;
         }
 
-        .badge-method {
-            background: #e0f2fe;
-            color: #075985;
+        .amount {
+            font-size: 17px;
+            font-weight: 600;
         }
 
-        .badge-receipt {
-            background: #fef3c7;
-            color: #92400e;
+        .state {
+            margin-top: 2px;
+            font-size: 12px;
         }
 
-        .badge-target-warning {
-            background: #fee2e2;
-            color: #991b1b;
+        .state-unpaid { color: var(--unpaid); }
+        .state-paid { color: var(--paid); }
+
+        .kiosk-card.is-paid .row-target,
+        .kiosk-card.is-paid .row-name,
+        .kiosk-card.is-paid .amount {
+            color: var(--muted);
         }
 
-        .badge-tarif {
-            background: #ede9fe;
-            color: #5b21b6;
-        }
-
-        .badge-free {
-            background: #dcfce7;
-            color: #166534;
-        }
-
+        /* --- Barre d'encaissement --------------------------------------------- */
         .bottom-bulk-bar {
             position: fixed;
             left: 0;
             right: 0;
             bottom: 0;
             z-index: 60;
-            background: rgba(255, 255, 255, 0.97);
-            backdrop-filter: blur(10px);
-            border-top: 1px solid var(--border);
-            padding: 9px 12px calc(9px + var(--safe-bottom));
+            background: var(--surface);
+            border-top: 1px solid var(--line-strong);
+            padding: 10px 14px calc(10px + var(--safe-bottom));
         }
 
         .bottom-bulk-inner {
-            max-width: 760px;
+            max-width: 832px;
             margin: 0 auto;
             display: grid;
-            gap: 7px;
+            gap: 10px;
         }
 
-        .bulk-summary {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto auto;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            font-weight: 900;
-            color: #374151;
-        }
-
-        .bulk-total {
-            color: var(--strong);
-            font-size: 13px;
-            white-space: nowrap;
-        }
-
-        .bulk-controls {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr);
-            gap: 8px;
-            align-items: center;
-        }
-
-        select {
-            width: 100%;
-            box-sizing: border-box;
-            padding: 10px 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 999px;
-            background: #fff;
+        .bulk-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
             font-size: 14px;
-            font-weight: 800;
+            color: var(--muted);
         }
 
-        .bulk-receipt {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
-            border: 1px solid #fde68a;
-            background: #fef3c7;
-            color: #92400e;
-            border-radius: 999px;
-            padding: 7px 9px;
-            font-size: 11px;
-            font-weight: 900;
-            white-space: nowrap;
-            margin: 0;
-            user-select: none;
+        .bulk-head strong {
+            color: var(--text);
+            font-weight: 600;
         }
 
-        .bulk-receipt input {
-            width: 16px;
-            height: 16px;
-            margin: 0;
-            accent-color: var(--warning);
+        .bulk-total strong {
+            font-size: 20px;
         }
 
-        .bulk-buttons {
+        .bulk-details {
+            display: none;
+            gap: 10px;
+        }
+
+        .has-selection .bulk-details {
             display: grid;
-            grid-template-columns: 1fr;
-            gap: 8px;
+        }
+
+        .pay-modes {
+            display: flex;
+        }
+
+        .pay-modes .pay-mode {
+            flex: 1 1 0;
+        }
+
+        .bulk-actions {
+            display: flex;
+            align-items: center;
+            gap: 14px;
         }
 
         .btn-validate-wide {
-            width: 100%;
-            min-height: 48px;
-            font-size: 15px;
+            flex: 1;
+            height: 48px;
+            border: none;
+            border-radius: var(--radius);
+            background: var(--paid);
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
         }
 
-        .empty {
-            text-align: center;
+        .btn-validate-wide:disabled {
+            background: var(--line-strong);
             color: var(--muted);
-            font-weight: 800;
-            padding: 24px;
+            cursor: default;
         }
 
         @media (max-width: 520px) {
-            .app-header {
-                padding-left: 8px;
-                padding-right: 8px;
+            .kiosk-card {
+                grid-template-columns: auto 42px minmax(0, 1fr) auto;
+                gap: 10px;
+                padding: 10px 12px;
             }
 
             .app-content {
-                padding-left: 8px;
-                padding-right: 8px;
-                padding-bottom: calc(154px + var(--safe-bottom));
+                padding-left: 0;
+                padding-right: 0;
             }
 
-            .app-title {
-                font-size: 21px;
+            .list {
+                border-left: none;
+                border-right: none;
+                border-radius: 0;
             }
 
-            .status-details summary {
-                padding: 7px 8px;
-            }
-
-            .status-summary-counts {
-                display: none;
-            }
-
-            .card {
-                padding: 8px;
-                margin-bottom: 7px;
-            }
-
-            .row-card {
-                gap: 7px;
-            }
-
-            .row-check {
-                padding-top: 1px;
-            }
-
-            .row-check input {
-                width: 22px;
-                height: 22px;
-            }
-
-            .row-main {
-                gap: 5px;
-            }
-
-            .archer-identity {
-                display: grid;
-                gap: 2px;
-            }
-
-            .archer-name,
-            .archer-club {
-                max-width: 100%;
-            }
-
-            .archer-club {
-                font-size: 11px;
-            }
-
-            .mini-tile {
-                min-height: 40px;
-                padding: 6px 7px;
-                border-radius: 11px;
-            }
-
-            .mini-tile-target {
-                font-size: 19px;
-            }
-
-            .mini-tile-category {
-                font-size: 14px;
-            }
-
-            .mini-tile-amount {
-                font-size: 17px;
-            }
-
-            .badges {
-                display: none;
-            }
-
-            .bulk-summary {
-                grid-template-columns: minmax(0, 1fr) auto auto;
-                gap: 6px;
-            }
-
-            .bulk-total {
-                font-size: 12px;
-            }
-
-            .bulk-receipt span {
-                display: none;
-            }
-
-            .bulk-receipt {
-                width: 38px;
-                height: 34px;
-                padding: 0;
-            }
-        }
-
-        @media (min-width: 768px) {
-            .app-shell,
-            .bottom-bulk-inner {
-                max-width: 920px;
-            }
-
-            .app-content {
-                padding-bottom: calc(150px + var(--safe-bottom));
+            .results-count {
+                margin-left: 0;
             }
         }
     </style>
@@ -1135,99 +803,57 @@ foreach ($rows as $r) {
 
 <body>
     <div class="app-shell">
-        <header class="app-header">
-            <div class="app-title-line">
+        <header class="topbar">
+            <div class="topbar-line">
                 <div>
-                    <div class="app-title">RegistrArc</div>
-                    <div class="app-subtitle">
-                        <?php echo htmlspecialchars($tournamentName ?: 'Mode guichet mobile'); ?>
-                    </div>
+                    <div class="title">Encaissement</div>
+                    <div class="subtitle"><?php echo htmlspecialchars($tournamentName ?: 'RegistrArc'); ?></div>
                 </div>
 
-                <div class="app-header-actions">
-                    <a href="index.php?desktop=1" class="btn btn-ghost btn-small">Version complète</a>
-                </div>
+                <a href="index.php?desktop=1">Version complète</a>
             </div>
 
-            <details class="status-details">
-                <summary>
-                    <span class="status-summary-left">
-                        <span class="status-arrow">›</span>
-                        <span class="status-summary-text">Reçu / En attente / Payé</span>
-                    </span>
-
-                    <span class="status-summary-counts">
-                        <?php echo intval($receiptRows); ?> reçu ·
-                        <?php echo intval($unpaidRows); ?> attente ·
-                        <?php echo intval($paidRows); ?> payé
-                    </span>
-                </summary>
-
-                <div class="stats">
-                    <div class="stat">
-                        <div class="stat-label">Reçu</div>
-                        <div class="stat-value warning-text"><?php echo intval($receiptRows); ?></div>
-                    </div>
-
-                    <div class="stat">
-                        <div class="stat-label">En attente</div>
-                        <div class="stat-value danger-text"><?php echo intval($unpaidRows); ?></div>
-                    </div>
-
-                    <div class="stat">
-                        <div class="stat-label">Payé</div>
-                        <div class="stat-value success-text"><?php echo intval($paidRows); ?></div>
-                    </div>
-                </div>
-            </details>
-
-            <div class="search-panel">
-                <div class="search-input-wrap">
-                    <input type="text" id="kioskSearch" placeholder="Rechercher nom, licence, club..." oninput="filterCards();" autocomplete="off">
-                    <button type="button" class="search-clear" onclick="clearSearch();" aria-label="Effacer la recherche">×</button>
-                </div>
-
-                <div class="results-count">
-                    <span id="visibleCount"><?php echo count($rows); ?></span> engagement(s) affiché(s)
-                </div>
-            </div>
-
-            <div class="filter-panel">
-                <div>
-                    <div class="filter-title">Départs</div>
-
-                    <?php if (empty($sessions)): ?>
-                        <div class="session-list">
-                            <label class="session-pill">
-                                <input type="checkbox" checked disabled>
-                                Aucun départ
-                            </label>
-                        </div>
-                    <?php else: ?>
-                        <div class="session-list">
-                            <?php foreach ($sessions as $session): ?>
-                                <label class="session-pill">
-                                    <input
-                                        type="checkbox"
-                                        class="session-filter"
-                                        value="<?php echo htmlspecialchars($session); ?>"
-                                        checked
-                                        autocomplete="off"
-                                        onchange="filterCards();"
-                                    >
-                                    Départ <?php echo htmlspecialchars($session); ?>
-                                </label>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php endif; ?>
-                </div>
-
-                <label class="show-paid-row">
-                    <input type="checkbox" id="showPaidCheckbox" autocomplete="off" onchange="filterCards();">
-                    Afficher aussi les archers déjà payés
-                </label>
+            <div class="summary num">
+                <span class="is-unpaid"><strong><?php echo intval($unpaidRows); ?></strong> à encaisser</span>
+                <span><strong><?php echo registrarc_format_montant($unpaidAmount); ?> €</strong> restant dû</span>
+                <span class="is-paid"><strong><?php echo intval($paidRows); ?></strong> payé(s)</span>
+                <span><strong><?php echo intval($receiptRows); ?></strong> reçu(s) demandé(s)</span>
             </div>
         </header>
+
+        <div class="toolbar">
+            <div class="search-input-wrap">
+                <input type="text" id="kioskSearch" placeholder="Rechercher un nom, une licence, un club" oninput="filterCards();" autocomplete="off">
+                <button type="button" class="search-clear" onclick="clearSearch();" aria-label="Effacer la recherche">×</button>
+            </div>
+
+            <div class="filters">
+                <?php if (!empty($sessions)): ?>
+                    <div class="segmented" role="group" aria-label="Départs">
+                        <?php foreach ($sessions as $session): ?>
+                            <label class="session-pill">
+                                <input
+                                    type="checkbox"
+                                    class="session-filter"
+                                    value="<?php echo htmlspecialchars($session); ?>"
+                                    checked
+                                    autocomplete="off"
+                                    onchange="filterCards();"
+                                >
+                                Départ <?php echo htmlspecialchars($session); ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+
+                <label class="check switch">
+                    <input type="checkbox" id="showPaidCheckbox" autocomplete="off" onchange="filterCards();">
+                    Afficher les payés
+                </label>
+
+                <span class="results-count num"><span id="visibleCount"><?php echo count($rows); ?></span> affiché(s)</span>
+            </div>
+        </div>
 
         <main class="app-content">
             <?php if (!$dataDirStatus['ok']): ?>
@@ -1243,125 +869,98 @@ foreach ($rows as $r) {
                 </div>
             <?php endif; ?>
 
-            <?php if (empty($rows)): ?>
-                <div class="card empty">
-                    Aucun engagement trouvé.
-                </div>
-            <?php endif; ?>
+            <div class="list">
+                <?php if (empty($rows)): ?>
+                    <div class="empty-state">Aucun engagement dans ce tournoi.</div>
+                <?php else: ?>
+                    <div class="empty-state" id="noResults" hidden>Aucun archer ne correspond à la recherche ou aux filtres.</div>
+                <?php endif; ?>
 
-            <?php foreach ($rows as $row): ?>
-                <?php
-                $isPaid = ($row['payment_status'] === 'PAYE');
-                $amountData = number_format((float)$row['amount_due'], 2, '.', '');
-                $searchText = mb_strtolower(
-                    $row['licence'] . ' ' .
-                    $row['nom'] . ' ' .
-                    $row['prenom'] . ' ' .
-                    $row['club'] . ' ' .
-                    $row['country_code'] . ' ' .
-                    $row['categorie'] . ' ' .
-                    $row['tarif_label']
-                );
-                ?>
-                <div
-                    class="card row-card kiosk-card <?php echo $isPaid ? 'is-paid' : ''; ?>"
-                    data-search="<?php echo htmlspecialchars($searchText); ?>"
-                    data-session="<?php echo htmlspecialchars($row['session']); ?>"
-                    data-paid="<?php echo $isPaid ? '1' : '0'; ?>"
-                    data-amount="<?php echo htmlspecialchars($amountData); ?>"
-                    onclick="toggleCardSelection(event, this);"
-                >
-                    <div class="row-check">
+                <?php foreach ($rows as $row): ?>
+                    <?php
+                    $isPaid = ($row['payment_status'] === 'PAYE');
+                    $amountData = number_format((float)$row['amount_due'], 2, '.', '');
+                    $searchText = mb_strtolower(
+                        $row['licence'] . ' ' .
+                        $row['nom'] . ' ' .
+                        $row['prenom'] . ' ' .
+                        $row['club'] . ' ' .
+                        $row['country_code'] . ' ' .
+                        $row['categorie'] . ' ' .
+                        $row['tarif_label']
+                    );
+                    // Départ et catégorie d'abord : le club, souvent long, est coupé en premier
+                    $meta = array_filter([
+                        $row['session'] !== '' ? 'Départ ' . $row['session'] : '',
+                        $row['categorie'],
+                        $row['club'],
+                    ]);
+                    ?>
+                    <div
+                        class="kiosk-card <?php echo $isPaid ? 'is-paid' : ''; ?>"
+                        data-search="<?php echo htmlspecialchars($searchText); ?>"
+                        data-session="<?php echo htmlspecialchars($row['session']); ?>"
+                        data-paid="<?php echo $isPaid ? '1' : '0'; ?>"
+                        data-amount="<?php echo htmlspecialchars($amountData); ?>"
+                        onclick="toggleCardSelection(event, this);"
+                    >
                         <input
                             type="checkbox"
                             name="engagements[]"
                             value="<?php echo intval($row['engagement_id']); ?>"
                             form="bulkForm"
-                            class="bulk-checkbox"
+                            class="bulk-checkbox row-check"
                             autocomplete="off"
+                            aria-label="<?php echo htmlspecialchars('Sélectionner ' . trim($row['nom'] . ' ' . $row['prenom'])); ?>"
                             onchange="updateBulkSummary();"
                         >
-                    </div>
 
-                    <div class="row-main">
-                        <div class="row-line-archer">
-                            <div class="archer-identity">
-                                <span class="archer-name">
-                                    <?php echo htmlspecialchars(trim($row['nom'] . ' ' . $row['prenom'])); ?>
-                                </span>
-
-                                <?php if ($row['club'] !== ''): ?>
-                                    <span class="archer-club">
-                                        <?php echo htmlspecialchars($row['club']); ?>
-                                    </span>
-                                <?php endif; ?>
-                            </div>
-
-                            <div class="status-mini <?php echo $isPaid ? 'status-mini-paid' : 'status-mini-unpaid'; ?>">
-                                <?php echo $isPaid ? 'Payé' : 'À payer'; ?>
-                            </div>
+                        <div class="row-target num <?php echo !empty($row['target_is_unassigned']) ? 'is-unassigned' : ''; ?>">
+                            <?php echo !empty($row['target_is_unassigned']) ? '—' : htmlspecialchars($row['target_label']); ?>
                         </div>
 
-                        <div class="row-tile-grid">
-                            <div class="mini-tile">
-                                <div class="mini-tile-label">Départ</div>
-                                <div class="mini-tile-value">
-                                    <?php echo $row['session'] !== '' ? htmlspecialchars('Départ ' . $row['session']) : '—'; ?>
-                                </div>
+                        <div class="row-main">
+                            <div class="row-name">
+                                <?php echo htmlspecialchars($row['nom']); ?>
+                                <span><?php echo htmlspecialchars($row['prenom']); ?></span>
                             </div>
 
-                            <div class="mini-tile">
-                                <div class="mini-tile-label">Cible</div>
-                                <div class="mini-tile-value mini-tile-target <?php echo !empty($row['target_is_unassigned']) ? 'mini-tile-danger' : ''; ?>">
-                                    <?php echo htmlspecialchars($row['target_label']); ?>
+                            <div class="row-meta"><?php echo htmlspecialchars(implode(' · ', $meta)); ?></div>
+
+                            <?php if (!empty($row['target_is_unassigned']) || !empty($row['receipt_required']) || !empty($row['has_special_tarif'])): ?>
+                                <div class="row-flags">
+                                    <?php if (!empty($row['target_is_unassigned'])): ?>
+                                        <span class="flag-warn">Sans cible</span>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($row['receipt_required'])): ?>
+                                        <span class="flag-receipt">Reçu demandé</span>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($row['has_special_tarif'])): ?>
+                                        <span class="flag-tarif"><?php echo htmlspecialchars($row['tarif_label']); ?></span>
+                                    <?php endif; ?>
                                 </div>
-                            </div>
+                            <?php endif; ?>
                         </div>
 
-                        <div class="row-tile-grid">
-                            <div class="mini-tile">
-                                <div class="mini-tile-label">Catégorie</div>
-                                <div class="mini-tile-value mini-tile-category">
-                                    <?php echo htmlspecialchars($row['categorie']); ?>
-                                </div>
+                        <div class="row-amount">
+                            <div class="amount num">
+                                <?php echo !empty($row['is_free']) ? 'Gratuit' : registrarc_format_montant($row['amount_due']) . ' €'; ?>
                             </div>
-
-                            <div class="mini-tile mini-tile-price">
-                                <div class="mini-tile-label">Prix</div>
-                                <div class="mini-tile-value mini-tile-amount">
-                                    <?php echo registrarc_format_montant($row['amount_due']); ?> €
-                                </div>
+                            <div class="state <?php echo $isPaid ? 'state-paid' : 'state-unpaid'; ?>">
+                                <?php
+                                if ($isPaid) {
+                                    echo htmlspecialchars('Payé' . ($row['payment_method_label'] !== '' ? ' · ' . $row['payment_method_label'] : ''));
+                                } else {
+                                    echo 'À payer';
+                                }
+                                ?>
                             </div>
-                        </div>
-
-                        <div class="badges">
-                            <?php if ($row['payment_method'] !== ''): ?>
-                                <span class="badge badge-method">
-                                    <?php echo htmlspecialchars($row['payment_method_label']); ?>
-                                </span>
-                            <?php endif; ?>
-
-                            <?php if (!empty($row['receipt_required'])): ?>
-                                <span class="badge badge-receipt">Reçu demandé</span>
-                            <?php endif; ?>
-
-                            <?php if (!empty($row['target_is_unassigned'])): ?>
-                                <span class="badge badge-target-warning">Sans affectation</span>
-                            <?php endif; ?>
-
-                            <?php if (!empty($row['has_special_tarif'])): ?>
-                                <span class="badge badge-tarif">
-                                    Tarif spécial : <?php echo htmlspecialchars($row['tarif_label']); ?>
-                                </span>
-                            <?php endif; ?>
-
-                            <?php if (!empty($row['is_free'])): ?>
-                                <span class="badge badge-free">Gratuit</span>
-                            <?php endif; ?>
                         </div>
                     </div>
-                </div>
-            <?php endforeach; ?>
+                <?php endforeach; ?>
+            </div>
         </main>
     </div>
 
@@ -1369,37 +968,45 @@ foreach ($rows as $r) {
         <?php echo registrarc_form_fields($TourId); ?>
         <input type="hidden" name="create_cheque_group_after_payment" id="create_cheque_group_after_payment" value="0">
 
+        <select name="bulk_payment_method" id="bulk_payment_method" class="sr-only" tabindex="-1" aria-hidden="true" autocomplete="off">
+            <?php foreach ($paymentModes as $code => $label): ?>
+                <option value="<?php echo htmlspecialchars($code); ?>">
+                    <?php echo htmlspecialchars($label); ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+
         <div class="bottom-bulk-inner">
-            <div class="bulk-summary">
-                <span><span id="bulkCount">0</span> sélectionné(s)</span>
-                <span class="bulk-total">Total dû : <span id="bulkTotal">0 €</span></span>
-
-                <label class="bulk-receipt" title="Reçu demandé">
-                    <input type="checkbox" name="bulk_receipt_required" id="bulkReceiptRequired" value="1" autocomplete="off">
-                    <span>Reçu</span>
-                </label>
+            <div class="bulk-head num">
+                <span><strong id="bulkCount">0</strong> sélectionné(s)</span>
+                <span class="bulk-total">Total <strong id="bulkTotal">0 €</strong></span>
             </div>
 
-            <div class="bulk-controls">
-                <select name="bulk_payment_method" id="bulk_payment_method" autocomplete="off">
+            <div class="bulk-details">
+                <div class="segmented pay-modes" role="group" aria-label="Mode de paiement">
                     <?php foreach ($paymentModes as $code => $label): ?>
-                        <option value="<?php echo htmlspecialchars($code); ?>">
+                        <button type="button" class="pay-mode" data-code="<?php echo htmlspecialchars($code); ?>" onclick="selectPaymentMode(this);">
                             <?php echo htmlspecialchars($label); ?>
-                        </option>
+                        </button>
                     <?php endforeach; ?>
-                </select>
-            </div>
+                </div>
 
-            <div class="bulk-buttons">
-                <?php if ($canWrite): ?>
-                    <button type="submit" name="bulk_action" value="validate" class="btn btn-success btn-validate-wide" onclick="return confirmBulk();">
-                        Valider
-                    </button>
-                <?php else: ?>
-                    <button type="button" class="btn btn-validate-wide" disabled title="Droits en lecture seule">
-                        Lecture seule
-                    </button>
-                <?php endif; ?>
+                <div class="bulk-actions">
+                    <label class="check pay-receipt">
+                        <input type="checkbox" name="bulk_receipt_required" id="bulkReceiptRequired" value="1" autocomplete="off">
+                        Reçu demandé
+                    </label>
+
+                    <?php if ($canWrite): ?>
+                        <button type="submit" name="bulk_action" value="validate" id="bulkSubmit" class="btn-validate-wide" onclick="return confirmBulk();">
+                            Valider
+                        </button>
+                    <?php else: ?>
+                        <button type="button" class="btn-validate-wide" disabled title="Droits en lecture seule">
+                            Lecture seule
+                        </button>
+                    <?php endif; ?>
+                </div>
             </div>
         </div>
     </form>
@@ -1579,8 +1186,42 @@ foreach ($rows as $r) {
                 visibleCount.textContent = String(visible);
             }
 
+            const noResults = document.getElementById('noResults');
+
+            if (noResults) {
+                noResults.hidden = visible > 0;
+            }
+
+            syncToggles();
             updateBulkSummary();
             saveKioskFiltersState();
+        }
+
+        // Aspect "activé" des pastilles de départ, de l'interrupteur Payés et du bouton Reçu
+        function syncToggles() {
+            document.querySelectorAll('.session-pill, .switch, .pay-receipt').forEach(label => {
+                const input = label.querySelector('input');
+                label.classList.toggle('is-on', !!(input && input.checked));
+            });
+        }
+
+        // Les boutons de mode de paiement pilotent la liste cachée bulk_payment_method
+        function selectPaymentMode(btn) {
+            const select = document.getElementById('bulk_payment_method');
+
+            if (select) {
+                select.value = String(btn.dataset.code || '');
+            }
+
+            syncPaymentModes();
+        }
+
+        function syncPaymentModes() {
+            const current = currentBulkPaymentMethod();
+
+            document.querySelectorAll('.pay-mode').forEach(btn => {
+                btn.classList.toggle('is-active', String(btn.dataset.code || '').toUpperCase() === current);
+            });
         }
 
         function clearSearch() {
@@ -1635,6 +1276,21 @@ foreach ($rows as $r) {
 
             if (totalEl) {
                 totalEl.textContent = formatEuro(total);
+            }
+
+            const form = document.getElementById('bulkForm');
+
+            if (form) {
+                form.classList.toggle('has-selection', count > 0);
+            }
+
+            const submit = document.getElementById('bulkSubmit');
+
+            if (submit) {
+                submit.disabled = count === 0;
+                submit.textContent = count === 0
+                    ? 'Valider'
+                    : (total > 0 ? 'Encaisser ' + formatEuro(total) : 'Valider ' + count + ' engagement(s)');
             }
 
             document.querySelectorAll('.kiosk-card').forEach(card => {
@@ -1705,12 +1361,14 @@ foreach ($rows as $r) {
 
         document.addEventListener('DOMContentLoaded', function() {
             loadKioskFiltersState();
+            syncPaymentModes();
             updateBulkSummary();
             filterCards();
         });
 
         window.addEventListener('pageshow', function() {
             loadKioskFiltersState();
+            syncPaymentModes();
             updateBulkSummary();
             filterCards();
         });
