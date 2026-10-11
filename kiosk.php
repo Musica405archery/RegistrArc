@@ -71,7 +71,8 @@ $tarifs = registrarc_load_tarifs($TourId, $organizerClubCode, $organizerClubName
 $ageClasses = registrarc_load_age_classes($TourId);
 $tarifRules = registrarc_load_tarif_rules($TourId);
 $dataDirStatus = registrarc_data_dir_status();
-$canWrite = hasACL(AclParticipants, AclReadWrite);
+$canWrite = registrarc_can_write($TourId);
+$isClosed = registrarc_is_closed($TourId);
 
 // ---------------------------------------------------------------------------
 // POST
@@ -119,16 +120,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ids = array_values(array_unique($ids));
 
         if (!empty($ids)) {
-            $saved = registrarc_update_payments($TourId, function (array &$payments) use ($ids, $method, $receiptRequired) {
-                foreach ($ids as $id) {
-                    registrarc_set_payment_in_array($payments, $id, $method, $receiptRequired);
-                }
-            });
+            $paymentResult = registrarc_record_payments($TourId, $ids, $method, $receiptRequired, 'kiosque');
+            $saved = $paymentResult['ok'];
+            $skippedMessage = registrarc_skipped_message($TourId, $paymentResult['skipped']);
 
             if ($saved) {
-                if ($createChequeGroupAfterPayment && count($ids) >= 2) {
-                    $paymentsAfterSave = registrarc_load_payments($TourId);
-                    $result = registrarc_create_cheque_group($TourId, $ids, $paymentsAfterSave);
+                if ($createChequeGroupAfterPayment && count($paymentResult['done']) >= 2) {
+                    $result = registrarc_create_cheque_group($TourId, $paymentResult['done'], registrarc_load_payments($TourId));
 
                     if (!empty($result['ok'])) {
                         $_SESSION['RegistrArc_kiosk_message'] = 'Paiements validés et chèque groupé créé.';
@@ -138,8 +136,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION['RegistrArc_kiosk_message_type'] = 'warning';
                     }
                 } else {
-                    $_SESSION['RegistrArc_kiosk_message'] = 'Paiements validés pour ' . count($ids) . ' engagement(s).';
+                    $_SESSION['RegistrArc_kiosk_message'] = 'Paiements validés pour ' . count($paymentResult['done']) . ' engagement(s).';
                     $_SESSION['RegistrArc_kiosk_message_type'] = 'success';
+                }
+
+                if ($skippedMessage !== '') {
+                    $_SESSION['RegistrArc_kiosk_message'] .= $skippedMessage;
+                    $_SESSION['RegistrArc_kiosk_message_type'] = 'warning';
                 }
             } else {
                 $_SESSION['RegistrArc_kiosk_message'] = "Erreur lors de l'écriture du JSON paiements." . registrarc_storage_error_suffix();
@@ -161,134 +164,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ---------------------------------------------------------------------------
-// Chargement engagements
+// Chargement engagements (calcul commun à toutes les pages)
 // ---------------------------------------------------------------------------
-$paymentsData = registrarc_load_payments($TourId);
-$engagementNumbers = registrarc_get_engagement_numbers($TourId);
-
-$query = "
-    SELECT
-        e.EnId AS engagement_id,
-        UPPER(TRIM(e.EnCode)) AS licence,
-        UPPER(TRIM(e.EnFirstName)) AS nom,
-        TRIM(e.EnName) AS prenom,
-        CONCAT(e.EnDivision, e.EnClass) AS categorie,
-        c.CoName AS club,
-        c.CoCode AS country_code,
-        q.QuSession AS session_no,
-        q.QuTarget AS target,
-        q.QuLetter AS letter,
-        e.EnIndClEvent,
-        e.EnTeamClEvent,
-        e.EnIndFEvent,
-        e.EnTeamFEvent,
-        e.EnTeamMixEvent
-    FROM Entries e
-    LEFT JOIN Countries c
-        ON e.EnCountry = c.CoId
-       AND e.EnTournament = c.CoTournament
-    LEFT JOIN Qualifications q
-        ON e.EnId = q.QuId
-    WHERE e.EnTournament = $TourId
-      AND e.EnAthlete = 1
-      AND TRIM(e.EnCode) <> ''
-    ORDER BY UPPER(TRIM(e.EnFirstName)), TRIM(e.EnName), e.EnId
-";
-
-$rs = safe_r_sql($query);
 $rows = [];
 $sessions = [];
 
-if ($rs) {
-    while ($row = safe_fetch($rs)) {
-        $engagementId = intval($row->engagement_id);
-        $numeroEngagement = isset($engagementNumbers[$engagementId]) ? intval($engagementNumbers[$engagementId]) : 1;
-
-        $payment = isset($paymentsData[(string)$engagementId]) && is_array($paymentsData[(string)$engagementId])
-            ? $paymentsData[(string)$engagementId]
-            : [];
-
-        $status = isset($payment['status']) && $payment['status'] === 'PAYE' ? 'PAYE' : 'NON_PAYE';
-        $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
-        $receiptRequired = !empty($payment['receipt_required']);
-
-        $session = trim((string)$row->session_no);
-        $target = trim((string)$row->target);
-        $letter = trim((string)$row->letter);
-        $targetNo = trim($target . $letter);
-
-        if ($session !== '') {
-            $sessions[$session] = true;
-        }
-
-        $targetIsUnassigned = registrarc_is_null_empty_or_zero($target) || registrarc_is_null_empty_or_zero($letter);
-
-        if ($targetIsUnassigned) {
-            $targetLabel = 'Archer non affecté';
-        } else {
-            $targetLabel = $targetNo;
-        }
-
-        $entryForRules = [
-            'categorie' => $row->categorie,
-            'country_code' => $row->country_code,
-            'EnIndClEvent' => $row->EnIndClEvent,
-            'EnTeamClEvent' => $row->EnTeamClEvent,
-            'EnIndFEvent' => $row->EnIndFEvent,
-            'EnTeamFEvent' => $row->EnTeamFEvent,
-            'EnTeamMixEvent' => $row->EnTeamMixEvent,
-        ];
-
-        $ruleResult = registrarc_apply_tarif_rules($entryForRules, $tarifRules);
-
-        $hasSpecialTarif = false;
-
-        if (!empty($ruleResult['matched'])) {
-            $amountDue = (float)$ruleResult['amount'];
-            $tarifLabel = $ruleResult['label'] !== '' ? $ruleResult['label'] : 'Spécial';
-            $hasSpecialTarif = true;
-
-            if (!empty($ruleResult['count']) && intval($ruleResult['count']) > 1) {
-                $tarifLabel = 'Cumul : ' . $tarifLabel;
-            }
-        } else {
-            $amountDue = registrarc_prix_engagement(
-                $row->country_code,
-                $row->categorie,
-                $numeroEngagement,
-                $tarifs,
-                $organizerClubCode,
-                $ageClasses
-            );
-
-            $tarifLabel = 'Standard';
-        }
-
-        $isFree = (floatval($amountDue) == 0 || $method === 'GRA');
-
-        $rows[] = [
-            'engagement_id' => $engagementId,
-            'numero_engagement' => $numeroEngagement,
-            'licence' => strtoupper(trim((string)$row->licence)),
-            'nom' => strtoupper(trim((string)$row->nom)),
-            'prenom' => trim((string)$row->prenom),
-            'categorie' => trim((string)$row->categorie),
-            'club' => trim((string)$row->club),
-            'country_code' => trim((string)$row->country_code),
-            'session' => $session,
-            'target_label' => $targetLabel,
-            'target_is_unassigned' => $targetIsUnassigned,
-            'payment_status' => $status,
-            'payment_method' => $method,
-            'payment_method_label' => ($method !== '' && isset($paymentModes[$method])) ? $paymentModes[$method] : $method,
-            'receipt_required' => $receiptRequired,
-            'amount_due' => $amountDue,
-            'tarif_label' => $tarifLabel,
-            'has_special_tarif' => $hasSpecialTarif,
-            'is_free' => $isFree,
-            'nothing_due' => registrarc_nothing_due($amountDue),
-        ];
+foreach (registrarc_load_engagements($TourId) as $engagement) {
+    if ($engagement['session'] !== '') {
+        $sessions[$engagement['session']] = true;
     }
+
+    $method = $engagement['payment_method'];
+    $specialLabel = registrarc_engagement_special_label($engagement);
+
+    $rows[] = [
+        'engagement_id' => $engagement['engagement_id'],
+        'numero_engagement' => $engagement['numero'],
+        'licence' => $engagement['licence'],
+        'nom' => $engagement['nom'],
+        'prenom' => $engagement['prenom'],
+        'categorie' => $engagement['categorie'],
+        'club' => $engagement['club'],
+        'country_code' => $engagement['country_code'],
+        'session' => $engagement['session'],
+        'target_label' => $engagement['target_label'],
+        'target_is_unassigned' => $engagement['target_is_unassigned'],
+        'payment_status' => $engagement['is_paid'] ? 'PAYE' : 'NON_PAYE',
+        'state' => $engagement['state'],
+        'payment_method' => $method,
+        'payment_method_label' => ($method !== '' && isset($paymentModes[$method])) ? $paymentModes[$method] : $method,
+        'receipt_required' => $engagement['receipt_required'],
+        'amount_due' => $engagement['amount_due'],
+        'tarif_label' => $specialLabel !== '' ? ($engagement['rule_count'] > 1 ? 'Cumul : ' : '') . $specialLabel : 'Standard',
+        'has_special_tarif' => $specialLabel !== '',
+        'is_free' => registrarc_nothing_due($engagement['amount_due']) || ($engagement['is_paid'] && $method === 'GRA'),
+        'nothing_due' => registrarc_nothing_due($engagement['amount_due']),
+        'note' => $engagement['note'],
+    ];
 }
 
 // Tri final demandé : nom, prénom, numéro d'engagement
@@ -704,6 +616,32 @@ foreach ($rows as $r) {
         .flag-warn { color: var(--unpaid); }
         .flag-receipt { color: var(--warn); }
         .flag-tarif { color: var(--accent); }
+        .flag-note { color: var(--muted); font-style: italic; }
+
+        .operator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+            font-size: 13px;
+            color: var(--on-accent-muted);
+        }
+
+        .operator input {
+            flex: 1;
+            max-width: 200px;
+            height: 28px;
+            padding: 0 8px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.12);
+            color: var(--on-accent);
+            font: inherit;
+        }
+
+        .operator input::placeholder {
+            color: var(--on-accent-muted);
+        }
 
         .row-amount {
             text-align: right;
@@ -844,6 +782,13 @@ foreach ($rows as $r) {
                 <a href="index.php?desktop=1">Version complète</a>
             </div>
 
+            <?php if ($canWrite): ?>
+                <label class="operator">
+                    Opérateur
+                    <input type="text" id="operatorName" placeholder="Votre prénom" maxlength="40" autocomplete="off">
+                </label>
+            <?php endif; ?>
+
             <div class="summary num">
                 <span class="is-unpaid"><strong><?php echo intval($unpaidRows); ?></strong> à encaisser</span>
                 <span><strong><?php echo registrarc_format_montant($unpaidAmount); ?> €</strong> restant dû</span>
@@ -893,6 +838,10 @@ foreach ($rows as $r) {
         </div>
 
         <main class="app-content">
+            <?php if ($isClosed): ?>
+                <div class="alert alert-info">Concours clôturé : consultation seulement.</div>
+            <?php endif; ?>
+
             <?php if (!$dataDirStatus['ok']): ?>
                 <div class="alert alert-warning">
                     <strong>Attention :</strong>
@@ -915,10 +864,9 @@ foreach ($rows as $r) {
 
                 <?php foreach ($rows as $row): ?>
                     <?php
-                    $isPaid = ($row['payment_status'] === 'PAYE');
-                    $isFreeDue = !$isPaid && !empty($row['nothing_due']);
-                    // Payé ou gratuit : rien à encaisser, masqué par défaut comme les payés
-                    $isSettled = $isPaid || $isFreeDue;
+                    $isPaid = ($row['state'] === 'paid');
+                    // Payé, gratuit ou remboursé : rien à encaisser, masqué par défaut
+                    $isSettled = ($row['state'] !== 'due');
                     $amountData = number_format((float)$row['amount_due'], 2, '.', '');
                     $searchText = mb_strtolower(
                         $row['licence'] . ' ' .
@@ -967,7 +915,7 @@ foreach ($rows as $r) {
 
                             <div class="row-meta"><?php echo htmlspecialchars(implode(' · ', $meta)); ?></div>
 
-                            <?php if (!empty($row['target_is_unassigned']) || !empty($row['receipt_required']) || !empty($row['has_special_tarif'])): ?>
+                            <?php if (!empty($row['target_is_unassigned']) || !empty($row['receipt_required']) || !empty($row['has_special_tarif']) || $row['note'] !== ''): ?>
                                 <div class="row-flags">
                                     <?php if (!empty($row['target_is_unassigned'])): ?>
                                         <span class="flag-warn">Sans cible</span>
@@ -979,6 +927,10 @@ foreach ($rows as $r) {
 
                                     <?php if (!empty($row['has_special_tarif'])): ?>
                                         <span class="flag-tarif"><?php echo htmlspecialchars($row['tarif_label']); ?></span>
+                                    <?php endif; ?>
+
+                                    <?php if ($row['note'] !== ''): ?>
+                                        <span class="flag-note"><?php echo htmlspecialchars($row['note']); ?></span>
                                     <?php endif; ?>
                                 </div>
                             <?php endif; ?>
@@ -992,8 +944,10 @@ foreach ($rows as $r) {
                                 <?php
                                 if ($isPaid) {
                                     echo htmlspecialchars('Payé' . ($row['payment_method_label'] !== '' ? ' · ' . $row['payment_method_label'] : ''));
-                                } elseif ($isFreeDue) {
+                                } elseif ($row['state'] === 'free') {
                                     echo 'Rien à payer';
+                                } elseif ($row['state'] === 'refunded') {
+                                    echo 'Remboursé';
                                 } else {
                                     echo 'À payer';
                                 }
@@ -1147,6 +1101,29 @@ foreach ($rows as $r) {
 
             if (searchInput) {
                 searchInput.value = state && typeof state.search === 'string' ? state.search : '';
+            }
+
+            // Ouverture depuis un QR code (kiosk.php?q=licence) : on montre l'archer, même payé
+            const params = new URLSearchParams(window.location.search);
+            const q = params.get('q');
+
+            if (q && searchInput) {
+                searchInput.value = q;
+                boxes.forEach(cb => {
+                    cb.checked = true;
+                });
+
+                if (showPaidCheckbox) {
+                    showPaidCheckbox.checked = true;
+                }
+
+                params.delete('q');
+
+                try {
+                    history.replaceState(null, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
+                } catch (e) {
+                    // adresse inchangée : sans conséquence
+                }
             }
 
             document.querySelectorAll('.bulk-checkbox').forEach(cb => {
@@ -1422,6 +1399,50 @@ foreach ($rows as $r) {
             );
         }
 
+        // Opérateur : prénom mémorisé sur ce téléphone et joint à chaque envoi
+        const OPERATOR_KEY = 'RegistrArcOperator';
+
+        function initOperator() {
+            const input = document.getElementById('operatorName');
+            let name = '';
+
+            try {
+                name = localStorage.getItem(OPERATOR_KEY) || '';
+            } catch (e) {
+                name = '';
+            }
+
+            if (input) {
+                input.value = name;
+                input.addEventListener('input', function () {
+                    try {
+                        localStorage.setItem(OPERATOR_KEY, input.value.trim());
+                    } catch (e) {
+                        // mémorisation impossible : sans conséquence
+                    }
+                });
+            }
+
+            document.addEventListener('submit', function (event) {
+                const form = event.target;
+
+                if (!form || String(form.method).toUpperCase() !== 'POST') {
+                    return;
+                }
+
+                let field = form.querySelector('input[name="operator"]');
+
+                if (!field) {
+                    field = document.createElement('input');
+                    field.type = 'hidden';
+                    field.name = 'operator';
+                    form.appendChild(field);
+                }
+
+                field.value = input ? input.value.trim() : name;
+            }, true);
+        }
+
         function toggleCardSelection(event, card) {
             if (event.target.closest('input, button, select, a, label, summary')) {
                 return;
@@ -1438,6 +1459,7 @@ foreach ($rows as $r) {
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            initOperator();
             loadKioskFiltersState();
             syncPaymentModes();
             updateBulkSummary();

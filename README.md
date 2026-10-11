@@ -17,8 +17,9 @@
   <a href="#installer-le-module">Installer</a> ·
   <a href="#régler-les-tarifs-et-les-paiements">Régler les tarifs</a> ·
   <a href="#pendant-le-concours">Encaisser</a> ·
+  <a href="#la-caisse">Caisse</a> ·
+  <a href="#le-tableau-de-bord">Tableau de bord</a> ·
   <a href="#faire-une-facture">Factures</a> ·
-  <a href="#préparer-la-remise-de-chèques">Chèques</a> ·
   <a href="#questions-fréquentes">Questions</a>
 </p>
 
@@ -46,6 +47,19 @@
   </tr>
 </table>
 
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <img src="docs/images/tableau-de-bord.png" alt="Tableau de bord" width="100%"><br>
+      <strong>Suivre le concours</strong>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <img src="docs/images/caisse.png" alt="Caisse" width="100%"><br>
+      <strong>Clôturer la caisse</strong>
+    </td>
+  </tr>
+</table>
+
 ## Ce que fait RegistrArc
 
 <table>
@@ -56,27 +70,37 @@
     </td>
     <td width="50%" valign="top">
       <strong>L'encaissement</strong><br>
-      À l'ordinateur ou sur téléphone, en espèces, chèque, virement… en un geste.
+      À l'ordinateur ou sur téléphone, en espèces, chèque, virement… et le remboursement d'un archer qui se désiste.
     </td>
   </tr>
   <tr>
     <td valign="top">
-      <strong>Les chèques groupés</strong><br>
-      Un seul chèque pour plusieurs archers : une famille, un club.
+      <strong>La caisse</strong><br>
+      Chaque opération est notée (qui, quand, sur quel appareil). Clôture de caisse avec comptage des espèces.
     </td>
+    <td valign="top">
+      <strong>Les chèques</strong><br>
+      Un seul chèque pour plusieurs archers, bordereau de remise, suivi des remises déjà déposées.
+    </td>
+  </tr>
+  <tr>
     <td valign="top">
       <strong>Les tarifs du club</strong><br>
-      Jeunes ou adultes, club organisateur ou non, départs supplémentaires, tarifs spéciaux.
+      Jeunes ou adultes, club organisateur ou non, départs supplémentaires, tarifs spéciaux, plafond, inscription tardive.
+    </td>
+    <td valign="top">
+      <strong>Les factures</strong><br>
+      Numérotées (2026-0001, 2026-0002…), prêtes à imprimer ou à envoyer en PDF, réimprimables à l'identique.
     </td>
   </tr>
   <tr>
     <td valign="top">
-      <strong>Les factures</strong><br>
-      Pour un archer ou pour plusieurs, prêtes à imprimer ou à envoyer en PDF.
+      <strong>Le tableau de bord</strong><br>
+      Encaissé, reste dû, répartition par mode, départ et club. Fichiers pour le trésorier, sauvegarde.
     </td>
     <td valign="top">
-      <strong>La remise de chèques</strong><br>
-      Le bordereau à déposer à la banque, avec le total.
+      <strong>Les paiements en ligne</strong><br>
+      Import des paiements HelloAsso, et QR codes pour retrouver un archer au kiosque.
     </td>
   </tr>
 </table>
@@ -90,7 +114,7 @@ RegistrArc ne modifie jamais les inscriptions dans I@nseo : il les lit et garde 
 | **1** | Une fois pour toutes | [Installer le module](#installer-le-module) |
 | **2** | Avant le concours | [Régler les tarifs et les modes de paiement](#régler-les-tarifs-et-les-paiements) |
 | **3** | Pendant le concours | Encaisser [à l'ordinateur](#encaisser-à-lordinateur) ou [sur un téléphone](#encaisser-sur-un-téléphone) |
-| **4** | Après le concours | [Faire les factures](#faire-une-facture) et [préparer la remise de chèques](#préparer-la-remise-de-chèques) |
+| **4** | Après le concours | [Clôturer la caisse](#la-caisse), [faire les factures](#faire-une-facture), [déposer les chèques](#préparer-la-remise-de-chèques), puis [clôturer le concours](#le-tableau-de-bord) |
 
 > [!TIP]
 > Dans la suite, cliquez sur un titre pour ouvrir la partie correspondante.
@@ -193,6 +217,20 @@ Les **règles** donnent un prix spécial à certains archers. Pour chaque règle
 </details>
 
 <details>
+<summary><strong>Plafond par archer et inscription tardive</strong></summary>
+
+<br>
+
+Dans la partie **Réductions et majorations** des réglages (laisser à 0 pour ne pas s'en servir) :
+
+- **Plafond par archer** : un archer ne paie jamais plus que ce montant pour l'ensemble de ses départs.
+- **Majoration inscription tardive** : un supplément ajouté aux départs marqués « inscription tardive » dans la liste des engagements (bouton ✎ de la ligne).
+
+Le plafond s'applique d'abord, la majoration ensuite : un archer en retard paie toujours sa majoration.
+
+</details>
+
+<details>
 <summary><strong>Modes de paiement et inscriptions gratuites</strong></summary>
 
 <br>
@@ -242,8 +280,23 @@ C'est l'écran principal (voir l'aperçu en haut de cette page). Chaque ligne es
 <br>
 
 - **Un archer** : sur sa ligne, choisissez le mode de paiement, puis **Valider**. En cas d'erreur, **Annuler** le remet en « Non payé ».
-- **Plusieurs archers** : cochez leurs lignes, choisissez le mode de paiement en haut de la liste, puis **Valider paiement**.
+- **Plusieurs archers** : cochez leurs lignes, choisissez le mode de paiement en haut de la liste, puis **Valider**.
 - **Un chèque pour plusieurs archers** : si vous validez au moins 2 archers par chèque, RegistrArc propose d'en faire un **chèque groupé**. Ils apparaîtront ensemble sur la remise de chèques.
+
+> [!TIP]
+> Tapez votre prénom dans le champ **Opérateur** : il est retenu sur l'ordinateur et noté avec chaque encaissement dans la [caisse](#la-caisse).
+
+</details>
+
+<details>
+<summary><strong>Rembourser, noter, signaler une inscription tardive</strong></summary>
+
+<br>
+
+- **Rembourser** : sur la ligne d'un archer payé, **Rembourser**, puis choisissez comment il est remboursé (espèces, chèque, virement). Il passe en « Remboursé » et le remboursement apparaît dans la caisse.
+- **Annuler** sert à corriger une erreur de saisie. Un chèque déjà déposé à la banque ne peut plus être annulé, seulement remboursé.
+- **Le bouton ✎** ajoute une note visible par tout le greffe (« paiera dimanche », « chèque à l'ordre du club »…) et permet de marquer l'**inscription tardive**.
+- **Filtres** : « Remboursés » et « Gratuits » s'ajoutent à « Payés » et « Non payés ».
 
 </details>
 
@@ -255,7 +308,7 @@ C'est l'écran principal (voir l'aperçu en haut de cette page). Chaque ligne es
 - **Facture** et **Facture groupée** : voir [Faire une facture](#faire-une-facture).
 - **Remise de chèque** : voir [Préparer la remise de chèques](#préparer-la-remise-de-chèques).
 - **Liste Greffe** : imprime la liste telle qu'elle est affichée à l'écran.
-- **Exporter / Importer inscriptions** : recopie les paiements d'un ordinateur RegistrArc à un autre, par exemple de l'ordinateur des pré-inscriptions vers celui du greffe. Seuls les paiements sont recopiés : les inscriptions dans I@nseo ne changent pas.
+- **Exporter / Importer** : recopie les paiements d'un ordinateur RegistrArc à un autre, par exemple de l'ordinateur des pré-inscriptions vers celui du greffe. Seuls les paiements sont recopiés : les inscriptions dans I@nseo ne changent pas.
 
 </details>
 
@@ -285,11 +338,71 @@ Le bouton **Mode Kiosk** ouvre un écran fait pour encaisser debout, avec un té
 
 En haut de l'écran : le nombre d'archers à encaisser, la somme qui reste à encaisser, le nombre de payés et le nombre de reçus demandés.
 
-Le « reçu demandé » se coche uniquement dans le mode Kiosk ; la liste des engagements l'affiche ensuite.
+Le « reçu demandé » se coche uniquement dans le mode Kiosk ; la liste des engagements l'affiche ensuite. Tapez votre prénom dans le champ **Opérateur** en haut de l'écran : il est retenu sur le téléphone.
+
+</details>
+
+<details>
+<summary><strong>Retrouver un archer avec un QR code</strong></summary>
+
+<br>
+
+Depuis le tableau de bord, **Imprimer les QR codes** prépare une planche d'étiquettes, une par archer, à coller sur la feuille de marque ou la fiche d'inscription. Scanné avec l'appareil photo d'un téléphone connecté au même réseau, le QR code ouvre le mode Kiosk directement sur cet archer.
+
+Si l'ordinateur du greffe ouvre I@nseo par une adresse « localhost », indiquez en haut de la page l'adresse du serveur sur le réseau (par exemple `http://192.168.1.10/…`), sinon les téléphones ne pourront pas l'ouvrir.
+
+</details>
+
+### Paiements faits en ligne
+
+<details>
+<summary><strong>Importer les paiements HelloAsso</strong></summary>
+
+<br>
+
+Depuis le tableau de bord, **Importer des paiements HelloAsso** :
+
+1. Envoyez le fichier exporté depuis HelloAsso (liste des participants ou des commandes, format tableur).
+2. Vérifiez quelle colonne contient la licence, le nom, le prénom, le montant et le statut : RegistrArc les devine d'après leurs titres.
+3. Contrôlez les correspondances : chaque archer est retrouvé par sa licence, sinon par son nom et prénom. Les lignes cochées sont marquées payées ; un montant inférieur au montant dû est signalé et décoché.
+
+Les paiements importés apparaissent dans la caisse avec l'origine « HelloAsso ».
 
 </details>
 
 ## Après le concours
+
+### La caisse
+
+<details>
+<summary><strong>Les opérations et la clôture de caisse</strong></summary>
+
+<br>
+
+<img src="docs/images/caisse.png" alt="Caisse" width="100%">
+
+Le bouton **Caisse** montre tout ce qui a été encaissé, annulé ou remboursé depuis la dernière clôture : total par mode de paiement et liste des opérations, avec l'heure, l'opérateur et l'appareil utilisé.
+
+Pour **clôturer la caisse** (en fin de matinée, de journée…) : comptez les espèces, tapez le montant compté, puis **Clôturer la caisse**. RegistrArc affiche l'écart avec les espèces attendues. Chaque clôture reste consultable et imprimable ; les opérations suivantes comptent pour la clôture suivante.
+
+</details>
+
+### Le tableau de bord
+
+<details>
+<summary><strong>Chiffres, fichiers pour le trésorier, sauvegarde, fin du concours</strong></summary>
+
+<br>
+
+<img src="docs/images/tableau-de-bord.png" alt="Tableau de bord" width="100%">
+
+- **Les chiffres** : montant attendu, encaissé, reste dû, nombre de payés, gratuits et remboursés, puis le détail par mode de paiement, par départ et par club.
+- **Les factures émises** du concours, à réimprimer.
+- **Pour le trésorier** : la liste des engagements et le journal des opérations en fichiers à ouvrir dans Excel ou LibreOffice.
+- **Sauvegarde** : un seul fichier avec toutes les informations du concours, à garder en lieu sûr ; **Restaurer** le recharge si besoin.
+- **Fin du concours** : une fois les comptes faits, **Clôturer le concours** empêche toute nouvelle modification. Il peut être rouvert au même endroit.
+
+</details>
 
 ### Faire une facture
 
@@ -301,11 +414,11 @@ Le « reçu demandé » se coche uniquement dans le mode Kiosk ; la liste des en
 <img src="docs/images/facture.png" alt="Facture" width="100%">
 
 - **Pour un archer** : bouton **Facture** sur sa ligne.
-- **Pour plusieurs** (une famille, un club) : cochez leurs lignes, puis **Facture groupée**.
+- **Pour plusieurs archers** (par exemple tout un club) : cochez leurs lignes, puis **Facture groupée**.
 
 La facture s'ouvre dans un nouvel onglet. Elle indique le concours, les archers regroupés par club, le détail de chaque départ et le total. **Imprimer / Enregistrer en PDF** permet de l'imprimer, ou de l'enregistrer en PDF pour l'envoyer ensuite par e-mail.
 
-Le numéro de facture n'est pas enregistré : si vous refaites la facture, elle aura un nouveau numéro.
+La facture s'ouvre d'abord en **aperçu**, sans numéro. **Émettre la facture** lui donne un numéro définitif qui se suit sur l'année (2026-0001, 2026-0002…) et l'enregistre telle quelle : elle se réimprime à l'identique depuis le tableau de bord. Si une facture a déjà été émise pour les mêmes archers, RegistrArc l'indique avec un lien vers elle.
 
 </details>
 
@@ -324,6 +437,8 @@ Le bouton **Remise de chèque** prépare la feuille à déposer avec les chèque
 - **en cochant des lignes**, elle ne reprend que les chèques de ces archers.
 
 Elle indique le nombre de chèques, le nombre d'inscriptions et le total. Pour chaque chèque, il reste à écrire à la main le numéro du chèque et la banque. En bas : « Préparé par » et « Déposé le ».
+
+Une fois les chèques déposés à la banque, **Enregistrer comme déposée** : la remise reçoit un numéro (R1, R2…), ses chèques ne reviennent plus sur les bordereaux suivants et sont marqués « Déposé » dans la liste. Les remises enregistrées restent consultables et réimprimables en bas de la page ; une remise enregistrée par erreur peut être annulée.
 
 Les chèques groupés se tiennent à jour tout seuls : si vous annulez le paiement d'un archer, il quitte son chèque groupé.
 
@@ -356,7 +471,8 @@ Le bouton ouvre une page qui montre la version installée, la nouvelle version e
 
 - **Chaque concours a ses propres paiements et réglages**, sans mélange.
 - **Plusieurs personnes peuvent encaisser en même temps** (l'ordinateur du greffe et des téléphones) sans s'effacer mutuellement.
-- **Pour faire une sauvegarde**, copiez le dossier **data** qui se trouve dans le dossier RegistrArc.
+- **Chaque opération est notée** dans le journal de la caisse : rien ne s'efface.
+- **Pour faire une sauvegarde**, utilisez **Télécharger une sauvegarde** dans le tableau de bord.
 
 > [!WARNING]
 > **Attention aux onglets.** Dans un même navigateur, ouvrir un autre concours dans I@nseo change le concours de tous les onglets. Si vous encaissez depuis un onglet resté sur l'ancien concours, RegistrArc refuse et vous demande de recharger la page : rien n'est enregistré au mauvais endroit.
@@ -400,6 +516,24 @@ La page était ouverte depuis longtemps. Rechargez-la et recommencez : rien n'a 
 <br>
 
 Un autre concours a été ouvert dans I@nseo entre-temps. Rechargez la page : elle affichera le concours actuellement ouvert.
+
+</details>
+
+<details>
+<summary>Je me suis trompé de mode de paiement ou d'archer</summary>
+
+<br>
+
+**Annuler** sur la ligne remet l'archer en « Non payé » ; encaissez ensuite correctement. Les deux opérations restent visibles dans la caisse. Un chèque déjà déposé ne peut plus être annulé : utilisez **Rembourser**.
+
+</details>
+
+<details>
+<summary>Je ne peux plus encaisser : « le concours est clôturé »</summary>
+
+<br>
+
+Le concours a été clôturé depuis le tableau de bord. Rouvrez-le au même endroit (partie « Fin du concours ») si des modifications sont encore nécessaires.
 
 </details>
 

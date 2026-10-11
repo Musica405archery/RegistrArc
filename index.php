@@ -110,33 +110,6 @@ function registrarc_export_timestamp(array $data, $fallbackFile = '') {
 }
 
 // ---------------------------------------------------------------------------
-// Paiements JSON
-// ---------------------------------------------------------------------------
-function registrarc_set_payment($TourId, $engagementId, $method, $receiptRequired = false) {
-    return registrarc_set_payment_bulk($TourId, [$engagementId], $method, $receiptRequired);
-}
-
-function registrarc_unset_payment($TourId, $engagementId) {
-    return registrarc_unset_payment_bulk($TourId, [$engagementId]);
-}
-
-function registrarc_set_payment_bulk($TourId, array $ids, $method, $receiptRequired = false) {
-    return registrarc_update_payments($TourId, function (array &$data) use ($ids, $method, $receiptRequired) {
-        foreach ($ids as $id) {
-            registrarc_set_payment_in_array($data, $id, $method, $receiptRequired);
-        }
-    });
-}
-
-function registrarc_unset_payment_bulk($TourId, array $ids) {
-    return registrarc_update_payments($TourId, function (array &$data) use ($ids) {
-        foreach ($ids as $id) {
-            registrarc_unset_payment_in_array($data, $id);
-        }
-    });
-}
-
-// ---------------------------------------------------------------------------
 // Redirection filtres
 // ---------------------------------------------------------------------------
 function registrarc_redirect_params($filters, $sortColumn, $sortDirection) {
@@ -224,7 +197,8 @@ $ageClasses = registrarc_load_age_classes($TourId);
 $paymentModes = registrarc_load_payment_modes($TourId);
 $tarifRules = registrarc_load_tarif_rules($TourId);
 $dataDirStatus = registrarc_data_dir_status();
-$canWrite = hasACL(AclParticipants, AclReadWrite);
+$canWrite = registrarc_can_write($TourId);
+$isClosed = registrarc_is_closed($TourId);
 
 // ---------------------------------------------------------------------------
 // POST : paiements + import inscriptions
@@ -311,47 +285,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $paidImported = 0;
         $unpaidImported = 0;
 
-        $saved = registrarc_update_payments($TourId, function (array &$payments) use ($data, $localMap, $paymentModes, &$matched, &$unmatched, &$paidImported, &$unpaidImported) {
-            foreach ($data['registrations'] as $reg) {
-                if (!is_array($reg)) {
-                    $unmatched++;
-                    continue;
-                }
+        $changes = [];
 
-                $key = isset($reg['key']) ? trim((string)$reg['key']) : '';
-
-                if ($key === '') {
-                    $key = registrarc_registration_key(
-                        isset($reg['licence']) ? $reg['licence'] : '',
-                        isset($reg['categorie']) ? $reg['categorie'] : '',
-                        isset($reg['session']) ? $reg['session'] : '',
-                        isset($reg['target']) ? $reg['target'] : '',
-                        isset($reg['letter']) ? $reg['letter'] : ''
-                    );
-                }
-
-                if (!isset($localMap[$key])) {
-                    $unmatched++;
-                    continue;
-                }
-
-                $engagementId = $localMap[$key];
-                $payment = isset($reg['payment']) && is_array($reg['payment']) ? $reg['payment'] : [];
-                $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
-                $method = isset($payment['method']) ? registrarc_clean_payment_method($payment['method'], $paymentModes) : '';
-                $receiptRequired = !empty($payment['receipt_required']);
-
-                if ($status === 'PAYE') {
-                    registrarc_set_payment_in_array($payments, $engagementId, $method !== '' ? $method : 'ESP', $receiptRequired);
-                    $paidImported++;
-                } else {
-                    registrarc_unset_payment_in_array($payments, $engagementId);
-                    $unpaidImported++;
-                }
-
-                $matched++;
+        // Changements à appliquer d'après le fichier importé
+        foreach ($data['registrations'] as $reg) {
+            if (!is_array($reg)) {
+                $unmatched++;
+                continue;
             }
-        });
+
+            $key = isset($reg['key']) ? trim((string)$reg['key']) : '';
+
+            if ($key === '') {
+                $key = registrarc_registration_key(
+                    isset($reg['licence']) ? $reg['licence'] : '',
+                    isset($reg['categorie']) ? $reg['categorie'] : '',
+                    isset($reg['session']) ? $reg['session'] : '',
+                    isset($reg['target']) ? $reg['target'] : '',
+                    isset($reg['letter']) ? $reg['letter'] : ''
+                );
+            }
+
+            if (!isset($localMap[$key])) {
+                $unmatched++;
+                continue;
+            }
+
+            $engagementId = $localMap[$key];
+            $payment = isset($reg['payment']) && is_array($reg['payment']) ? $reg['payment'] : [];
+            $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
+            $method = isset($payment['method']) ? registrarc_clean_payment_method($payment['method'], $paymentModes) : '';
+            $receiptRequired = !empty($payment['receipt_required']);
+
+            if ($status === 'PAYE') {
+                $changes[] = ['id' => $engagementId, 'action' => 'pay', 'method' => $method !== '' ? $method : 'ESP', 'receipt' => $receiptRequired];
+                $paidImported++;
+            } else {
+                $changes[] = ['id' => $engagementId, 'action' => 'cancel'];
+                $unpaidImported++;
+            }
+
+            $matched++;
+        }
+
+        $importResult = registrarc_apply_payment_changes($TourId, $changes, 'import');
+        $saved = $importResult['ok'];
 
         if ($saved) {
             $warnings = [];
@@ -383,255 +361,157 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
-    if (isset($_POST['bulk_action']) && !empty($_POST['engagements']) && is_array($_POST['engagements'])) {
-        $action = $_POST['bulk_action'];
-        $ids = [];
+    $redirect = function () use ($redirectQuery) {
+        header('Location: ' . $_SERVER['PHP_SELF'] . ($redirectQuery ? '?' . $redirectQuery : ''));
+        exit();
+    };
 
-        foreach ($_POST['engagements'] as $id) {
-            $id = intval($id);
+    $setMessage = function ($message, $type) {
+        $_SESSION['RegistrArc_payment_message'] = $message;
+        $_SESSION['RegistrArc_message_type'] = $type;
+    };
 
-            if ($id > 0) {
-                $ids[] = $id;
-            }
+    // Message après une opération de paiement (avec les engagements non traités)
+    $reportPayment = function (array $result, $okMessage) use ($TourId, $setMessage) {
+        if (!$result['ok']) {
+            $setMessage("Erreur : impossible d'écrire le fichier JSON de paiements." . registrarc_storage_error_suffix(), 'error');
+            return;
         }
 
-        $ids = array_values(array_unique($ids));
+        $skippedMessage = registrarc_skipped_message($TourId, $result['skipped']);
+        $setMessage((empty($result['done']) ? 'Aucune modification.' : $okMessage) . $skippedMessage, $skippedMessage !== '' ? 'warning' : 'success');
+    };
+
+    $postedIds = [];
+
+    if (!empty($_POST['engagements']) && is_array($_POST['engagements'])) {
+        foreach ($_POST['engagements'] as $id) {
+            if (intval($id) > 0) {
+                $postedIds[] = intval($id);
+            }
+        }
+    }
+
+    $postedIds = array_values(array_unique($postedIds));
+
+    if (isset($_POST['bulk_action'])) {
+        $action = (string)$_POST['bulk_action'];
+
+        if (empty($postedIds)) {
+            $setMessage('Aucun engagement sélectionné.', 'error');
+            $redirect();
+        }
 
         $bulkMethod = isset($_POST['bulk_payment_method'])
             ? registrarc_clean_payment_method($_POST['bulk_payment_method'], $paymentModes)
             : 'ESP';
 
-        $createChequeGroupAfterPayment = !empty($_POST['create_cheque_group_after_payment'])
-            && $_POST['create_cheque_group_after_payment'] === '1'
-            && $bulkMethod === 'CHQ';
+        if ($action === 'validate') {
+            $result = registrarc_record_payments($TourId, $postedIds, $bulkMethod, false, 'liste');
+            $reportPayment($result, 'Paiement validé pour les engagements sélectionnés.');
 
-        if (!empty($ids)) {
-            if ($action === 'validate') {
-                $saved = registrarc_set_payment_bulk($TourId, $ids, $bulkMethod, false);
+            $createGroup = !empty($_POST['create_cheque_group_after_payment'])
+                && $_POST['create_cheque_group_after_payment'] === '1'
+                && $bulkMethod === 'CHQ';
 
-                if ($saved) {
-                    if ($createChequeGroupAfterPayment && count($ids) >= 2) {
-                        $payments = registrarc_load_payments($TourId);
-                        $result = registrarc_create_cheque_group($TourId, $ids, $payments);
+            if ($result['ok'] && $createGroup && count($result['done']) >= 2) {
+                $groupResult = registrarc_create_cheque_group($TourId, $result['done'], registrarc_load_payments($TourId));
 
-                        if (!empty($result['ok'])) {
-                            $_SESSION['RegistrArc_payment_message'] = 'Paiement validé et remise groupée créée. Elle sera visible dans la remise de chèque.';
-                            $_SESSION['RegistrArc_message_type'] = 'success';
-                        } else {
-                            $_SESSION['RegistrArc_payment_message'] = 'Paiement validé, mais la remise groupée n\'a pas pu être créée : ' . $result['message'];
-                            $_SESSION['RegistrArc_message_type'] = 'warning';
-                        }
-                    } else {
-                        $_SESSION['RegistrArc_payment_message'] = 'Paiement validé pour les engagements sélectionnés.';
-                        $_SESSION['RegistrArc_message_type'] = 'success';
-                    }
+                if (!empty($groupResult['ok'])) {
+                    $setMessage('Paiement validé et chèque groupé créé. Il sera visible dans la remise de chèque.', 'success');
                 } else {
-                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements." . registrarc_storage_error_suffix();
-                    $_SESSION['RegistrArc_message_type'] = 'error';
-                }
-            } else {
-                $saved = registrarc_unset_payment_bulk($TourId, $ids);
-
-                if ($saved) {
-                    $_SESSION['RegistrArc_payment_message'] = 'Engagements sélectionnés marqués comme non payés.';
-                    $_SESSION['RegistrArc_message_type'] = 'info';
-                } else {
-                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements." . registrarc_storage_error_suffix();
-                    $_SESSION['RegistrArc_message_type'] = 'error';
+                    $setMessage("Paiement validé, mais le chèque groupé n'a pas pu être créé : " . $groupResult['message'], 'warning');
                 }
             }
-        } else {
-            $_SESSION['RegistrArc_payment_message'] = 'Aucun engagement sélectionné.';
-            $_SESSION['RegistrArc_message_type'] = 'error';
+        } elseif ($action === 'unvalidate') {
+            $reportPayment(registrarc_cancel_payments($TourId, $postedIds, 'liste'), 'Engagements sélectionnés marqués comme non payés.');
+        } elseif ($action === 'refund') {
+            $reportPayment(registrarc_refund_payments($TourId, $postedIds, $bulkMethod, 'liste'), 'Remboursement enregistré pour les engagements sélectionnés.');
         }
 
-        header('Location: ' . $_SERVER['PHP_SELF'] . ($redirectQuery ? '?' . $redirectQuery : ''));
-        exit();
+        $redirect();
     }
 
     if (isset($_POST['validate_payment']) && isset($_POST['engagement_id'])) {
         $engagementId = intval($_POST['engagement_id']);
-        $action = $_POST['validate_payment'];
-
-        $method = isset($_POST['payment_method'])
-            ? registrarc_clean_payment_method($_POST['payment_method'], $paymentModes)
-            : 'ESP';
-
-        $receiptRequired = !empty($_POST['receipt_required']);
+        $action = (string)$_POST['validate_payment'];
 
         if ($engagementId > 0) {
             if ($action === 'validate') {
-                $saved = registrarc_set_payment($TourId, $engagementId, $method, $receiptRequired);
-
-                if ($saved) {
-                    $_SESSION['RegistrArc_payment_message'] = 'Paiement de cet engagement validé.';
-                    $_SESSION['RegistrArc_message_type'] = 'success';
-                } else {
-                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements." . registrarc_storage_error_suffix();
-                    $_SESSION['RegistrArc_message_type'] = 'error';
-                }
+                $method = isset($_POST['payment_method']) ? registrarc_clean_payment_method($_POST['payment_method'], $paymentModes) : 'ESP';
+                $reportPayment(registrarc_record_payments($TourId, [$engagementId], $method, !empty($_POST['receipt_required']), 'liste'), 'Paiement de cet engagement validé.');
+            } elseif ($action === 'refund') {
+                $method = isset($_POST['refund_method']) ? registrarc_clean_payment_method($_POST['refund_method'], $paymentModes) : 'ESP';
+                $reportPayment(registrarc_refund_payments($TourId, [$engagementId], $method, 'liste'), 'Remboursement enregistré.');
             } else {
-                $saved = registrarc_unset_payment($TourId, $engagementId);
-
-                if ($saved) {
-                    $_SESSION['RegistrArc_payment_message'] = 'Cet engagement est maintenant marqué comme non payé.';
-                    $_SESSION['RegistrArc_message_type'] = 'info';
-                } else {
-                    $_SESSION['RegistrArc_payment_message'] = "Erreur : impossible d'écrire le fichier JSON de paiements." . registrarc_storage_error_suffix();
-                    $_SESSION['RegistrArc_message_type'] = 'error';
-                }
+                $reportPayment(registrarc_cancel_payments($TourId, [$engagementId], 'liste'), 'Cet engagement est maintenant marqué comme non payé.');
             }
         }
 
-        header('Location: ' . $_SERVER['PHP_SELF'] . ($redirectQuery ? '?' . $redirectQuery : ''));
-        exit();
+        $redirect();
+    }
+
+    if (isset($_POST['save_archer_info']) && isset($_POST['engagement_id'])) {
+        $engagementId = intval($_POST['engagement_id']);
+        $note = isset($_POST['note']) ? mb_substr(trim((string)$_POST['note']), 0, 200) : '';
+        $late = !empty($_POST['late']);
+
+        $saved = $engagementId > 0 && registrarc_update_archer_info($TourId, function (array &$info) use ($engagementId, $note, $late) {
+            if ($note === '' && !$late) {
+                unset($info[(string)$engagementId]);
+            } else {
+                $info[(string)$engagementId] = ['note' => $note, 'late' => $late, 'updated_at' => date('Y-m-d H:i:s')];
+            }
+        });
+
+        $setMessage($saved ? 'Note enregistrée.' : "Erreur : impossible d'enregistrer la note." . registrarc_storage_error_suffix(), $saved ? 'success' : 'error');
+        $redirect();
     }
 }
 
 // ---------------------------------------------------------------------------
-// Requête engagements
+// Engagements et montants (calcul commun à toutes les pages)
 // ---------------------------------------------------------------------------
-$query = "
-    SELECT
-        e.EnId AS engagement_id,
-        UPPER(TRIM(e.EnCode)) AS licence,
-        UPPER(TRIM(e.EnFirstName)) AS nom,
-        TRIM(e.EnName) AS prenom,
-        CONCAT(e.EnDivision, e.EnClass) AS categorie,
-        c.CoName AS club,
-        c.CoCode AS country_code,
-        q.QuSession AS session_no,
-        q.QuTarget AS target,
-        q.QuLetter AS letter,
-        TRIM(CONCAT(COALESCE(q.QuTarget, ''), COALESCE(q.QuLetter, ''))) AS target_no,
-        e.EnIndClEvent,
-        e.EnTeamClEvent,
-        e.EnIndFEvent,
-        e.EnTeamFEvent,
-        e.EnTeamMixEvent
-    FROM Entries e
-    LEFT JOIN Countries c
-        ON e.EnCountry = c.CoId
-       AND e.EnTournament = c.CoTournament
-    LEFT JOIN Qualifications q
-        ON e.EnId = q.QuId
-    WHERE e.EnTournament = $TourId
-      AND e.EnAthlete = 1
-      AND TRIM(e.EnCode) <> ''
-    ORDER BY UPPER(TRIM(e.EnCode)), q.QuSession, q.QuTarget, q.QuLetter, e.EnId
-";
-
-$Rs = safe_r_sql($query);
-$paymentsData = registrarc_load_payments($TourId);
 $engagementsData = [];
 
-if ($Rs) {
-    while ($row = safe_fetch($Rs)) {
-        $engagementId = intval($row->engagement_id);
-
-        $payment = isset($paymentsData[(string)$engagementId]) && is_array($paymentsData[(string)$engagementId])
-            ? $paymentsData[(string)$engagementId]
-            : [];
-
-        $paymentStatus = isset($payment['status']) && $payment['status'] === 'PAYE' ? 1 : 0;
-        $paymentMethod = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
-        $receiptRequired = !empty($payment['receipt_required']);
-
-        $session = trim((string)$row->session_no);
-        $target = $row->target;
-        $letter = $row->letter;
-
-        $targetTrim = trim((string)$target);
-        $letterTrim = trim((string)$letter);
-        $targetNo = trim($targetTrim . $letterTrim);
-
-        $targetIsUnassigned = registrarc_is_null_empty_or_zero($target) || registrarc_is_null_empty_or_zero($letter);
-
-        if ($targetIsUnassigned) {
-            $targetLabel = 'Archer non affecté';
-            $targetNo = '';
-        } else {
-            $targetLabel = $targetNo;
-        }
-
-        $key = registrarc_registration_key(
-            $row->licence,
-            $row->categorie,
-            $session,
-            $target,
-            $letter
-        );
-
-        $engagementsData[] = [
-            'engagement_id'        => $engagementId,
-            'key'                  => $key,
-            'licence'              => strtoupper(trim((string)$row->licence)),
-            'nom'                  => strtoupper(trim((string)$row->nom)),
-            'prenom'               => trim((string)$row->prenom),
-            'categorie'            => $row->categorie,
-            'club'                 => $row->club,
-            'country_code'         => $row->country_code,
-            'session'              => $session,
-            'target'               => $targetTrim,
-            'letter'               => $letterTrim,
-            'target_no'            => $targetNo,
-            'target_label'         => $targetLabel,
-            'target_is_unassigned' => $targetIsUnassigned,
-            'payment_status'       => $paymentStatus,
-            'payment_method'       => $paymentMethod,
-            'receipt_required'     => $receiptRequired,
-            'EnIndClEvent'         => $row->EnIndClEvent,
-            'EnTeamClEvent'        => $row->EnTeamClEvent,
-            'EnIndFEvent'          => $row->EnIndFEvent,
-            'EnTeamFEvent'         => $row->EnTeamFEvent,
-            'EnTeamMixEvent'       => $row->EnTeamMixEvent,
-        ];
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Numérotation + montant + tarif
-// ---------------------------------------------------------------------------
-$counterByLicence = [];
-
-foreach ($engagementsData as $idx => $e) {
-    $licence = $e['licence'];
-
-    if (!isset($counterByLicence[$licence])) {
-        $counterByLicence[$licence] = 0;
-    }
-
-    $counterByLicence[$licence]++;
-    $numero = $counterByLicence[$licence];
-
-    $ruleResult = registrarc_apply_tarif_rules($e, $tarifRules);
-
-    if (!empty($ruleResult['matched'])) {
-        $montantBase = (float)$ruleResult['amount'];
-        $ruleLabel = $ruleResult['label'];
-    } else {
-        $montantBase = registrarc_prix_engagement(
-            $e['country_code'],
-            $e['categorie'],
-            $numero,
-            $tarifs,
-            $organizerClubCode,
-            $ageClasses
-        );
-        $ruleLabel = '';
-    }
-
-    $mode = strtoupper((string)$e['payment_method']);
-    $montant = registrarc_is_free_method($mode) ? 0 : $montantBase;
-
-    $engagementsData[$idx]['numero_engagement'] = $numero;
-    $engagementsData[$idx]['montant_base'] = $montantBase;
-    $engagementsData[$idx]['montant'] = $montant;
-    $engagementsData[$idx]['tarif_rule_label'] = $ruleLabel;
-    $engagementsData[$idx]['is_free'] = registrarc_nothing_due($montantBase);
-
-    // Ordre du tri par statut : non payé, gratuit, payé
-    $engagementsData[$idx]['status_rank'] = $e['payment_status'] ? 2 : ($engagementsData[$idx]['is_free'] ? 1 : 0);
+foreach (registrarc_load_engagements($TourId) as $engagement) {
+    $engagementsData[] = [
+        'engagement_id'        => $engagement['engagement_id'],
+        'key'                  => registrarc_registration_key(
+            $engagement['licence'],
+            $engagement['categorie'],
+            $engagement['session'],
+            $engagement['target'],
+            $engagement['letter']
+        ),
+        'licence'              => $engagement['licence'],
+        'nom'                  => $engagement['nom'],
+        'prenom'               => $engagement['prenom'],
+        'categorie'            => $engagement['categorie'],
+        'club'                 => $engagement['club'],
+        'country_code'         => $engagement['country_code'],
+        'session'              => $engagement['session'],
+        'target'               => $engagement['target'],
+        'letter'               => $engagement['letter'],
+        'target_no'            => $engagement['target_no'],
+        'target_label'         => $engagement['target_label'],
+        'target_is_unassigned' => $engagement['target_is_unassigned'],
+        'payment_status'       => $engagement['is_paid'] ? 1 : 0,
+        'payment_method'       => $engagement['payment_method'],
+        'receipt_required'     => $engagement['receipt_required'],
+        'numero_engagement'    => $engagement['numero'],
+        'montant_base'         => $engagement['amount_due'],
+        'montant'              => $engagement['amount'],
+        'tarif_rule_label'     => registrarc_engagement_special_label($engagement),
+        'state'                => $engagement['state'],
+        'is_free'              => registrarc_nothing_due($engagement['amount_due']),
+        'note'                 => $engagement['note'],
+        'late'                 => $engagement['late'],
+        'deposit_id'           => $engagement['deposit_id'],
+        'refund_method'        => isset($engagement['payment']['refund_method']) ? (string)$engagement['payment']['refund_method'] : '',
+        // Ordre du tri par statut : non payé, gratuit ou remboursé, payé
+        'status_rank'          => $engagement['is_paid'] ? 2 : ($engagement['state'] === 'due' ? 0 : 1),
+    ];
 }
 
 // ---------------------------------------------------------------------------
@@ -679,19 +559,9 @@ foreach ($engagementsData as $e) {
         continue;
     }
 
-    $isPaid = ($e['payment_status'] == 1);
+    $stateFilters = ['paid' => 'paid', 'unpaid' => 'due', 'free' => 'free', 'refunded' => 'refunded'];
 
-    if ($filters['payment'] === 'paid' && !$isPaid) {
-        continue;
-    }
-
-    $isFree = !$isPaid && !empty($e['is_free']);
-
-    if ($filters['payment'] === 'unpaid' && ($isPaid || $isFree)) {
-        continue;
-    }
-
-    if ($filters['payment'] === 'free' && !$isFree) {
+    if (isset($stateFilters[$filters['payment']]) && $e['state'] !== $stateFilters[$filters['payment']]) {
         continue;
     }
 
@@ -826,556 +696,495 @@ include('Common/Templates/head.php');
 
 <style>
     :root {
-        --primary-color: #2563eb;
-        --primary-dark: #1d4ed8;
-        --success-color: #16a34a;
-        --danger-color: #dc2626;
-        --invoice-color: #475569;
-        --invoice-dark: #334155;
-        --invoice-receipt-color: #f59e0b;
-        --invoice-receipt-dark: #d97706;
-        --print-color: #0f766e;
-        --print-dark: #115e59;
-        --warning-color: #d97706;
-        --export-color: #7c3aed;
-        --export-dark: #6d28d9;
-        --import-color: #be185d;
-        --import-dark: #9d174d;
-        --settings-color: #0891b2;
-        --settings-dark: #0e7490;
-        --kiosk-color: #ea580c;
-        --kiosk-dark: #c2410c;
-        --cheque-color: #0d9488;
-        --cheque-dark: #0f766e;
-        --border-radius: 6px;
-        --shadow-soft: 0 4px 12px rgba(15, 23, 42, 0.08);
-        --text-muted: #6b7280;
-        --text-strong: #111827;
-        --chip-bg: #e5e7eb;
+        --text: #1f2933;
+        --muted: #6b7280;
+        --line: #e3e7ee;
+        --line-strong: #cfd6e1;
+        --bg: #eef1f6;
+        --surface: #ffffff;
+        --accent: #14336b;
+        --accent-soft: #e9effa;
+        --on-accent: #ffffff;
+        --on-accent-muted: #c9d5ec;
+        --paid: #15803d;
+        --paid-soft: #e8f5ec;
+        --unpaid: #b91c1c;
+        --unpaid-soft: #fdecec;
+        --warn: #b45309;
+        --warn-soft: #fdf3e2;
+        --radius: 8px;
     }
 
     body {
-        background: #f9fafb;
+        background: var(--bg);
     }
 
     .registrarc-container {
-        width: fit-content;
-        max-width: 100%;
+        max-width: 1480px;
         margin: 0 auto;
-        padding: 16px;
-        box-sizing: border-box;
+        padding: 0 16px 32px;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-size: 14px;
+        color: var(--text);
     }
 
-    .registrarc-header,
-    .filters-row,
-    .filter-actions,
-    .payment-actions,
-    .payment-actions form,
-    .header-actions {
-        display: flex;
-        flex-wrap: nowrap;
-        gap: 8px;
-        align-items: center;
+    .num {
+        font-variant-numeric: tabular-nums;
     }
 
+    /* --- En-tête -------------------------------------------------------------- */
     .registrarc-header {
-        justify-content: space-between;
-        margin-bottom: 16px;
-        width: 100%;
-    }
-
-    .header-actions {
+        display: flex;
         flex-wrap: wrap;
-        justify-content: flex-end;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px 24px;
+        background: var(--accent);
+        color: var(--on-accent);
+        margin: 0 -16px 16px;
+        padding: 14px 16px;
     }
 
     .registrarc-header-title {
         font-size: 20px;
         font-weight: 700;
-        color: var(--text-strong);
     }
 
     .registrarc-header-sub {
+        color: var(--on-accent-muted);
         font-size: 13px;
-        color: var(--text-muted);
+        margin-top: 2px;
     }
 
-    .btn-primary,
-    .btn-success,
-    .btn-danger,
-    .btn-ghost,
-    .btn-invoice,
-    .btn-print-list,
-    .btn-warning,
-    .btn-export,
-    .btn-import,
-    .btn-settings,
-    .btn-kiosk,
-    .btn-update,
-    .btn-cheque {
+    .header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .header-actions a {
         display: inline-flex;
         align-items: center;
-        justify-content: center;
-        gap: 6px;
-        padding: 7px 14px;
-        border-radius: 999px;
-        font-size: 13px;
-        font-weight: 600;
-        border: none;
-        cursor: pointer;
+        min-height: 34px;
+        padding: 0 12px;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: var(--radius);
+        color: var(--on-accent);
         text-decoration: none;
-        white-space: nowrap;
-        line-height: 1.2;
-    }
-
-    .btn-primary {
-        background: var(--primary-color);
-        color: #fff;
-    }
-
-    .btn-primary:hover {
-        background: var(--primary-dark);
-    }
-
-    .btn-success {
-        background: var(--success-color);
-        color: #fff;
-    }
-
-    .btn-danger {
-        background: var(--danger-color);
-        color: #fff;
-    }
-
-    .btn-ghost {
-        background: transparent;
-        color: var(--text-muted);
-        border: 1px solid #d1d5db;
-    }
-
-    .btn-invoice {
-        background: var(--invoice-color);
-        color: #fff;
-    }
-
-    .btn-invoice:hover {
-        background: var(--invoice-dark);
-    }
-
-    .btn-invoice-receipt {
-        background: var(--invoice-receipt-color) !important;
-        color: #fff;
-    }
-
-    .btn-invoice-receipt:hover {
-        background: var(--invoice-receipt-dark) !important;
-    }
-
-    .btn-print-list {
-        background: var(--print-color);
-        color: #fff;
-    }
-
-    .btn-print-list:hover {
-        background: var(--print-dark);
-    }
-
-    .btn-warning {
-        background: var(--warning-color);
-        color: #fff;
-    }
-
-    .btn-export {
-        background: var(--export-color);
-        color: #fff;
-    }
-
-    .btn-export:hover {
-        background: var(--export-dark);
-    }
-
-    .btn-import {
-        background: var(--import-color);
-        color: #fff;
-    }
-
-    .btn-import:hover {
-        background: var(--import-dark);
-    }
-
-    .btn-settings {
-        background: var(--settings-color);
-        color: #fff;
-    }
-
-    .btn-settings:hover {
-        background: var(--settings-dark);
-    }
-
-    .btn-kiosk {
-        background: var(--kiosk-color);
-        color: #fff;
-    }
-
-    .btn-kiosk:hover {
-        background: var(--kiosk-dark);
-    }
-
-    .btn-update {
-        background: var(--success-color);
-        color: #fff;
-    }
-
-    .btn-update:hover {
-        background: #15803d;
-    }
-
-    .btn-update[hidden] {
-        display: none;
-    }
-
-    .btn-cheque {
-        background: var(--cheque-color);
-        color: #fff;
-    }
-
-    .btn-cheque:hover {
-        background: var(--cheque-dark);
-    }
-
-    .bulk-invoice-button {
-        display: none;
-    }
-
-    .card {
-        background: #fff;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-soft);
-        padding: 12px 14px;
-        margin-bottom: 12px;
-        box-sizing: border-box;
-        width: 100%;
-    }
-
-    .card-title {
-        font-size: 14px;
         font-weight: 600;
-        margin-bottom: 8px;
-        color: var(--text-strong);
-    }
-
-    .filters-row {
-        flex-wrap: wrap;
-        align-items: flex-end;
-    }
-
-    .filter-group {
-        flex: 0 1 auto;
-        min-width: 170px;
-    }
-
-    .filter-group label {
-        display: block;
-        font-size: 12px;
-        margin-bottom: 4px;
-        color: var(--text-muted);
-        font-weight: 500;
-    }
-
-    .filter-group select,
-    .filter-group input[type="text"],
-    .payment-actions select,
-    .import-input {
-        width: auto;
-        min-width: 170px;
-        max-width: 260px;
-        padding: 7px 10px;
-        border-radius: 999px;
-        border: 1px solid #d1d5db;
         font-size: 13px;
-        box-sizing: border-box;
-        background: #f9fafb;
     }
 
-    .payment-actions select {
-        min-width: max-content;
-        padding: 3px 6px;
-        font-size: 11px;
-        background: #fff;
+    .header-actions a:hover {
+        background: rgba(255, 255, 255, 0.12);
     }
 
-    .actions-spacer {
-        flex: 1 1 auto;
-        min-width: 20px;
+    .header-actions a.btn-update {
+        background: var(--paid);
+        border-color: var(--paid);
     }
 
+    .header-actions a[hidden] {
+        display: none;
+    }
+
+    /* --- Messages ------------------------------------------------------------- */
     .alert {
-        padding: 10px 12px;
-        border-radius: var(--border-radius);
-        font-size: 13px;
-        margin-bottom: 10px;
-        width: 100%;
-        box-sizing: border-box;
+        padding: 10px 14px;
+        border-radius: var(--radius);
+        border: 1px solid;
+        margin-bottom: 12px;
     }
 
-    .alert-success {
-        background-color: #dcfce7;
-        border: 1px solid #bbf7d0;
-        color: #166534;
-    }
-
-    .alert-error {
-        background-color: #fee2e2;
-        border: 1px solid #fecaca;
-        color: #991b1b;
-    }
-
-    .alert-info {
-        background-color: #e0f2fe;
-        border: 1px solid #bae6fd;
-        color: #075985;
-    }
-
-    .alert-warning {
-        background-color: #fef3c7;
-        border: 1px solid #fde68a;
-        color: #92400e;
-    }
+    .alert-success { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
+    .alert-error { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+    .alert-info { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
+    .alert-warning { background: #fffbeb; border-color: #fde68a; color: #78350f; }
 
     .storage-path {
-        display: inline-block;
-        margin-top: 4px;
-        font-family: monospace;
-        font-size: 12px;
-        background: rgba(255,255,255,0.55);
-        padding: 2px 6px;
+        font-family: ui-monospace, Consolas, monospace;
+        background: rgba(0, 0, 0, 0.06);
+        padding: 1px 5px;
         border-radius: 4px;
     }
 
+    /* --- Cartes et formulaires ------------------------------------------------ */
+    .card {
+        background: var(--surface);
+        border-radius: var(--radius);
+        box-shadow: 0 1px 2px rgba(20, 51, 107, 0.12);
+        padding: 14px 16px;
+        margin-bottom: 14px;
+    }
+
+    .card-title {
+        font-size: 15px;
+        font-weight: 700;
+        margin-bottom: 10px;
+    }
+
+    .filters-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 10px 14px;
+    }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .filter-group label {
+        color: var(--muted);
+        font-size: 12px;
+    }
+
+    .filter-group select,
+    .filter-group input[type="text"] {
+        height: 34px;
+        padding: 0 10px;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius);
+        background: var(--surface);
+        font: inherit;
+        min-width: 150px;
+    }
+
+    .filter-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .actions-spacer {
+        flex: 1;
+    }
+
+    .import-input {
+        font: inherit;
+    }
+
+    /* --- Boutons -------------------------------------------------------------- */
+    .btn-primary,
+    .btn-ghost,
+    .btn-success,
+    .btn-danger,
+    .btn-invoice,
+    .btn-export,
+    .btn-import,
+    .btn-cheque,
+    .btn-print-list,
+    .btn-small {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        padding: 0 12px;
+        border-radius: var(--radius);
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        color: var(--text);
+        font: inherit;
+        font-weight: 600;
+        text-decoration: none;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    .btn-success { background: var(--paid); border-color: var(--paid); color: #fff; }
+    .btn-danger { color: var(--unpaid); border-color: #f3c4c4; }
+    .btn-ghost:hover, .btn-invoice:hover, .btn-export:hover, .btn-import:hover, .btn-cheque:hover, .btn-print-list:hover, .btn-danger:hover { background: var(--accent-soft); }
+
+    .btn-small {
+        min-height: 28px;
+        padding: 0 9px;
+        font-size: 12px;
+    }
+
+    .btn-small.btn-success { background: var(--paid); border-color: var(--paid); color: #fff; }
+    .btn-small.btn-danger { background: var(--surface); }
+
+    .operator-field input {
+        min-width: 0;
+        width: 130px;
+    }
+
+    /* --- Tableau -------------------------------------------------------------- */
     .table-wrapper {
-        border-radius: var(--border-radius);
-        background: #fff;
-        box-shadow: var(--shadow-soft);
-        overflow: hidden;
-        width: 100%;
+        background: var(--surface);
+        border-radius: var(--radius);
+        box-shadow: 0 1px 2px rgba(20, 51, 107, 0.12);
     }
 
     .table-responsive {
-        width: 100%;
         overflow-x: auto;
-        position: relative;
     }
 
-    table {
+    .table-wrapper table {
+        width: 100%;
         border-collapse: collapse;
-        font-size: 13px;
-        width: max-content;
-        min-width: 100%;
-        table-layout: auto;
     }
 
-    thead {
-        background: #f9fafb;
-    }
-
-    th,
-    td {
-        padding: 8px 10px;
-        border-bottom: 1px solid #e5e7eb;
+    .table-wrapper th {
+        position: sticky;
+        top: 0;
+        background: #f6f8fb;
         text-align: left;
-        white-space: nowrap;
-        width: auto;
-    }
-
-    th {
-        font-weight: 600;
         font-size: 12px;
-        color: var(--text-muted);
+        font-weight: 600;
+        color: var(--muted);
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--line-strong);
+        white-space: nowrap;
     }
 
-    th a {
+    .table-wrapper th a {
         color: inherit;
         text-decoration: none;
     }
 
-    th a:hover {
-        text-decoration: underline;
+    .table-wrapper th a:hover {
+        color: var(--accent);
     }
 
-    tbody tr:hover {
-        background-color: #f9fafb;
+    .table-wrapper td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
     }
 
-    tbody tr:hover .col-check {
-        background-color: #f9fafb;
+    /* Engagement, licence, départ, cible, montant, statut, actions : sur une ligne */
+    .table-wrapper td:nth-child(2),
+    .table-wrapper td:nth-child(3),
+    .table-wrapper td:nth-child(8),
+    .table-wrapper td:nth-child(9),
+    .table-wrapper td:nth-child(10),
+    .table-wrapper td:nth-child(11) {
+        white-space: nowrap;
+    }
+
+    .table-wrapper td:nth-child(6) {
+        min-width: 170px;
+    }
+
+    .table-wrapper td:nth-child(7) {
+        min-width: 160px;
+    }
+
+    .table-wrapper td:nth-child(12) {
+        min-width: 290px;
+    }
+
+    .table-wrapper tbody tr:hover td {
+        background: #fafbfd;
+    }
+
+    .table-wrapper tfoot td {
+        border-bottom: none;
+        background: #f6f8fb;
     }
 
     .col-check {
-        position: sticky;
-        left: 0;
-        z-index: 5;
-        width: 42px;
-        min-width: 42px;
-        max-width: 42px;
-        text-align: center;
-        background: #fff;
-        box-shadow: 2px 0 4px rgba(15, 23, 42, 0.06);
+        width: 30px;
     }
 
-    thead .col-check {
-        z-index: 10;
-        background: #f9fafb;
-    }
-
-    tfoot .col-check {
-        background: #fff;
-    }
-
-    .status-paid {
-        color: var(--success-color);
-        font-weight: 600;
-        font-size: 12px;
-    }
-
-    .status-unpaid,
-    .target-unassigned {
-        color: var(--danger-color);
-        font-weight: 700;
-        font-size: 12px;
+    .col-check input {
+        width: 17px;
+        height: 17px;
+        accent-color: var(--accent);
     }
 
     .chip {
-        display: inline-flex;
-        align-items: center;
-        padding: 3px 8px;
+        display: inline-block;
+        padding: 1px 7px;
         border-radius: 999px;
-        background: var(--chip-bg);
-        font-size: 11px;
-        color: #374151;
+        font-size: 12px;
+        background: #f1f4f8;
+        color: var(--muted);
         white-space: nowrap;
-    }
-
-    .chip-engagement {
-        background: #dbeafe;
-        color: #1d4ed8;
-        font-weight: 700;
     }
 
     .chip-rule {
-        background: #ede9fe;
-        color: #5b21b6;
-        font-weight: 700;
+        background: var(--accent-soft);
+        color: var(--accent);
+        white-space: normal;
+        border-radius: 8px;
+        margin-top: 3px;
     }
 
+    .row-extra {
+        min-width: 140px;
+    }
+
+    .row-name {
+        font-weight: 600;
+    }
+
+    .row-extra {
+        margin-top: 3px;
+        font-size: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px 10px;
+    }
+
+    .row-note { color: var(--muted); font-style: italic; }
+    .row-late { color: var(--warn); }
+
+    .target-unassigned {
+        color: var(--unpaid);
+    }
+
+    .status-paid { color: var(--paid); font-weight: 600; }
+    .status-unpaid { color: var(--unpaid); font-weight: 600; }
+    .status-free { color: var(--paid); }
+    .status-refunded { color: var(--muted); font-weight: 600; }
+
     .payment-actions {
-        width: max-content;
-        max-width: none;
-        white-space: nowrap;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
     }
 
     .payment-actions form {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         margin: 0;
-        width: max-content;
-        max-width: none;
-        white-space: nowrap;
+    }
+
+    .payment-actions select {
+        height: 28px;
+        padding: 0 6px;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius);
+        font: inherit;
+        font-size: 12px;
     }
 
     .payment-method-label {
-        display: inline-flex;
-        align-items: center;
-        padding: 3px 7px;
-        border-radius: 999px;
-        background: #dcfce7;
-        color: #166534;
-        font-size: 11px;
-        font-weight: 700;
-        white-space: nowrap;
+        font-weight: 600;
     }
 
-    .payment-receipt-label {
-        display: inline-flex;
-        align-items: center;
-        padding: 3px 7px;
+    .payment-receipt-label,
+    .payment-deposit-label {
+        font-size: 12px;
+        padding: 1px 6px;
         border-radius: 999px;
-        background: #ffedd5;
-        color: #c2410c;
-        font-size: 11px;
-        font-weight: 700;
-        white-space: nowrap;
     }
+
+    .payment-receipt-label { background: var(--warn-soft); color: var(--warn); }
+    .payment-deposit-label { background: var(--accent-soft); color: var(--accent); }
 
     .summary-footer {
-        margin-top: 8px;
-        font-size: 13px;
-        color: var(--text-muted);
         display: flex;
         justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 6px;
-        width: 100%;
+        gap: 12px;
+        color: var(--muted);
+        padding: 10px 2px;
     }
 
     .summary-footer strong {
-        color: var(--text-strong);
+        color: var(--text);
     }
 
-    @media (max-width: 768px) {
-        .registrarc-container {
-            width: 100%;
-            padding: 12px;
-        }
+    /* --- Fenêtres (note, remboursement) --------------------------------------- */
+    dialog.rg-dialog {
+        border: none;
+        border-radius: 10px;
+        padding: 18px 20px;
+        width: min(440px, calc(100vw - 32px));
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: var(--text);
+    }
 
-        .registrarc-header,
-        .filters-row,
-        .filter-actions {
-            flex-wrap: wrap;
-        }
+    dialog.rg-dialog::backdrop {
+        background: rgba(15, 23, 42, 0.45);
+    }
 
-        .filter-group,
-        .filter-group select,
-        .filter-group input[type="text"],
-        .import-input {
-            width: 100%;
-            max-width: 100%;
-        }
+    .rg-dialog h3 {
+        margin: 0 0 4px;
+        font-size: 17px;
+    }
 
-        .actions-spacer {
-            display: none;
-        }
+    .rg-dialog .dialog-sub {
+        color: var(--muted);
+        margin: 0 0 14px;
+    }
 
-        .table-wrapper {
-            overflow-x: auto;
-        }
+    .rg-dialog label {
+        display: block;
+        margin-bottom: 12px;
+    }
+
+    .rg-dialog textarea,
+    .rg-dialog select {
+        display: block;
+        width: 100%;
+        margin-top: 4px;
+        padding: 8px 10px;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius);
+        font: inherit;
+    }
+
+    .rg-dialog .check-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .rg-dialog .dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 6px;
     }
 </style>
+
+<?php
+// Lien de tri d'une colonne
+$sortLink = function ($key, $label) use ($sortColumn, $sortDirection) {
+    $dir = ($sortColumn == $key && $sortDirection == 'asc') ? 'desc' : 'asc';
+    $arrow = $sortColumn == $key ? ($sortDirection == 'asc' ? ' ▲' : ' ▼') : '';
+
+    return '<a href="?' . htmlspecialchars(http_build_query(array_merge($_GET, ['sort' => $key, 'dir' => $dir]))) . '">' . htmlspecialchars($label) . $arrow . '</a>';
+};
+?>
 
 <div class="registrarc-container">
     <div class="registrarc-header">
         <div>
-            <div class="registrarc-header-title">Gestion des engagements - Registr'Arc</div>
-            <div class="registrarc-header-sub">Le module de Greffe pour I@nseo</div>
+            <div class="registrarc-header-title">Gestion des engagements</div>
+            <div class="registrarc-header-sub"><?php echo htmlspecialchars($tournamentName ?: "RegistrArc, le module de greffe pour I@nseo"); ?></div>
         </div>
 
         <div class="header-actions">
-            <a href="update.php" id="registrarcUpdateBtn" class="btn-update" hidden>
-                ⬆ Mise à jour
-            </a>
-
-            <a href="kiosk.php" class="btn-kiosk">
-                Mode Kiosk
-            </a>
-
-            <a href="<?php echo $CFG->ROOT_DIR; ?>Modules/Custom/RegistrArc/config_tarifs.php" class="btn-settings">
-                ⚙ Paramétrer tarifs & paiements
-            </a>
+            <a href="update.php" id="registrarcUpdateBtn" class="btn-update" hidden>⬆ Mise à jour</a>
+            <a href="dashboard.php">Tableau de bord</a>
+            <a href="caisse.php">Caisse</a>
+            <a href="kiosk.php">Mode Kiosk</a>
+            <a href="config_tarifs.php">⚙ Paramètres</a>
         </div>
     </div>
+
+    <?php if ($isClosed): ?>
+        <div class="alert alert-info">
+            <strong>Concours clôturé :</strong> la liste est en lecture seule. Il peut être rouvert depuis le <a href="dashboard.php">tableau de bord</a>.
+        </div>
+    <?php endif; ?>
 
     <?php if (!$dataDirStatus['ok']): ?>
         <div class="alert alert-warning">
             <strong>Attention :</strong>
             <?php echo htmlspecialchars($dataDirStatus['message']); ?><br>
-            Les actions JSON ne pourront pas être enregistrées tant que ce problème n'est pas corrigé.<br>
+            Les paiements ne pourront pas être enregistrés tant que ce problème n'est pas corrigé.<br>
             Dossier concerné :
             <span class="storage-path"><?php echo htmlspecialchars($dataDirStatus['path']); ?></span><br>
             Commande Ubuntu possible :
@@ -1442,6 +1251,7 @@ include('Common/Templates/head.php');
                         <option value="paid" <?php echo ($filters['payment'] === 'paid') ? 'selected' : ''; ?>>Payés</option>
                         <option value="unpaid" <?php echo ($filters['payment'] === 'unpaid') ? 'selected' : ''; ?>>Non payés</option>
                         <option value="free" <?php echo ($filters['payment'] === 'free') ? 'selected' : ''; ?>>Gratuits</option>
+                        <option value="refunded" <?php echo ($filters['payment'] === 'refunded') ? 'selected' : ''; ?>>Remboursés</option>
                     </select>
                 </div>
 
@@ -1479,61 +1289,49 @@ include('Common/Templates/head.php');
 
                 <div class="filter-actions">
                     <?php if ($canWrite): ?>
-                        <button type="submit" name="bulk_action" value="validate" class="btn-success" onclick="return confirmBulkAction('validate');">
-                            Valider paiement
-                        </button>
-
-                        <button type="submit" name="bulk_action" value="unvalidate" class="btn-danger" onclick="return confirmBulkAction('unvalidate');">
-                            Retirer paiement
-                        </button>
+                        <button type="submit" name="bulk_action" value="validate" class="btn-success" title="Valider le paiement des engagements cochés" onclick="return confirmBulkAction('validate');">Valider</button>
+                        <button type="submit" name="bulk_action" value="unvalidate" class="btn-danger" title="Retirer le paiement des engagements cochés" onclick="return confirmBulkAction('unvalidate');">Retirer</button>
+                        <button type="submit" name="bulk_action" value="refund" class="btn-ghost" onclick="return confirmBulkAction('refund');">Rembourser</button>
                     <?php endif; ?>
 
-                    <button type="button" id="bulk_invoice_btn" class="btn-invoice bulk-invoice-button" onclick="return factureGroupePrompt();">
-                        Facture groupée
-                    </button>
+                    <button type="button" id="bulk_invoice_btn" class="btn-invoice bulk-invoice-button" onclick="return factureGroupePrompt();">Facture groupée</button>
+                </div>
+
+                <div class="filter-actions">
+                    <a href="?<?php echo htmlspecialchars(http_build_query(array_merge($_GET, ['action' => 'export_registrations']))); ?>" class="btn-export" title="Exporter les inscriptions affichées et leurs paiements">Exporter</a>
+
+                    <?php if ($canWrite): ?>
+                        <button type="button" class="btn-import" title="Importer les paiements d'un autre poste RegistrArc" onclick="toggleImportRegistrations();">Importer</button>
+                    <?php endif; ?>
+
+                    <button type="button" class="btn-cheque" onclick="return openChequeDeposit();">Remise de chèque</button>
+                    <button type="button" class="btn-print-list" onclick="return printGreffeList();">Liste Greffe</button>
                 </div>
 
                 <div class="actions-spacer"></div>
 
-                <div class="filter-actions">
-                    <a href="?<?php echo http_build_query(array_merge($_GET, ['action' => 'export_registrations'])); ?>" class="btn-export">
-                        Exporter inscriptions
-                    </a>
-
-                    <?php if ($canWrite): ?>
-                        <button type="button" class="btn-import" onclick="toggleImportRegistrations();">
-                            Importer inscriptions
-                        </button>
-                    <?php endif; ?>
-
-                    <button type="button" class="btn-cheque" onclick="return openChequeDeposit();">
-                        Remise de chèque
-                    </button>
-
-                    <button type="button" class="btn-print-list" onclick="return printGreffeList();">
-                        Liste Greffe
-                    </button>
-                </div>
+                <?php if ($canWrite): ?>
+                    <div class="filter-group operator-field">
+                        <label for="operatorName">Opérateur</label>
+                        <input type="text" id="operatorName" placeholder="Votre prénom" maxlength="40" autocomplete="off">
+                    </div>
+                <?php endif; ?>
             </div>
+
         </form>
 
         <?php if ($canWrite): ?>
-        <form method="POST" enctype="multipart/form-data" id="importRegistrationsForm" style="display:none;margin-top:10px;">
+        <form method="POST" enctype="multipart/form-data" id="importRegistrationsForm" style="display:none;margin-top:12px;">
             <?php echo registrarc_form_fields($TourId); ?>
             <div class="filters-row">
                 <div class="filter-group">
-                    <label for="registrations_file">Fichier JSON inscriptions</label>
+                    <label for="registrations_file">Fichier d'inscriptions exporté par RegistrArc</label>
                     <input type="file" name="registrations_file" id="registrations_file" accept="application/json,.json" class="import-input">
                 </div>
 
                 <div class="filter-actions">
-                    <button type="submit" name="import_registrations" value="1" class="btn-import" onclick="return confirmImportRegistrations();">
-                        Confirmer l'import
-                    </button>
-
-                    <button type="button" class="btn-ghost" onclick="toggleImportRegistrations();">
-                        Annuler
-                    </button>
+                    <button type="submit" name="import_registrations" value="1" class="btn-primary" onclick="return confirmImportRegistrations();">Confirmer l'import</button>
+                    <button type="button" class="btn-ghost" onclick="toggleImportRegistrations();">Annuler</button>
                 </div>
             </div>
         </form>
@@ -1547,6 +1345,8 @@ include('Common/Templates/head.php');
     foreach ($displayEngagements as $e) {
         $total += $e['montant'];
     }
+
+    $statusClasses = ['paid' => 'status-paid', 'due' => 'status-unpaid', 'free' => 'status-free', 'refunded' => 'status-refunded'];
     ?>
 
     <div class="table-wrapper">
@@ -1557,27 +1357,26 @@ include('Common/Templates/head.php');
                         <th class="col-check">
                             <input type="checkbox" onclick="toggleSelectAll(this)" title="Tout sélectionner">
                         </th>
-
-                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'engagement', 'dir' => ($sortColumn == 'engagement' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Engagement</a></th>
-                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'licence', 'dir' => ($sortColumn == 'licence' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Licence</a></th>
-                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'nom', 'dir' => ($sortColumn == 'nom' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Nom</a></th>
-                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'prenom', 'dir' => ($sortColumn == 'prenom' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Prénom</a></th>
-                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'club', 'dir' => ($sortColumn == 'club' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Club</a></th>
-                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'categorie', 'dir' => ($sortColumn == 'categorie' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Catégorie</a></th>
-                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'depart', 'dir' => ($sortColumn == 'depart' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Départ</a></th>
-                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'cible', 'dir' => ($sortColumn == 'cible' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Cible</a></th>
-                        <th style="text-align:right;"><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'montant', 'dir' => ($sortColumn == 'montant' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Montant</a></th>
-                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'statut', 'dir' => ($sortColumn == 'statut' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Statut</a></th>
-                        <th><a href="?<?php echo http_build_query(array_merge($_GET, ['sort' => 'paiement', 'dir' => ($sortColumn == 'paiement' && $sortDirection == 'asc' ? 'desc' : 'asc')])); ?>">Paiement / Actions</a></th>
+                        <th><?php echo $sortLink('engagement', 'Engagement'); ?></th>
+                        <th><?php echo $sortLink('licence', 'Licence'); ?></th>
+                        <th><?php echo $sortLink('nom', 'Nom'); ?></th>
+                        <th><?php echo $sortLink('prenom', 'Prénom'); ?></th>
+                        <th><?php echo $sortLink('club', 'Club'); ?></th>
+                        <th><?php echo $sortLink('categorie', 'Catégorie'); ?></th>
+                        <th><?php echo $sortLink('depart', 'Départ'); ?></th>
+                        <th><?php echo $sortLink('cible', 'Cible'); ?></th>
+                        <th style="text-align:right;"><?php echo $sortLink('montant', 'Montant'); ?></th>
+                        <th><?php echo $sortLink('statut', 'Statut'); ?></th>
+                        <th><?php echo $sortLink('paiement', 'Paiement / Actions'); ?></th>
                     </tr>
                 </thead>
 
                 <tbody>
                     <?php foreach ($displayEngagements as $e): ?>
                         <?php
-                        $isPaid = ($e['payment_status'] == 1);
-                        $isFree = !$isPaid && !empty($e['is_free']);
+                        $state = $e['state'];
                         $archerLabel = trim($e['nom'] . ' ' . $e['prenom']);
+                        $methodLabel = isset($paymentModes[$e['payment_method']]) ? $paymentModes[$e['payment_method']] : $e['payment_method'];
                         ?>
                         <tr>
                             <td class="col-check">
@@ -1592,20 +1391,29 @@ include('Common/Templates/head.php');
                             </td>
 
                             <td><span class="chip chip-engagement">n° <?php echo intval($e['numero_engagement']); ?></span></td>
-                            <td><?php echo htmlspecialchars($e['licence']); ?></td>
-                            <td><?php echo htmlspecialchars($e['nom']); ?></td>
+                            <td class="num"><?php echo htmlspecialchars($e['licence']); ?></td>
+                            <td>
+                                <div class="row-name"><?php echo htmlspecialchars($e['nom']); ?></div>
+                                <?php if ($e['note'] !== '' || !empty($e['late'])): ?>
+                                    <div class="row-extra">
+                                        <?php if (!empty($e['late'])): ?>
+                                            <span class="row-late">Inscription tardive</span>
+                                        <?php endif; ?>
+                                        <?php if ($e['note'] !== ''): ?>
+                                            <span class="row-note"><?php echo htmlspecialchars($e['note']); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endif; ?>
+                            </td>
                             <td><?php echo htmlspecialchars($e['prenom']); ?></td>
                             <td><?php echo htmlspecialchars(trim($e['country_code'] . ' - ' . $e['club'])); ?></td>
                             <td>
                                 <?php echo htmlspecialchars($e['categorie']); ?>
                                 <?php if (!empty($e['tarif_rule_label'])): ?>
-                                    <span class="chip chip-rule" title="Règle tarifaire appliquée">
-                                        <?php echo htmlspecialchars($e['tarif_rule_label']); ?>
-                                    </span>
+                                    <span class="chip chip-rule" title="Prix spécial appliqué"><?php echo htmlspecialchars($e['tarif_rule_label']); ?></span>
                                 <?php endif; ?>
                             </td>
                             <td><?php echo ($e['session'] !== '') ? 'Départ ' . htmlspecialchars($e['session']) : '—'; ?></td>
-
                             <td>
                                 <?php if (!empty($e['target_is_unassigned'])): ?>
                                     <span class="target-unassigned"><?php echo htmlspecialchars($e['target_label']); ?></span>
@@ -1613,41 +1421,44 @@ include('Common/Templates/head.php');
                                     <?php echo htmlspecialchars($e['target_label']); ?>
                                 <?php endif; ?>
                             </td>
-
-                            <td style="text-align:right;"><?php echo registrarc_format_montant($e['montant']); ?> €</td>
-
+                            <td class="num" style="text-align:right;"><?php echo registrarc_format_montant($e['montant']); ?> €</td>
                             <td>
-                                <span class="<?php echo ($isPaid || $isFree) ? 'status-paid' : 'status-unpaid'; ?>">
-                                    <?php echo $isPaid ? 'Payé' : ($isFree ? 'Gratuit' : 'Non payé'); ?>
-                                </span>
+                                <span class="<?php echo $statusClasses[$state]; ?>"><?php echo registrarc_state_label($state); ?></span>
                             </td>
-
                             <td>
                                 <div class="payment-actions">
-                                    <?php if ($isPaid): ?>
-                                        <span class="payment-method-label"><?php echo htmlspecialchars($e['payment_method'] ?: '—'); ?></span>
+                                    <?php if ($state === 'paid'): ?>
+                                        <span class="payment-method-label"><?php echo htmlspecialchars($methodLabel ?: '—'); ?></span>
 
                                         <?php if (!empty($e['receipt_required'])): ?>
                                             <span class="payment-receipt-label">Reçu</span>
                                         <?php endif; ?>
 
-                                        <?php if ($canWrite): ?>
-                                        <form method="POST">
-                                            <?php echo registrarc_form_fields($TourId); ?>
-                                            <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
-                                            <input type="hidden" name="validate_payment" value="unvalidate">
-
-                                            <button
-                                                type="submit"
-                                                class="btn-ghost"
-                                                style="padding:3px 8px;font-size:11px;border-radius:999px;border-color:#fecaca;color:#b91c1c;"
-                                                onclick="return confirm(<?php echo htmlspecialchars(json_encode('Annuler le paiement de ' . $archerLabel . ' ?'), ENT_QUOTES); ?>);"
-                                            >
-                                                Annuler
-                                            </button>
-                                        </form>
+                                        <?php if ($e['deposit_id'] !== ''): ?>
+                                            <span class="payment-deposit-label">Déposé (<?php echo htmlspecialchars($e['deposit_id']); ?>)</span>
                                         <?php endif; ?>
-                                    <?php elseif ($canWrite && !$isFree): ?>
+
+                                        <?php if ($canWrite && $e['deposit_id'] === ''): ?>
+                                            <form method="POST">
+                                                <?php echo registrarc_form_fields($TourId); ?>
+                                                <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
+                                                <input type="hidden" name="validate_payment" value="unvalidate">
+                                                <button type="submit" class="btn-small btn-danger" onclick="return confirm(<?php echo htmlspecialchars(json_encode('Annuler le paiement de ' . $archerLabel . ' ?'), ENT_QUOTES); ?>);">Annuler</button>
+                                            </form>
+                                        <?php endif; ?>
+
+                                        <?php if ($canWrite): ?>
+                                            <button type="button" class="btn-small" data-id="<?php echo intval($e['engagement_id']); ?>" data-archer="<?php echo htmlspecialchars($archerLabel); ?>" data-amount="<?php echo htmlspecialchars(registrarc_format_montant($e['montant'])); ?>" onclick="openRefundDialog(this);">Rembourser</button>
+                                        <?php endif; ?>
+                                    <?php elseif ($state === 'refunded'): ?>
+                                        <?php
+                                        $refundMethod = isset($e['refund_method']) ? $e['refund_method'] : '';
+                                        $refundLabel = isset($paymentModes[$refundMethod]) ? $paymentModes[$refundMethod] : $refundMethod;
+                                        ?>
+                                        <span class="status-refunded"><?php echo htmlspecialchars('Remboursé' . ($refundLabel !== '' ? ' · ' . $refundLabel : '')); ?></span>
+                                    <?php elseif ($state === 'free'): ?>
+                                        <span class="status-free">Rien à payer</span>
+                                    <?php elseif ($canWrite): ?>
                                         <form method="POST">
                                             <?php echo registrarc_form_fields($TourId); ?>
                                             <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
@@ -1655,31 +1466,19 @@ include('Common/Templates/head.php');
 
                                             <select name="payment_method">
                                                 <?php foreach ($paymentModes as $code => $label): ?>
-                                                    <option value="<?php echo htmlspecialchars($code); ?>">
-                                                        <?php echo htmlspecialchars($label); ?>
-                                                    </option>
+                                                    <option value="<?php echo htmlspecialchars($code); ?>"><?php echo htmlspecialchars($label); ?></option>
                                                 <?php endforeach; ?>
                                             </select>
 
-                                            <button
-                                                type="submit"
-                                                class="btn-success"
-                                                style="padding:3px 8px;font-size:11px;border-radius:999px;"
-                                                onclick="return confirm(<?php echo htmlspecialchars(json_encode('Valider le paiement de ' . $archerLabel . ' ?'), ENT_QUOTES); ?>);"
-                                            >
-                                                Valider
-                                            </button>
+                                            <button type="submit" class="btn-small btn-success" onclick="return confirm(<?php echo htmlspecialchars(json_encode('Valider le paiement de ' . $archerLabel . ' ?'), ENT_QUOTES); ?>);">Valider</button>
                                         </form>
                                     <?php endif; ?>
 
-                                    <button
-                                        type="button"
-                                        class="btn-invoice"
-                                        style="padding:3px 8px;font-size:11px;border-radius:999px;"
-                                        onclick="return factureEngagementPrompt('<?php echo intval($e['engagement_id']); ?>');"
-                                    >
-                                        Facture
-                                    </button>
+                                    <?php if ($canWrite): ?>
+                                        <button type="button" class="btn-small" title="Note et inscription tardive" data-id="<?php echo intval($e['engagement_id']); ?>" data-archer="<?php echo htmlspecialchars($archerLabel); ?>" data-note="<?php echo htmlspecialchars($e['note']); ?>" data-late="<?php echo !empty($e['late']) ? '1' : '0'; ?>" onclick="openNoteDialog(this);">✎</button>
+                                    <?php endif; ?>
+
+                                    <button type="button" class="btn-small" onclick="return factureEngagementPrompt('<?php echo intval($e['engagement_id']); ?>');">Facture</button>
                                 </div>
                             </td>
                         </tr>
@@ -1688,7 +1487,7 @@ include('Common/Templates/head.php');
                     <?php if ($displayCount === 0): ?>
                         <tr>
                             <td class="col-check"></td>
-                            <td colspan="11" style="text-align:center;padding:20px;">Aucun engagement trouvé.</td>
+                            <td colspan="11" style="text-align:center;padding:20px;color:var(--muted);">Aucun engagement trouvé.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
@@ -1698,7 +1497,7 @@ include('Common/Templates/head.php');
                         <tr>
                             <td class="col-check"></td>
                             <td colspan="8" style="text-align:right;font-weight:600;">Total affiché :</td>
-                            <td style="text-align:right;font-weight:600;"><?php echo registrarc_format_montant($total); ?> €</td>
+                            <td class="num" style="text-align:right;font-weight:600;"><?php echo registrarc_format_montant($total); ?> €</td>
                             <td colspan="2"></td>
                         </tr>
                     </tfoot>
@@ -1707,18 +1506,59 @@ include('Common/Templates/head.php');
         </div>
     </div>
 
-    <div class="summary-footer">
-        <div>
-            Engagements affichés :
-            <strong><?php echo intval($displayCount); ?></strong>
-        </div>
-
-        <div>
-            Montant total affiché :
-            <strong><?php echo registrarc_format_montant($total); ?> €</strong>
-        </div>
+    <div class="summary-footer num">
+        <div>Engagements affichés : <strong><?php echo intval($displayCount); ?></strong></div>
+        <div>Montant total affiché : <strong><?php echo registrarc_format_montant($total); ?> €</strong></div>
     </div>
 </div>
+
+<?php if ($canWrite): ?>
+<dialog class="rg-dialog" id="noteDialog">
+    <form method="POST">
+        <?php echo registrarc_form_fields($TourId); ?>
+        <input type="hidden" name="save_archer_info" value="1">
+        <input type="hidden" name="engagement_id" id="noteEngagementId" value="">
+        <h3>Note</h3>
+        <p class="dialog-sub" id="noteArcher"></p>
+        <label>
+            Note visible par le greffe
+            <textarea name="note" id="noteText" rows="3" maxlength="200" placeholder="Ex. : paiera dimanche, chèque à l'ordre du club…"></textarea>
+        </label>
+        <label class="check-line">
+            <input type="checkbox" name="late" id="noteLate" value="1">
+            Inscription tardive (majoration prévue dans les paramètres)
+        </label>
+        <div class="dialog-actions">
+            <button type="button" class="btn-ghost" onclick="this.closest('dialog').close();">Annuler</button>
+            <button type="submit" class="btn-primary">Enregistrer</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="rg-dialog" id="refundDialog">
+    <form method="POST">
+        <?php echo registrarc_form_fields($TourId); ?>
+        <input type="hidden" name="validate_payment" value="refund">
+        <input type="hidden" name="engagement_id" id="refundEngagementId" value="">
+        <h3>Rembourser</h3>
+        <p class="dialog-sub" id="refundArcher"></p>
+        <label>
+            Remboursé en
+            <select name="refund_method">
+                <?php foreach ($paymentModes as $code => $label): ?>
+                    <?php if ($code !== 'GRA'): ?>
+                        <option value="<?php echo htmlspecialchars($code); ?>"><?php echo htmlspecialchars($label); ?></option>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </select>
+        </label>
+        <div class="dialog-actions">
+            <button type="button" class="btn-ghost" onclick="this.closest('dialog').close();">Annuler</button>
+            <button type="submit" class="btn-danger">Enregistrer le remboursement</button>
+        </div>
+    </form>
+</dialog>
+<?php endif; ?>
 
 <script>
 function getSelectedEngagementIds() {
@@ -1777,9 +1617,12 @@ function confirmBulkAction(type) {
         return false;
     }
 
-    const actionText = (type === 'validate')
-        ? 'valider le paiement'
-        : 'retirer le paiement';
+    const actionTexts = {
+        validate: 'valider le paiement',
+        unvalidate: 'retirer le paiement',
+        refund: 'enregistrer le remboursement'
+    };
+    const actionText = actionTexts[type] || type;
 
     if (type !== 'validate') {
         return confirm(
@@ -1805,6 +1648,64 @@ function confirmBulkAction(type) {
     return confirm(
         'Vous allez ' + actionText + ' pour ' + count + ' engagement(s).\n\nConfirmer ?'
     );
+}
+
+function openNoteDialog(btn) {
+    document.getElementById('noteEngagementId').value = btn.dataset.id;
+    document.getElementById('noteArcher').textContent = btn.dataset.archer;
+    document.getElementById('noteText').value = btn.dataset.note || '';
+    document.getElementById('noteLate').checked = btn.dataset.late === '1';
+    document.getElementById('noteDialog').showModal();
+}
+
+function openRefundDialog(btn) {
+    document.getElementById('refundEngagementId').value = btn.dataset.id;
+    document.getElementById('refundArcher').textContent = btn.dataset.archer + ' · ' + btn.dataset.amount + ' €';
+    document.getElementById('refundDialog').showModal();
+}
+
+// Opérateur : prénom mémorisé sur ce poste et joint à chaque envoi de formulaire
+const OPERATOR_KEY = 'RegistrArcOperator';
+
+function initOperator() {
+    const input = document.getElementById('operatorName');
+    let name = '';
+
+    try {
+        name = localStorage.getItem(OPERATOR_KEY) || '';
+    } catch (e) {
+        name = '';
+    }
+
+    if (input) {
+        input.value = name;
+        input.addEventListener('input', function () {
+            try {
+                localStorage.setItem(OPERATOR_KEY, input.value.trim());
+            } catch (e) {
+                // mémorisation impossible : sans conséquence
+            }
+        });
+    }
+
+    document.addEventListener('submit', function (event) {
+        const form = event.target;
+
+        if (!form || String(form.method).toUpperCase() !== 'POST') {
+            return;
+        }
+
+        let field = form.querySelector('input[name="operator"]');
+
+        if (!field) {
+            field = document.createElement('input');
+            field.type = 'hidden';
+            field.name = 'operator';
+            form.appendChild(field);
+        }
+
+        field.value = input ? input.value.trim() : name;
+    }, true);
 }
 
 function factureEngagementPrompt(engagementId) {
@@ -1964,7 +1865,7 @@ function printGreffeList() {
 
     clonedTable.querySelectorAll('a').forEach(link => {
         const span = document.createElement('span');
-        span.textContent = link.textContent.trim();
+        span.textContent = link.textContent.replace(/[▲▼]/g, '').trim();
         link.replaceWith(span);
     });
 
@@ -2264,6 +2165,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     updateBulkInvoiceButton();
     checkModuleUpdate();
+    initOperator();
 });
 
 // Bouton "Mise à jour" affiché seulement si une version plus récente existe

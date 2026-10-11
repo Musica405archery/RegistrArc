@@ -212,6 +212,7 @@ function registrarc_default_settings($TourId) {
         'tarifs' => registrarc_default_tarifs(),
         'payment_modes' => registrarc_default_payment_modes(),
         'rules' => [],
+        'options' => registrarc_default_pricing_options(),
     ];
 }
 
@@ -379,6 +380,7 @@ function registrarc_config_normalize_settings($TourId, $settings, array $allowed
     $out['tarifs'] = registrarc_normalize_tarifs(isset($settings['tarifs']) ? $settings['tarifs'] : null);
     $out['payment_modes'] = registrarc_normalize_payment_modes(isset($settings['payment_modes']) ? $settings['payment_modes'] : null);
     $out['rules'] = registrarc_normalize_rules(isset($settings['rules']) ? $settings['rules'] : [], $allowedRuleScopes);
+    $out['options'] = registrarc_normalize_pricing_options(isset($settings['options']) ? $settings['options'] : null);
 
     return $out;
 }
@@ -443,7 +445,7 @@ if ($t = safe_fetch($tournamentRs)) {
 }
 
 $dataDirStatus = registrarc_data_dir_status();
-$canWrite = hasACL(AclParticipants, AclReadWrite);
+$canWrite = registrarc_can_write($TourId);
 
 // ---------------------------------------------------------------------------
 // Export
@@ -641,6 +643,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'tarifs' => $tarifs,
                 'payment_modes' => $modes,
                 'rules' => $rules,
+                'options' => [
+                    'cap_per_archer' => isset($_POST['cap_per_archer']) ? str_replace(',', '.', $_POST['cap_per_archer']) : 0,
+                    'late_fee' => isset($_POST['late_fee']) ? str_replace(',', '.', $_POST['late_fee']) : 0,
+                ],
             ];
 
             $settings = registrarc_config_normalize_settings($TourId, $settings, $allowedRuleScopes);
@@ -664,6 +670,7 @@ $currentAgeClasses = isset($currentSettings['age_classes']) ? registrarc_normali
 $currentTarifs = $currentSettings['tarifs'];
 $currentModes = $currentSettings['payment_modes'];
 $currentRules = $currentSettings['rules'];
+$currentOptions = registrarc_normalize_pricing_options(isset($currentSettings['options']) ? $currentSettings['options'] : null);
 
 $currentSettingsTimestamp = registrarc_settings_timestamp($currentSettings, registrarc_settings_file_path($TourId));
 $currentSettingsTimestampLabel = registrarc_format_timestamp_for_message($currentSettingsTimestamp);
@@ -691,64 +698,98 @@ include('Common/Templates/head.php');
 
 <style>
     :root {
-        --primary-color: #2563eb;
-        --primary-dark: #1d4ed8;
-        --success-color: #16a34a;
-        --warning-color: #d97706;
-        --danger-color: #dc2626;
-        --border-radius: 6px;
-        --shadow-soft: 0 4px 12px rgba(15, 23, 42, 0.08);
-        --text-muted: #6b7280;
-        --text-strong: #111827;
+        --text: #1f2933;
+        --muted: #6b7280;
+        --line: #e3e7ee;
+        --line-strong: #cfd6e1;
+        --bg: #eef1f6;
+        --surface: #ffffff;
+        --accent: #14336b;
+        --accent-soft: #e9effa;
+        --on-accent: #ffffff;
+        --on-accent-muted: #c9d5ec;
+        --paid: #15803d;
+        --danger: #b91c1c;
+        --radius: 8px;
     }
 
     body {
-        background: #f9fafb;
+        background: var(--bg);
     }
 
     .registrarc-container {
         max-width: 1100px;
         margin: 0 auto;
-        padding: 16px;
-        box-sizing: border-box;
+        padding: 0 16px 32px;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-size: 14px;
+        color: var(--text);
     }
 
+    /* --- En-tête -------------------------------------------------------------- */
     .registrarc-header {
-        margin-bottom: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px 24px;
+        background: var(--accent);
+        color: var(--on-accent);
+        margin: 0 -16px 16px;
+        padding: 14px 16px;
     }
 
     .registrarc-header-title {
         font-size: 20px;
         font-weight: 700;
-        color: var(--text-strong);
     }
 
     .registrarc-header-sub {
+        color: var(--on-accent-muted);
         font-size: 13px;
-        color: var(--text-muted);
-        margin-top: 4px;
+        margin-top: 2px;
     }
 
-    .card {
-        background: #fff;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-soft);
-        padding: 12px 14px;
-        margin-bottom: 12px;
-        box-sizing: border-box;
+    .header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
     }
 
-    .card-title {
-        font-size: 14px;
+    .header-actions a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 34px;
+        padding: 0 12px;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: var(--radius);
+        color: var(--on-accent);
+        text-decoration: none;
         font-weight: 600;
-        margin-bottom: 8px;
-        color: var(--text-strong);
+        font-size: 13px;
     }
 
-    .card-help {
-        font-size: 12px;
-        color: var(--text-muted);
-        margin-bottom: 8px;
+    .header-actions a:hover { background: rgba(255, 255, 255, 0.12); }
+    .header-actions a.is-active { background: #fff; color: var(--accent); }
+
+    /* --- Cartes --------------------------------------------------------------- */
+    .registrarc-container .card {
+        background: var(--surface);
+        border-radius: var(--radius);
+        box-shadow: 0 1px 2px rgba(20, 51, 107, 0.12);
+        padding: 16px 18px;
+        margin-bottom: 14px;
+    }
+
+    .registrarc-container .card-title {
+        font-size: 16px;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+
+    .registrarc-container .card-help {
+        color: var(--muted);
+        margin-bottom: 12px;
         line-height: 1.45;
     }
 
@@ -756,9 +797,10 @@ include('Common/Templates/head.php');
     .import-export-row {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
+        gap: 14px;
     }
 
+    /* --- Boutons -------------------------------------------------------------- */
     .btn-primary,
     .btn-success,
     .btn-ghost,
@@ -766,126 +808,111 @@ include('Common/Templates/head.php');
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
-        padding: 7px 14px;
-        border-radius: 999px;
-        font-size: 13px;
+        min-height: 34px;
+        padding: 0 14px;
+        border-radius: var(--radius);
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        color: var(--text);
+        font: inherit;
         font-weight: 600;
-        border: none;
         cursor: pointer;
         text-decoration: none;
         white-space: nowrap;
     }
 
-    .btn-primary {
-        background: var(--primary-color);
-        color: #fff;
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    .btn-primary:hover { background: #0f2652; }
+    .btn-success { background: var(--paid); border-color: var(--paid); color: #fff; }
+    .btn-warning:hover, .btn-ghost:hover { background: var(--accent-soft); }
+
+    /* --- Messages ------------------------------------------------------------- */
+    .registrarc-container .alert {
+        padding: 10px 14px;
+        border-radius: var(--radius);
+        border: 1px solid;
+        margin-bottom: 12px;
     }
 
-    .btn-primary:hover {
-        background: var(--primary-dark);
-    }
+    .alert-success { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
+    .alert-error { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+    .alert-warning { background: #fffbeb; border-color: #fde68a; color: #78350f; }
+    .alert-info { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
 
-    .btn-success {
-        background: var(--success-color);
-        color: #fff;
-    }
-
-    .btn-warning {
-        background: var(--warning-color);
-        color: #fff;
-    }
-
-    .btn-ghost {
-        background: transparent;
-        color: var(--text-muted);
-        border: 1px solid #d1d5db;
-    }
-
-    .alert {
-        padding: 10px 12px;
-        border-radius: var(--border-radius);
-        font-size: 13px;
-        margin-bottom: 10px;
-    }
-
-    .alert-success {
-        background-color: #dcfce7;
-        border: 1px solid #bbf7d0;
-        color: #166534;
-    }
-
-    .alert-error {
-        background-color: #fee2e2;
-        border: 1px solid #fecaca;
-        color: #991b1b;
-    }
-
-    .alert-warning {
-        background-color: #fef3c7;
-        border: 1px solid #fde68a;
-        color: #92400e;
-    }
-
-    table {
+    /* --- Tableaux et champs --------------------------------------------------- */
+    .registrarc-container table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 13px;
     }
 
-    th,
-    td {
-        padding: 6px 8px;
-        border-bottom: 1px solid #e5e7eb;
+    .registrarc-container th,
+    .registrarc-container td {
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--line);
         text-align: left;
     }
 
-    thead {
-        background: #f9fafb;
-    }
-
-    th {
+    .registrarc-container th {
+        background: #f6f8fb;
         font-size: 12px;
-        color: var(--text-muted);
+        color: var(--muted);
         font-weight: 600;
+        border-bottom-color: var(--line-strong);
     }
 
-    input[type="text"],
-    input[type="number"],
-    select,
-    .import-input,
-    textarea {
+    .registrarc-container input[type="text"],
+    .registrarc-container input[type="number"],
+    .registrarc-container select,
+    .registrarc-container .import-input,
+    .registrarc-container textarea {
         width: 100%;
         box-sizing: border-box;
-        padding: 5px 7px;
-        border-radius: 999px;
-        border: 1px solid #d1d5db;
-        font-size: 12px;
-        background: #f9fafb;
+        height: 34px;
+        padding: 0 10px;
+        border-radius: var(--radius);
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        font: inherit;
+        color: var(--text);
     }
 
-    textarea {
-        border-radius: 10px;
+    .registrarc-container .import-input {
+        height: auto;
+        padding: 6px 10px;
+    }
+
+    .registrarc-container textarea {
+        height: auto;
         min-height: 74px;
+        padding: 8px 10px;
         resize: vertical;
         line-height: 1.4;
     }
 
-    input[readonly] {
-        background: #e5e7eb;
-        color: #374151;
+    .registrarc-container input:focus,
+    .registrarc-container select:focus,
+    .registrarc-container textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(20, 51, 107, 0.15);
+    }
+
+    .registrarc-container input[readonly] {
+        background: #f1f4f8;
+        color: var(--muted);
         cursor: not-allowed;
     }
 
     .tarif-input {
-        max-width: 80px;
+        max-width: 90px;
         text-align: right;
+        font-variant-numeric: tabular-nums;
     }
 
     .delete-btn {
         border: none;
         background: none;
-        color: var(--danger-color);
+        color: var(--danger);
         cursor: pointer;
         font-size: 16px;
     }
@@ -896,27 +923,27 @@ include('Common/Templates/head.php');
     }
 
     .form-footer {
-        margin-top: 12px;
+        margin-top: 14px;
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 12px;
         align-items: center;
     }
 
     .back-link {
-        font-size: 13px;
-        color: var(--primary-color);
+        color: var(--accent);
         text-decoration: none;
+        font-weight: 600;
     }
 
-    .chip {
+    .registrarc-container .chip {
         display: inline-flex;
         align-items: center;
-        padding: 3px 8px;
+        padding: 2px 8px;
         border-radius: 999px;
-        background: #e5e7eb;
-        font-size: 11px;
-        color: #374151;
+        background: #f1f4f8;
+        font-size: 12px;
+        color: var(--muted);
     }
 
     .age-preview {
@@ -926,15 +953,8 @@ include('Common/Templates/head.php');
         margin-top: 6px;
     }
 
-    .age-chip-jeune {
-        background: #dbeafe;
-        color: #1d4ed8;
-    }
-
-    .age-chip-adulte {
-        background: #dcfce7;
-        color: #166534;
-    }
+    .registrarc-container .age-chip-jeune { background: var(--accent-soft); color: var(--accent); }
+    .registrarc-container .age-chip-adulte { background: #e8f5ec; color: var(--paid); }
 
     @media (max-width: 768px) {
         .grid-2,
@@ -943,14 +963,14 @@ include('Common/Templates/head.php');
         }
     }
 
-    /* --- Transfert de catégories (Classes d'âge) --- */
+    /* --- Classes d'âge : deux colonnes, glisser-déposer ----------------------- */
     .age-search-input {
-        margin-bottom: 10px;
+        margin-bottom: 12px;
     }
 
     .age-transfer {
         display: flex;
-        gap: 16px;
+        gap: 14px;
         align-items: stretch;
         flex-wrap: wrap;
     }
@@ -958,9 +978,9 @@ include('Common/Templates/head.php');
     .age-transfer-col {
         flex: 1;
         min-width: 240px;
-        background: linear-gradient(180deg, #f9fafb 0%, #ffffff 60%);
-        border: 1px solid #e5e7eb;
-        border-radius: 16px;
+        background: #f6f8fb;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
         padding: 10px;
         display: flex;
         flex-direction: column;
@@ -970,26 +990,21 @@ include('Common/Templates/head.php');
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 2px 6px 10px 6px;
+        padding: 2px 4px 8px;
         margin-bottom: 8px;
-        border-bottom: 1px dashed #e5e7eb;
+        border-bottom: 1px solid var(--line);
     }
 
     .age-transfer-col-title {
-        font-size: 13px;
         font-weight: 700;
-        color: var(--text-strong);
-        display: flex;
-        align-items: center;
-        gap: 6px;
     }
 
     .age-transfer-count {
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 700;
-        background: #eef2ff;
-        color: var(--primary-dark);
-        padding: 2px 9px;
+        background: var(--accent);
+        color: var(--on-accent);
+        padding: 1px 9px;
         border-radius: 999px;
         min-width: 20px;
         text-align: center;
@@ -1001,23 +1016,22 @@ include('Common/Templates/head.php');
         display: flex;
         flex-direction: column;
         gap: 6px;
-        padding: 4px;
-        border-radius: 12px;
+        padding: 2px;
+        border-radius: var(--radius);
         transition: background 0.15s ease, box-shadow 0.15s ease;
     }
 
     .age-dropzone.drag-over {
-        background: #eff6ff;
-        box-shadow: inset 0 0 0 2px var(--primary-color);
+        background: var(--accent-soft);
+        box-shadow: inset 0 0 0 2px var(--accent);
     }
 
     .age-dropzone-empty {
-        font-size: 12px;
-        color: var(--text-muted);
+        color: var(--muted);
         text-align: center;
         padding: 20px 6px;
-        border: 1px dashed #d1d5db;
-        border-radius: 12px;
+        border: 1px dashed var(--line-strong);
+        border-radius: var(--radius);
     }
 
     .age-card {
@@ -1025,21 +1039,16 @@ include('Common/Templates/head.php');
         align-items: center;
         justify-content: space-between;
         gap: 8px;
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 8px 8px 8px 12px;
-        font-size: 12.5px;
-        color: var(--text-strong);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 7px 8px 7px 12px;
         cursor: grab;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-        transition: box-shadow 0.15s ease, transform 0.1s ease, border-color 0.15s ease;
+        transition: border-color 0.15s ease;
     }
 
     .age-card:hover {
-        border-color: var(--primary-color);
-        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.15);
-        transform: translateY(-1px);
+        border-color: var(--accent);
     }
 
     .age-card.dragging {
@@ -1054,25 +1063,24 @@ include('Common/Templates/head.php');
 
     .age-card-move {
         flex-shrink: 0;
-        border: none;
-        background: #f3f4f6;
-        color: var(--primary-color);
-        width: 24px;
-        height: 24px;
-        border-radius: 999px;
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        color: var(--accent);
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
         font-size: 14px;
         line-height: 1;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
     }
 
     .age-card-move:hover {
-        background: var(--primary-color);
-        color: #fff;
-        transform: scale(1.1);
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--on-accent);
     }
 
     @media (max-width: 768px) {
@@ -1084,8 +1092,18 @@ include('Common/Templates/head.php');
 
 <div class="registrarc-container">
     <div class="registrarc-header">
-        <div class="registrarc-header-title">Gestion des engagements - Registr'Arc</div>
-        <div class="registrarc-header-sub">Le module de Greffe pour I@nseo</div>
+        <div>
+            <div class="registrarc-header-title">Paramètres</div>
+            <div class="registrarc-header-sub"><?php echo htmlspecialchars($tournamentName ?: "RegistrArc, le module de greffe pour I@nseo"); ?></div>
+        </div>
+
+        <div class="header-actions">
+            <a href="index.php">Liste</a>
+            <a href="dashboard.php">Tableau de bord</a>
+            <a href="caisse.php">Caisse</a>
+            <a href="kiosk.php">Mode Kiosk</a>
+            <a href="config_tarifs.php" class="is-active">⚙ Paramètres</a>
+        </div>
     </div>
 
     <?php if (!$dataDirStatus['ok']): ?>
@@ -1161,14 +1179,14 @@ include('Common/Templates/head.php');
                 <input
                     type="text"
                     class="age-search-input"
-                    placeholder="🔎 Filtrer les catégories..."
+                    placeholder="Filtrer les catégories…"
                     oninput="filterAgeCards(this.value);"
                 >
 
                 <div class="age-transfer">
                     <div class="age-transfer-col">
                         <div class="age-transfer-col-header">
-                            <span class="age-transfer-col-title">🏹 Jeunes</span>
+                            <span class="age-transfer-col-title">Jeunes</span>
                             <span class="age-transfer-count" id="jeunesCount">0</span>
                         </div>
                         <div
@@ -1195,7 +1213,7 @@ include('Common/Templates/head.php');
 
                     <div class="age-transfer-col">
                         <div class="age-transfer-col-header">
-                            <span class="age-transfer-col-title">🧓 Adultes</span>
+                            <span class="age-transfer-col-title">Adultes</span>
                             <span class="age-transfer-count" id="adultesCount">0</span>
                         </div>
                         <div
@@ -1299,6 +1317,29 @@ include('Common/Templates/head.php');
                     </table>
                 </div>
             </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Réductions et majorations</div>
+            <div class="card-help">
+                Laisser à 0 pour ne pas utiliser une option. Elles s'appliquent après le tarif normal ou la règle avancée,
+                dans cet ordre : plafond, puis majoration.
+            </div>
+
+            <table>
+                <tbody>
+                    <tr>
+                        <td style="width:34%;"><strong>Plafond par archer</strong></td>
+                        <td style="width:16%;"><input type="number" name="cap_per_archer" value="<?php echo htmlspecialchars((string)$currentOptions['cap_per_archer']); ?>" min="0" step="0.5" class="tarif-input"> €</td>
+                        <td>Montant maximal payé par un archer pour l'ensemble de ses départs.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Majoration inscription tardive</strong></td>
+                        <td><input type="number" name="late_fee" value="<?php echo htmlspecialchars((string)$currentOptions['late_fee']); ?>" min="0" step="0.5" class="tarif-input"> €</td>
+                        <td>Ajoutée aux départs marqués « inscription tardive » depuis la liste des engagements.</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
 
         <div class="card">

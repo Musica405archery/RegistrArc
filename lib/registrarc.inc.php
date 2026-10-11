@@ -9,6 +9,11 @@
 // ============================================================================
 
 require_once(dirname(__FILE__) . '/registrarc_storage.inc.php');
+require_once(dirname(__FILE__) . '/registrarc_engagements.inc.php');
+require_once(dirname(__FILE__) . '/registrarc_caisse.inc.php');
+require_once(dirname(__FILE__) . '/registrarc_ui.inc.php');
+require_once(dirname(__FILE__) . '/registrarc_invoices.inc.php');
+require_once(dirname(__FILE__) . '/registrarc_backup.inc.php');
 
 // ---------------------------------------------------------------------------
 // Paramètres module avec fallback ancien Greffe2
@@ -667,10 +672,15 @@ function registrarc_normalize_settings($TourId, $settings) {
         'age_classes' => registrarc_default_age_classes(),
         'payment_modes' => registrarc_default_payment_modes(),
         'rules' => [],
+        'options' => registrarc_default_pricing_options(),
     ];
 
     if (!is_array($settings)) {
         return $out;
+    }
+
+    if (isset($settings['options'])) {
+        $out['options'] = registrarc_normalize_pricing_options($settings['options']);
     }
 
     if (isset($settings['tarifs']) && is_array($settings['tarifs'])) {
@@ -1100,12 +1110,17 @@ function registrarc_check_token() {
     return '';
 }
 
-// Retourne '' si l'envoi est valide, sinon le message d'erreur à afficher
-function registrarc_check_form($TourId) {
+// Retourne '' si l'envoi est valide, sinon le message d'erreur à afficher.
+// Un concours clôturé refuse toute modification, sauf sa réouverture ($allowWhenClosed).
+function registrarc_check_form($TourId, $allowWhenClosed = false) {
     $tokenError = registrarc_check_token();
 
     if ($tokenError !== '') {
         return $tokenError;
+    }
+
+    if (!$allowWhenClosed && registrarc_is_closed($TourId)) {
+        return "Le concours est clôturé : aucune modification n'est possible. Il peut être rouvert depuis le tableau de bord.";
     }
 
     $postedTour = isset($_POST['registrarc_tour']) ? intval($_POST['registrarc_tour']) : 0;

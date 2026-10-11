@@ -51,6 +51,7 @@ if (isset($_GET['ids'])) {
     $idsParam = $_GET['id'];
 }
 
+$invoiceParam = isset($_GET['num']) ? trim((string)$_GET['num']) : '';
 $engagementIds = [];
 
 foreach (explode(',', $idsParam) as $id) {
@@ -151,166 +152,44 @@ function registrarc_get_competition_visuals(array $tournament) {
 }
 
 // ---------------------------------------------------------------------------
-// Récupération des engagements
+// Lignes de la facture (calcul commun à toutes les pages)
 // ---------------------------------------------------------------------------
-function registrarc_get_invoice_engagements($TourId, array $engagementIds) {
-    $TourId = intval($TourId);
-    $ids = array_values(array_unique(array_filter(array_map('intval', $engagementIds))));
-
-    if (empty($ids)) {
-        return [];
-    }
-
-    $idsSql = implode(',', $ids);
-
-    $query = "
-        SELECT
-            e.EnId AS engagement_id,
-            UPPER(TRIM(e.EnCode)) AS licence,
-            UPPER(TRIM(e.EnFirstName)) AS nom,
-            TRIM(e.EnName) AS prenom,
-            CONCAT(e.EnDivision, e.EnClass) AS categorie,
-            c.CoName AS club,
-            c.CoCode AS country_code,
-            q.QuSession AS session_no,
-            q.QuTarget AS target,
-            q.QuLetter AS letter,
-            e.EnIndClEvent,
-            e.EnTeamClEvent,
-            e.EnIndFEvent,
-            e.EnTeamFEvent,
-            e.EnTeamMixEvent
-        FROM Entries e
-        LEFT JOIN Countries c
-            ON e.EnCountry = c.CoId
-           AND e.EnTournament = c.CoTournament
-        LEFT JOIN Qualifications q
-            ON e.EnId = q.QuId
-        WHERE e.EnTournament = $TourId
-          AND e.EnId IN ($idsSql)
-        ORDER BY UPPER(TRIM(e.EnCode)), q.QuSession, q.QuTarget, q.QuLetter, e.EnId
-    ";
-
-    $rs = safe_r_sql($query);
+function registrarc_invoice_rows($TourId, array $engagementIds, array $paymentModes) {
+    $wanted = array_flip(array_map('intval', $engagementIds));
     $rows = [];
 
-    if ($rs) {
-        while ($row = safe_fetch($rs)) {
-            $rows[] = [
-                'engagement_id' => intval($row->engagement_id),
-                'licence' => strtoupper(trim((string)$row->licence)),
-                'nom' => strtoupper(trim((string)$row->nom)),
-                'prenom' => trim((string)$row->prenom),
-                'categorie' => $row->categorie,
-                'club' => $row->club,
-                'country_code' => $row->country_code,
-                'session_no' => trim((string)$row->session_no),
-                'target' => $row->target,
-                'letter' => $row->letter,
-                'EnIndClEvent' => $row->EnIndClEvent,
-                'EnTeamClEvent' => $row->EnTeamClEvent,
-                'EnIndFEvent' => $row->EnIndFEvent,
-                'EnTeamFEvent' => $row->EnTeamFEvent,
-                'EnTeamMixEvent' => $row->EnTeamMixEvent,
-            ];
+    // Ordre licence / départ / cible, comme dans la liste
+    foreach (registrarc_load_engagements($TourId) as $id => $e) {
+        if (!isset($wanted[$id])) {
+            continue;
         }
+
+        $method = $e['payment_method'];
+        $specialLabel = registrarc_engagement_special_label($e);
+
+        $rows[] = [
+            'engagement_id' => $id,
+            'licence' => $e['licence'],
+            'nom' => $e['nom'],
+            'prenom' => $e['prenom'],
+            'categorie' => $e['categorie'],
+            'club' => $e['club'],
+            'country_code' => $e['country_code'],
+            'session_no' => $e['session'],
+            'numero_engagement' => $e['numero'],
+            'session_label' => $e['session'] !== '' ? 'Départ ' . $e['session'] : '—',
+            'target_label' => $e['target_label'],
+            'payment_status_label' => registrarc_state_label($e['state']),
+            'payment_method' => $method,
+            'payment_method_label' => $method !== '' ? (isset($paymentModes[$method]) ? $paymentModes[$method] : $method) : '—',
+            'tarif_rule_label' => $specialLabel,
+            'tarif_type_label' => $specialLabel !== '' ? ($e['rule_count'] > 1 ? 'Cumul : ' : '') . $specialLabel : 'Standard',
+            'tarif_type_class' => $specialLabel !== '' ? 'tarif-rule' : 'tarif-standard',
+            'amount' => $e['amount'],
+        ];
     }
 
     return $rows;
-}
-
-// ---------------------------------------------------------------------------
-// Enrichissement
-// ---------------------------------------------------------------------------
-function registrarc_enrich_invoice_rows(array $rows, array $tarifs, $organizerClubCode, array $payments, array $engagementNumbers, array $paymentModes, array $tarifRules, $ageClasses = null) {
-    $result = [];
-
-    foreach ($rows as $row) {
-        $engagementId = intval($row['engagement_id']);
-        $numeroEngagement = isset($engagementNumbers[$engagementId]) ? intval($engagementNumbers[$engagementId]) : 1;
-
-        $target = trim((string)$row['target']);
-        $letter = trim((string)$row['letter']);
-        $targetNo = trim($target . $letter);
-
-        $targetIsUnassigned = registrarc_is_null_empty_or_zero($row['target']) || registrarc_is_null_empty_or_zero($row['letter']);
-
-        if ($targetIsUnassigned) {
-            $targetLabel = 'Archer non affecté';
-        } else {
-            $targetLabel = $targetNo;
-        }
-
-        $sessionLabel = $row['session_no'] !== '' ? 'Départ ' . $row['session_no'] : '—';
-
-        $payment = isset($payments[(string)$engagementId]) && is_array($payments[(string)$engagementId])
-            ? $payments[(string)$engagementId]
-            : [];
-
-        $isPaid = isset($payment['status']) && $payment['status'] === 'PAYE';
-        $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
-
-        $methodLabel = '—';
-
-        if ($method !== '') {
-            $methodLabel = isset($paymentModes[$method]) ? $paymentModes[$method] : $method;
-        }
-
-        $entryForRules = [
-            'categorie' => $row['categorie'],
-            'country_code' => $row['country_code'],
-            'EnIndClEvent' => $row['EnIndClEvent'],
-            'EnTeamClEvent' => $row['EnTeamClEvent'],
-            'EnIndFEvent' => $row['EnIndFEvent'],
-            'EnTeamFEvent' => $row['EnTeamFEvent'],
-            'EnTeamMixEvent' => $row['EnTeamMixEvent'],
-        ];
-
-        $ruleResult = registrarc_apply_tarif_rules($entryForRules, $tarifRules);
-
-        if (!empty($ruleResult['matched'])) {
-            $amountBase = (float)$ruleResult['amount'];
-            $ruleLabel = $ruleResult['label'];
-
-            if (!empty($ruleResult['count']) && intval($ruleResult['count']) > 1) {
-                $tarifTypeLabel = 'Cumul : ' . $ruleLabel;
-            } else {
-                $tarifTypeLabel = $ruleLabel !== '' ? $ruleLabel : 'Spécial';
-            }
-
-            $tarifTypeClass = 'tarif-rule';
-        } else {
-            $amountBase = registrarc_prix_engagement(
-                $row['country_code'],
-                $row['categorie'],
-                $numeroEngagement,
-                $tarifs,
-                $organizerClubCode,
-                $ageClasses
-            );
-
-            $ruleLabel = '';
-            $tarifTypeLabel = 'Standard';
-            $tarifTypeClass = 'tarif-standard';
-        }
-
-        $amount = registrarc_is_free_method($method) ? 0 : $amountBase;
-
-        $row['numero_engagement'] = $numeroEngagement;
-        $row['session_label'] = $sessionLabel;
-        $row['target_label'] = $targetLabel;
-        $row['payment_status_label'] = $isPaid ? 'Payé' : (registrarc_nothing_due($amountBase) ? 'Gratuit' : 'Non payé');
-        $row['payment_method'] = $method;
-        $row['payment_method_label'] = $methodLabel;
-        $row['tarif_rule_label'] = $ruleLabel;
-        $row['tarif_type_label'] = $tarifTypeLabel;
-        $row['tarif_type_class'] = $tarifTypeClass;
-        $row['amount'] = $amount;
-
-        $result[] = $row;
-    }
-
-    return $result;
 }
 
 // ---------------------------------------------------------------------------
@@ -356,20 +235,6 @@ function registrarc_build_invoice_customer_groups(array $rows) {
     });
 
     return $out;
-}
-
-// ---------------------------------------------------------------------------
-// Numéro de facture non persistant
-// ---------------------------------------------------------------------------
-function registrarc_generate_invoice_number($TourId, array $ids) {
-    $TourId = intval($TourId);
-    $suffix = implode('-', array_slice(array_map('intval', $ids), 0, 3));
-
-    if (count($ids) > 3) {
-        $suffix .= '-G' . count($ids);
-    }
-
-    return 'RA-' . $TourId . '-' . date('Ymd-His') . '-' . $suffix;
 }
 
 // ---------------------------------------------------------------------------
@@ -438,6 +303,18 @@ function registrarc_render_error($title, $message) {
 // ---------------------------------------------------------------------------
 // Données
 // ---------------------------------------------------------------------------
+$issuedInvoice = null;
+
+if ($invoiceParam !== '') {
+    $issuedInvoice = registrarc_find_invoice($invoiceParam);
+
+    if (!$issuedInvoice || intval($issuedInvoice['tour_id']) !== $TourId) {
+        registrarc_render_error('Facture introuvable', 'Aucune facture n° ' . $invoiceParam . ' pour ce concours.');
+    }
+
+    $engagementIds = $issuedInvoice['engagement_ids'];
+}
+
 if (empty($engagementIds)) {
     registrarc_render_error(
         'Facture impossible',
@@ -447,14 +324,16 @@ if (empty($engagementIds)) {
 
 $tournament = registrarc_get_tournament_info($TourId);
 $competitionVisuals = registrarc_get_competition_visuals($tournament);
-$payments = registrarc_load_payments($TourId);
 $paymentModes = registrarc_load_payment_modes($TourId);
-$tarifs = registrarc_load_tarifs($TourId, $tournament['organizer_code'], $tournament['organizer_name']);
-$ageClasses = registrarc_load_age_classes($TourId);
-$tarifRules = registrarc_load_tarif_rules($TourId);
-$engagementNumbers = registrarc_get_engagement_numbers($TourId);
 
-$rows = registrarc_get_invoice_engagements($TourId, $engagementIds);
+$canWrite = registrarc_can_write($TourId);
+
+if ($issuedInvoice) {
+    // Facture émise : contenu figé au moment de l'émission
+    $rows = $issuedInvoice['snapshot']['rows'];
+} else {
+    $rows = registrarc_invoice_rows($TourId, $engagementIds, $paymentModes);
+}
 
 if (empty($rows)) {
     registrarc_render_error(
@@ -463,27 +342,49 @@ if (empty($rows)) {
     );
 }
 
-$rows = registrarc_enrich_invoice_rows(
-    $rows,
-    $tarifs,
-    $tournament['organizer_code'],
-    $payments,
-    $engagementNumbers,
-    $paymentModes,
-    $tarifRules,
-    $ageClasses
-);
-
 $total = 0;
 
 foreach ($rows as $row) {
     $total += $row['amount'];
 }
 
-$invoiceNumber = registrarc_generate_invoice_number($TourId, $engagementIds);
-$invoiceDate = date('d/m/Y');
 $customerGroups = registrarc_build_invoice_customer_groups($rows);
 $isGroupedInvoice = count($rows) > 1;
+
+// ---------------------------------------------------------------------------
+// Émettre la facture : numéro définitif et copie figée
+// ---------------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['issue_invoice']) && !$issuedInvoice) {
+    checkACL(AclParticipants, AclReadWrite);
+
+    $formError = registrarc_check_form($TourId);
+
+    if ($formError !== '') {
+        registrarc_render_error('Facture non émise', $formError);
+    }
+
+    $number = registrarc_issue_invoice($TourId, $engagementIds, [
+        'rows' => $rows,
+        'total' => $total,
+    ]);
+
+    if ($number === '') {
+        registrarc_render_error('Facture non émise', "Erreur lors de l'enregistrement." . registrarc_storage_error_suffix());
+    }
+
+    header('Location: invoice.php?num=' . rawurlencode($number));
+    exit();
+}
+
+$existingInvoice = $issuedInvoice ? null : registrarc_invoice_for_ids($TourId, $engagementIds);
+
+if ($issuedInvoice) {
+    $invoiceNumber = $issuedInvoice['number'];
+    $invoiceDate = date('d/m/Y', strtotime($issuedInvoice['issued_at']));
+} else {
+    $invoiceNumber = 'aperçu, non numérotée';
+    $invoiceDate = date('d/m/Y');
+}
 
 // ---------------------------------------------------------------------------
 // HTML
@@ -764,6 +665,28 @@ $isGroupedInvoice = count($rows) > 1;
             color: #fff;
         }
 
+        .btn-success {
+            background: #15803d;
+            color: #fff;
+        }
+
+        .notice {
+            max-width: 210mm;
+            margin: 16px auto 0;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1e3a8a;
+            font-size: 13px;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .notice a {
+            color: #14336b;
+            font-weight: 700;
+        }
+
         .btn-ghost {
             background: #fff;
             color: #374151;
@@ -771,6 +694,10 @@ $isGroupedInvoice = count($rows) > 1;
         }
 
         @media print {
+            .no-print {
+                display: none !important;
+            }
+
             body {
                 background: #fff;
             }
@@ -853,6 +780,18 @@ $isGroupedInvoice = count($rows) > 1;
 </head>
 
 <body>
+    <?php if (!$issuedInvoice): ?>
+        <div class="notice no-print">
+            <?php if ($existingInvoice): ?>
+                Une facture a déjà été émise pour ces engagements :
+                <a href="invoice.php?num=<?php echo rawurlencode($existingInvoice['number']); ?>">facture n° <?php echo htmlspecialchars($existingInvoice['number']); ?></a>.
+            <?php else: ?>
+                Aperçu : cette facture n'a pas encore de numéro. « Émettre la facture » lui attribue un numéro définitif
+                et l'enregistre telle quelle, pour pouvoir la réimprimer à l'identique.
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
     <div class="invoice-page">
         <div class="competition-header">
             <div class="competition-logo">
@@ -1006,6 +945,13 @@ Date : <?php echo htmlspecialchars($tournament['when_label']); ?>
         <button type="button" class="btn btn-ghost" onclick="closeInvoiceTab();">
             Retour
         </button>
+
+        <?php if (!$issuedInvoice && !$existingInvoice && $canWrite): ?>
+            <form method="POST" style="display:inline;" onsubmit="return confirm('Émettre la facture ? Elle recevra un numéro définitif.');">
+                <?php echo registrarc_form_fields($TourId); ?>
+                <button type="submit" name="issue_invoice" value="1" class="btn btn-success">Émettre la facture</button>
+            </form>
+        <?php endif; ?>
 
         <button type="button" class="btn btn-primary" onclick="window.print();">
             Imprimer / Enregistrer en PDF
