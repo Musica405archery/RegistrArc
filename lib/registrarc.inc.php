@@ -33,8 +33,9 @@ function registrarc_get_module_parameter($name, $default = '') {
 // ---------------------------------------------------------------------------
 // Dossiers / fichiers JSON
 // ---------------------------------------------------------------------------
+// REGISTRARC_DATA_DIR permet aux tests de travailler dans un dossier temporaire
 function registrarc_data_dir() {
-    return dirname(dirname(__FILE__)) . '/data';
+    return defined('REGISTRARC_DATA_DIR') ? REGISTRARC_DATA_DIR : dirname(dirname(__FILE__)) . '/data';
 }
 
 function registrarc_payments_file_path($TourId) {
@@ -146,6 +147,21 @@ function registrarc_safe_filename_part($value) {
 
     $value = preg_replace('/[^A-Za-z0-9_\-]+/', '_', $value);
     return trim($value, '_');
+}
+
+// Cellule de tableur : une valeur saisie (note, nom, club) qui commence par
+// = + - @ serait exécutée comme une formule par Excel ou LibreOffice.
+// Une apostrophe en tête la garde en texte ; les nombres (-12,50) restent des nombres.
+function registrarc_csv_cell($value) {
+    if (!is_string($value) || $value === '') {
+        return $value;
+    }
+
+    if (preg_match('/^-?\d+([.,]\d+)?$/', $value)) {
+        return $value;
+    }
+
+    return preg_match('/^[=+\-@\t\r]/', $value) ? "'" . $value : $value;
 }
 
 function registrarc_timestamp_from_value($value) {

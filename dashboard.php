@@ -5,24 +5,9 @@
 // factures émises, exports, sauvegarde, clôture du concours.
 // ============================================================================
 
-define('debug', false);
+require_once(dirname(__FILE__) . '/lib/registrarc_page.inc.php');
 
-require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
-require_once('Common/Fun_Various.inc.php');
-require_once('Common/Fun_Sessions.inc.php');
-require_once(dirname(__FILE__) . '/lib/registrarc.inc.php');
-
-CheckTourSession(true);
-checkACL(AclParticipants, AclReadOnly);
-
-$ModuleName = 'RegistrArc';
-$LegacyModuleName = 'Greffe2';
-
-$TourId = isset($_SESSION['TourId']) ? intval($_SESSION['TourId']) : 0;
-
-if (!$TourId) {
-    die('Tournoi non défini');
-}
+$TourId = registrarc_page_tour_id();
 
 $hasWriteRight = hasACL(AclParticipants, AclReadWrite);
 $isClosed = registrarc_is_closed($TourId);
@@ -63,124 +48,153 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ---------------------------------------------------------------------------
-// Chiffres
+// Données des graphiques : calculées ici, mises en forme par assets/js/dashboard.js
+// (filtres, graphiques et tableaux sont dessinés dans le navigateur, sans
+// bibliothèque externe). Aucun nom d'archer n'est transmis.
 // ---------------------------------------------------------------------------
 $tournament = registrarc_get_tournament_info($TourId);
 $paymentModes = registrarc_load_payment_modes($TourId);
 $engagements = registrarc_load_engagements($TourId);
 
-$counts = ['due' => 0, 'paid' => 0, 'free' => 0, 'refunded' => 0];
-$collected = 0;
-$remaining = 0;
-$byMode = [];
-$bySession = [];
-$byClub = [];
+$clubs = [];
+$clubIndex = [];
+$sessions = [];
+$records = [];
 
 foreach ($engagements as $e) {
-    $counts[$e['state']]++;
+    $club = $e['club'] !== '' ? $e['club'] : 'Sans club';
 
-    $paidAmount = $e['state'] === 'paid' ? (float)$e['amount'] : 0;
-    $dueAmount = $e['state'] === 'due' ? (float)$e['amount_due'] : 0;
-    $collected += $paidAmount;
-    $remaining += $dueAmount;
-
-    if ($e['state'] === 'paid') {
-        $mode = $e['payment_method'];
-        $byMode[$mode] = ['count' => (isset($byMode[$mode]) ? $byMode[$mode]['count'] : 0) + 1, 'amount' => (isset($byMode[$mode]) ? $byMode[$mode]['amount'] : 0) + $paidAmount];
+    if (!isset($clubIndex[$club])) {
+        $clubIndex[$club] = count($clubs);
+        $clubs[] = $club;
     }
 
-    foreach ([[&$bySession, $e['session'] !== '' ? 'Départ ' . $e['session'] : 'Sans départ'], [&$byClub, $e['club'] !== '' ? $e['club'] : 'Sans club']] as $group) {
-        $key = $group[1];
+    $sessions[$e['session']] = true;
 
-        if (!isset($group[0][$key])) {
-            $group[0][$key] = ['count' => 0, 'due_count' => 0, 'collected' => 0, 'remaining' => 0];
-        }
-
-        $group[0][$key]['count']++;
-        $group[0][$key]['due_count'] += $e['state'] === 'due' ? 1 : 0;
-        $group[0][$key]['collected'] += $paidAmount;
-        $group[0][$key]['remaining'] += $dueAmount;
-    }
+    // [départ, club, statut, mode, encaissé, reste dû]
+    $records[] = [
+        (string)$e['session'],
+        $clubIndex[$club],
+        $e['state'],
+        $e['state'] === 'paid' ? $e['payment_method'] : '',
+        $e['state'] === 'paid' ? round((float)$e['amount'], 2) : 0,
+        $e['state'] === 'due' ? round((float)$e['amount_due'], 2) : 0,
+    ];
 }
 
-ksort($bySession, SORT_NATURAL);
-ksort($byClub, SORT_NATURAL | SORT_FLAG_CASE);
-$expected = $collected + $remaining;
-$percent = $expected > 0 ? (int)round($collected * 100 / $expected) : 0;
+$sessions = array_keys($sessions);
+sort($sessions, SORT_NATURAL);
+
+// Opérations de caisse du journal : [date, type, montant, mode, départ]
+$timeline = [];
+
+foreach (registrarc_load_journal($TourId) as $entry) {
+    if (!isset($entry['type']) || !registrarc_journal_is_cash($entry['type'])) {
+        continue;
+    }
+
+    $id = isset($entry['engagement_id']) ? intval($entry['engagement_id']) : 0;
+    $timeline[] = [
+        isset($entry['at']) ? (string)$entry['at'] : '',
+        (string)$entry['type'],
+        round(isset($entry['amount']) ? (float)$entry['amount'] : 0, 2),
+        isset($entry['method']) ? (string)$entry['method'] : '',
+        isset($engagements[$id]) ? (string)$engagements[$id]['session'] : '',
+    ];
+}
+
+$vizData = [
+    'records' => $records,
+    'clubs' => $clubs,
+    'sessions' => array_map('strval', $sessions),
+    'modes' => $paymentModes,
+    'timeline' => $timeline,
+];
+
 $invoices = registrarc_invoices_for_tour($TourId);
 $flash = registrarc_flash('dashboard');
-
-$modeLabel = function ($code) use ($paymentModes) {
-    return isset($paymentModes[$code]) ? $paymentModes[$code] : $code;
-};
 
 $PAGE_TITLE = 'RegistrArc - Tableau de bord';
 include('Common/Templates/head.php');
 registrarc_page_open('Tableau de bord', $tournament['name'], 'dashboard');
 registrarc_render_flash($flash);
 ?>
+<link rel="stylesheet" href="<?php echo registrarc_asset_url('assets/css/dashboard.css'); ?>">
 
 <?php if ($isClosed): ?>
     <div class="rg-alert rg-alert-info"><strong>Concours clôturé :</strong> plus aucune modification n'est possible. Il peut être rouvert en bas de cette page.</div>
 <?php endif; ?>
 
-<div class="rg-card">
-    <h2>Encaissement</h2>
-    <div class="rg-figures">
-        <div class="rg-figure"><strong><?php echo registrarc_format_montant($expected); ?> €</strong><span>attendu</span></div>
-        <div class="rg-figure"><strong class="rg-paid"><?php echo registrarc_format_montant($collected); ?> €</strong><span>encaissé</span></div>
-        <div class="rg-figure"><strong class="rg-unpaid"><?php echo registrarc_format_montant($remaining); ?> €</strong><span>reste dû</span></div>
-        <div class="rg-figure"><strong><?php echo intval($counts['due']); ?></strong><span>engagement(s) à payer</span></div>
-        <div class="rg-figure"><strong><?php echo intval($counts['paid']); ?></strong><span>payé(s)</span></div>
-        <div class="rg-figure"><strong><?php echo intval($counts['free']); ?></strong><span>gratuit(s)</span></div>
-        <div class="rg-figure"><strong><?php echo intval($counts['refunded']); ?></strong><span>remboursé(s)</span></div>
-    </div>
-    <div class="rg-bar" title="<?php echo $percent; ?> % encaissé"><span style="width: <?php echo $percent; ?>%;"></span></div>
-    <p class="rg-help" style="margin-top:6px;"><?php echo $percent; ?> % du montant attendu est encaissé.</p>
-</div>
-
-<div class="rg-grid">
-    <div class="rg-card">
-        <h2>Par mode de paiement</h2>
-        <table class="rg-table">
-            <thead><tr><th>Mode</th><th class="right">Engagements</th><th class="right">Montant</th></tr></thead>
-            <tbody>
-                <?php foreach ($byMode as $code => $line): ?>
-                    <tr><td><?php echo htmlspecialchars($modeLabel($code)); ?></td><td class="right num"><?php echo intval($line['count']); ?></td><td class="right num"><?php echo registrarc_format_montant($line['amount']); ?> €</td></tr>
+<section class="rg-viz" id="rgViz" aria-label="Chiffres du concours">
+    <div class="rg-viz-filters rg-noprint">
+        <div class="rg-field">
+            <label for="rgVizSession">Départ</label>
+            <select id="rgVizSession">
+                <option value="*">Tous les départs</option>
+                <?php foreach ($sessions as $session): ?>
+                    <option value="<?php echo htmlspecialchars($session); ?>"><?php echo htmlspecialchars($session !== '' ? 'Départ ' . $session : 'Sans départ'); ?></option>
                 <?php endforeach; ?>
-                <?php if (empty($byMode)): ?>
-                    <tr><td colspan="3" class="rg-muted">Aucun paiement.</td></tr>
-                <?php endif; ?>
-            </tbody>
-        </table>
+            </select>
+        </div>
+        <div class="rg-field">
+            <span class="rg-viz-label" id="rgVizMetricLabel">Afficher</span>
+            <div class="rg-seg" role="group" aria-labelledby="rgVizMetricLabel">
+                <button type="button" data-metric="amount" aria-pressed="true">Montants</button>
+                <button type="button" data-metric="count" aria-pressed="false">Engagements</button>
+            </div>
+        </div>
     </div>
 
-    <div class="rg-card">
-        <h2>Par départ</h2>
-        <table class="rg-table">
-            <thead><tr><th>Départ</th><th class="right">Engagements</th><th class="right">Encaissé</th><th class="right">Reste dû</th></tr></thead>
-            <tbody>
-                <?php foreach ($bySession as $name => $line): ?>
-                    <tr><td><?php echo htmlspecialchars($name); ?></td><td class="right num"><?php echo intval($line['count']); ?></td><td class="right num"><?php echo registrarc_format_montant($line['collected']); ?> €</td><td class="right num <?php echo $line['remaining'] > 0 ? 'rg-unpaid' : ''; ?>"><?php echo registrarc_format_montant($line['remaining']); ?> €</td></tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+    <div class="rg-card" id="rgVizKpi">
+        <h2>Encaissement</h2>
+        <noscript><p class="rg-help">Les chiffres et graphiques ont besoin de JavaScript.</p></noscript>
     </div>
-</div>
 
-<div class="rg-card">
-    <h2>Par club</h2>
-    <div class="rg-table-wrap">
-        <table class="rg-table">
-            <thead><tr><th>Club</th><th class="right">Engagements</th><th class="right">À payer</th><th class="right">Encaissé</th><th class="right">Reste dû</th></tr></thead>
-            <tbody>
-                <?php foreach ($byClub as $name => $line): ?>
-                    <tr><td><?php echo htmlspecialchars($name); ?></td><td class="right num"><?php echo intval($line['count']); ?></td><td class="right num"><?php echo intval($line['due_count']); ?></td><td class="right num"><?php echo registrarc_format_montant($line['collected']); ?> €</td><td class="right num <?php echo $line['remaining'] > 0 ? 'rg-unpaid' : ''; ?>"><?php echo registrarc_format_montant($line['remaining']); ?> €</td></tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+    <div class="rg-card rg-viz-card" data-chart="timeline">
+        <div class="rg-viz-head">
+            <div>
+                <h2>Au fil du temps</h2>
+                <p class="rg-help" data-role="subtitle"></p>
+            </div>
+        </div>
+        <div class="rg-viz-body"></div>
     </div>
-</div>
+
+    <div class="rg-grid">
+        <div class="rg-card rg-viz-card" data-chart="sessions">
+            <div class="rg-viz-head">
+                <div>
+                    <h2>Par départ</h2>
+                    <p class="rg-help" data-role="subtitle"></p>
+                </div>
+            </div>
+            <div class="rg-viz-body"></div>
+        </div>
+
+        <div class="rg-card rg-viz-card" data-chart="modes">
+            <div class="rg-viz-head">
+                <div>
+                    <h2>Par mode de paiement</h2>
+                    <p class="rg-help" data-role="subtitle"></p>
+                </div>
+            </div>
+            <div class="rg-viz-body"></div>
+        </div>
+    </div>
+
+    <div class="rg-card rg-viz-card" data-chart="clubs">
+        <div class="rg-viz-head">
+            <div>
+                <h2>Par club</h2>
+                <p class="rg-help" data-role="subtitle"></p>
+            </div>
+        </div>
+        <div class="rg-viz-body"></div>
+    </div>
+</section>
+
+<script type="application/json" id="rgVizData"><?php echo json_encode($vizData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE); ?></script>
+<script src="<?php echo registrarc_asset_url('assets/js/dashboard.js'); ?>"></script>
 
 <div class="rg-card">
     <h2>Factures émises</h2>

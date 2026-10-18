@@ -32,8 +32,10 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 | `export.php` | téléchargements : `?type=engagements`, `journal` (CSV), `backup` (JSON) |
 | `helloasso.php` | import des paiements HelloAsso |
 | `qrcodes.php` | étiquettes QR codes à imprimer |
+| `aide.php` | mode d'emploi : le `README.md` affiché dans le module (`aide.php#la-caisse` ouvre directement une partie) |
 | `update.php` | page de mise à jour |
 | `menu.php` | entrée du menu I@nseo |
+| `lib/registrarc_page.inc.php` | début commun des pages : environnement I@nseo, bibliothèques, `registrarc_page_tour_id()` (tournoi ouvert et droit demandé) |
 | `lib/registrarc.inc.php` | fonctions communes : paramètres, tarifs de base, chèques groupés, sécurité des formulaires ; charge les autres fichiers de `lib/` |
 | `lib/registrarc_engagements.inc.php` | **calcul unique des montants** utilisé par toutes les pages (tarif, règles, plafond, majoration, statut) |
 | `lib/registrarc_caisse.inc.php` | opérations de paiement journalisées, remises déposées, clôtures de caisse, concours clôturé |
@@ -44,8 +46,13 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 | `lib/registrarc_storage.inc.php` | stockage JSON : écriture atomique, verrous, copies `.bak` |
 | `lib/registrarc_update.inc.php` | mise à jour depuis GitHub |
 | `lib/js/qrcode.js` | génération des QR codes (qrcode-generator, Kazuhiko Arase, licence MIT) |
+| `lib/js/marked.min.js` | mise en forme du README dans `aide.php` (marked 12.0.2, Christopher Jeffrey, licence MIT) |
+| `README.md`, `docs/images/` | mode d'emploi et ses captures, distribués pour être lus dans le module sans internet |
+| `assets/css/`, `assets/js/` | styles et scripts des pages (un fichier par page, `admin.css` pour l'habillage commun), chargés par `registrarc_asset_url()` qui ajoute la date du fichier pour forcer le rechargement après une mise à jour |
 | `module.json` | dépôt et branche d'origine des mises à jour (configuration locale, jamais écrasée) |
-| `version.json` | version du module et liste des fichiers distribués |
+| `version.json` | version du module, liste des fichiers distribués et leurs empreintes SHA-256 |
+| `tests/` | tests automatiques (non distribués) |
+| `tools/version_hashes.php` | calcul des empreintes avant publication (non distribué) |
 
 Le module ne modifie jamais la structure des tables I@nseo : il se contente de les lire.
 
@@ -71,7 +78,12 @@ Commun à tous les tournois : `invoices.json`, registre des factures émises (co
 - **Écritures fiables** : chaque modification se fait sous verrou exclusif (`<fichier>.lock`) pendant tout le cycle lecture / modification / écriture, puis par fichier temporaire et renommage. Plusieurs postes peuvent encaisser en même temps.
 - **Copie de secours** : la version précédente de chaque fichier est gardée en `.bak`. Si un fichier devient illisible, le module refuse d'écrire par-dessus.
 - **Clôtures de caisse** : les périodes sont découpées par position dans le journal et non par heure, pour qu'une opération ne soit jamais perdue ni comptée deux fois.
-- **Protection** : `data/` reçoit automatiquement un `.htaccess` (`Require all denied`, Apache) et un `index.html` vide. Les formulaires portent un jeton anti-CSRF et le numéro du tournoi affiché ; un envoi depuis un onglet resté sur un autre tournoi, ou vers un concours clôturé, est refusé.
+- **Protection** : `data/` reçoit automatiquement un `.htaccess` (Apache), un `web.config` (IIS) et un `index.html` vide. Avec **nginx**, ces fichiers sont ignorés : il faut ajouter dans la configuration du site
+  ```nginx
+  location ~ /Modules/Custom/RegistrArc/data/ { deny all; }
+  ```
+  Vérification : l'adresse `…/Modules/Custom/RegistrArc/data/payments_1.json` doit répondre 403 ou 404. Avec Apache, `.htaccess` n'est lu que si `AllowOverride` l'autorise (c'est le cas de l'installation Windows d'I@nseo).
+- **Formulaires** : ils portent un jeton anti-CSRF et le numéro du tournoi affiché ; un envoi depuis un onglet resté sur un autre tournoi, ou vers un concours clôturé, est refusé.
 - **Sauvegarde** : bouton du tableau de bord (`export.php?type=backup`), ou copie du dossier `data/`.
 
 ## Mise à jour du module
@@ -79,6 +91,7 @@ Commun à tous les tournois : `invoices.json`, registre des factures émises (co
 - `module.json` indique le dépôt (`github_url`), la branche (`github_branch`, `main` par défaut) et le dossier (`github_path`). Il n'est jamais remplacé par une mise à jour.
 - La version publiée est lue dans `version.json` sur la branche indiquée. Le résultat est gardé en cache dans `data/update_check.json` : 6 h, ou 30 min après un échec.
 - L'installation télécharge d'abord tous les fichiers listés dans `files` dans un dossier temporaire et ne remplace rien si un seul échoue. Les fichiers remplacés sont sauvegardés dans `data/backup_<version>_<date>/`. `version.json` est remplacé en dernier. `data/` et `module.json` ne sont jamais touchés.
+- Chaque fichier téléchargé doit correspondre à son empreinte SHA-256 (`sha256` dans `version.json`), sinon rien n'est installé. Cela écarte un fichier tronqué, ou un mélange de versions quand le cache de GitHub sert encore d'anciens fichiers juste après une publication. Ces empreintes viennent du même dépôt que les fichiers : elles ne protègent pas contre un dépôt GitHub compromis.
 
 ### Publier une nouvelle version
 
@@ -87,5 +100,14 @@ Sur la branche `main` :
 1. Augmenter `version` dans `version.json` (format `1.2.3`).
 2. Mettre à jour `date` et `notes` (les notes s'affichent sur la page de mise à jour).
 3. Ajouter dans `files` tout nouveau fichier du module.
+4. Lancer les tests, puis calculer les empreintes (en dernier, une fois tous les fichiers dans leur version finale) :
+   ```bash
+   php tests/run.php
+   php tools/version_hashes.php
+   ```
+   Avec le PHP fourni par I@nseo sous Windows : `C:\ianseo\php\php.exe -n -d extension_dir=C:\ianseo\php\ext -d extension=mbstring tests\run.php` (même chose pour l'outil). `version_hashes.php` signale aussi un fichier suivi par git mais oublié dans `files`.
+5. Faire le commit de tous les fichiers, `version.json` compris, et le pousser. Un fichier modifié après le calcul des empreintes ferait refuser la mise à jour : il suffit alors de relancer l'outil et de pousser à nouveau.
 
-Les installations proposent la nouvelle version au contrôle suivant. Les captures de `docs/images/` ne sont pas listées dans `files` : elles ne sont pas copiées sur les installations.
+Les installations proposent la nouvelle version au contrôle suivant. Le `README.md` et les captures de `docs/images/` sont listés dans `files` : ils sont copiés sur les installations et affichés par `aide.php`. Une nouvelle capture doit donc être ajoutée à `files` (l'outil d'empreintes le signale). `docs/MAINTENANCE.md` n'est pas distribué : dans l'aide, son lien ouvre GitHub.
+
+Le README est écrit pour GitHub et pour l'aide du module à la fois : liens internes vers les titres (`#la-caisse`), sections `<details>`, encadrés `> [!TIP]`, images en chemins relatifs (`docs/images/…`). Les images hébergées ailleurs (badges) ne sont pas affichées dans le module.

@@ -9,16 +9,8 @@
 //   d'installation (administrateur ianseo uniquement)
 // ============================================================================
 
-define('debug', false);
-
-require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
-require_once('Common/Fun_Various.inc.php');
-require_once('Common/Fun_Sessions.inc.php');
-require_once(dirname(__FILE__) . '/lib/registrarc.inc.php');
+require_once(dirname(__FILE__) . '/lib/registrarc_page.inc.php');
 require_once(dirname(__FILE__) . '/lib/registrarc_update.inc.php');
-
-$ModuleName = 'RegistrArc';
-$LegacyModuleName = 'Greffe2';
 
 // ---------------------------------------------------------------------------
 // Vérification en arrière-plan

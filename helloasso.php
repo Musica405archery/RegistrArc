@@ -5,25 +5,10 @@
 // 1. envoi du fichier  2. choix des colonnes  3. vérification puis enregistrement
 // ============================================================================
 
-define('debug', false);
-
-require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
-require_once('Common/Fun_Various.inc.php');
-require_once('Common/Fun_Sessions.inc.php');
-require_once(dirname(__FILE__) . '/lib/registrarc.inc.php');
+require_once(dirname(__FILE__) . '/lib/registrarc_page.inc.php');
 require_once(dirname(__FILE__) . '/lib/registrarc_helloasso.inc.php');
 
-CheckTourSession(true);
-checkACL(AclParticipants, AclReadWrite);
-
-$ModuleName = 'RegistrArc';
-$LegacyModuleName = 'Greffe2';
-
-$TourId = isset($_SESSION['TourId']) ? intval($_SESSION['TourId']) : 0;
-
-if (!$TourId) {
-    die('Tournoi non défini');
-}
+$TourId = registrarc_page_tour_id(AclReadWrite);
 
 $paymentModes = registrarc_load_payment_modes($TourId);
 $tournament = registrarc_get_tournament_info($TourId);

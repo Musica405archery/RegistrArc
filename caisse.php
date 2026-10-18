@@ -8,24 +8,9 @@
 // caisse.php?cloture=C2  : rapport d'une clôture (imprimable)
 // ============================================================================
 
-define('debug', false);
+require_once(dirname(__FILE__) . '/lib/registrarc_page.inc.php');
 
-require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
-require_once('Common/Fun_Various.inc.php');
-require_once('Common/Fun_Sessions.inc.php');
-require_once(dirname(__FILE__) . '/lib/registrarc.inc.php');
-
-CheckTourSession(true);
-checkACL(AclParticipants, AclReadOnly);
-
-$ModuleName = 'RegistrArc';
-$LegacyModuleName = 'Greffe2';
-
-$TourId = isset($_SESSION['TourId']) ? intval($_SESSION['TourId']) : 0;
-
-if (!$TourId) {
-    die('Tournoi non défini');
-}
+$TourId = registrarc_page_tour_id();
 
 $canWrite = registrarc_can_write($TourId);
 $paymentModes = registrarc_load_payment_modes($TourId);

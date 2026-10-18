@@ -14,6 +14,11 @@
 // Installation :
 // - tous les fichiers sont d'abord téléchargés et contrôlés dans un dossier
 //   temporaire ; rien n'est remplacé si un seul téléchargement échoue
+// - chaque fichier doit avoir l'empreinte SHA-256 indiquée dans version.json
+//   (sha256), calculée par tools/version_hashes.php au moment de la publication ;
+//   un version.json à l'ancien format, sans sha256, reste accepté sans contrôle.
+//   Les installations 1.1.0 et avant ignorent sha256 : le format reste compatible
+//   (version, date, notes, files inchangés, sha256 en plus)
 // - les fichiers remplacés sont sauvegardés dans data/backup_<version>_<date>/
 // - version.json est remplacé en dernier
 // - data/ et module.json ne sont jamais touchés
@@ -241,6 +246,27 @@ function registrarc_update_safe_path($rel) {
     return $rel !== 'module.json' && $rel !== 'data' && strpos($rel, 'data/') !== 0;
 }
 
+// Empreintes SHA-256 attendues pour $files (sans version.json).
+// Retourne ['hashes' => [fichier => empreinte] ou null, 'error' => message]
+// - version.json à l'ancien format (sans "sha256", versions 1.1.0 et avant) :
+//   hashes null, installation sans contrôle d'empreinte comme auparavant
+// - "sha256" présent : chaque fichier doit avoir une empreinte valide
+function registrarc_update_expected_hashes(array $remote, array $files) {
+    if (!array_key_exists('sha256', $remote)) {
+        return ['hashes' => null, 'error' => ''];
+    }
+
+    $hashes = is_array($remote['sha256']) ? $remote['sha256'] : [];
+
+    foreach ($files as $rel) {
+        if (!isset($hashes[$rel]) || !preg_match('/^[0-9a-f]{64}$/', (string)$hashes[$rel])) {
+            return ['hashes' => [], 'error' => "version.json distant refusé : empreinte manquante ou invalide pour $rel. Aucune modification effectuée."];
+        }
+    }
+
+    return ['hashes' => $hashes, 'error' => ''];
+}
+
 function registrarc_update_rrmdir($dir) {
     if (!is_dir($dir)) {
         return;
@@ -313,6 +339,15 @@ function registrarc_update_apply() {
         }
 
         $files = array_values(array_unique($files));
+
+        $expected = registrarc_update_expected_hashes($remote, $files);
+
+        if ($expected['error'] !== '') {
+            $result['message'] = $expected['error'];
+            return $result;
+        }
+
+        $hashes = $expected['hashes'];
         $files[] = 'version.json';
 
         // Droits d'écriture vérifiés avant de toucher à quoi que ce soit
@@ -349,6 +384,11 @@ function registrarc_update_apply() {
 
             if (!$res['ok'] || $res['body'] === '') {
                 $result['message'] = "Téléchargement impossible pour $rel : " . ($res['error'] !== '' ? $res['error'] : 'fichier vide.') . " Aucune modification effectuée.";
+                return $result;
+            }
+
+            if ($hashes !== null && $rel !== 'version.json' && !hash_equals((string)$hashes[$rel], hash('sha256', $res['body']))) {
+                $result['message'] = "Fichier $rel différent de celui annoncé par version.json (publication peut-être en cours sur GitHub : réessayez dans quelques minutes). Aucune modification effectuée.";
                 return $result;
             }
 

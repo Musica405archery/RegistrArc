@@ -8,24 +8,9 @@
 // export.php?type=backup      : sauvegarde complète du concours (JSON)
 // ============================================================================
 
-define('debug', false);
+require_once(dirname(__FILE__) . '/lib/registrarc_page.inc.php');
 
-require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
-require_once('Common/Fun_Various.inc.php');
-require_once('Common/Fun_Sessions.inc.php');
-require_once(dirname(__FILE__) . '/lib/registrarc.inc.php');
-
-CheckTourSession(true);
-checkACL(AclParticipants, AclReadOnly);
-
-$ModuleName = 'RegistrArc';
-$LegacyModuleName = 'Greffe2';
-
-$TourId = isset($_SESSION['TourId']) ? intval($_SESSION['TourId']) : 0;
-
-if (!$TourId) {
-    die('Tournoi non défini');
-}
+$TourId = registrarc_page_tour_id();
 
 $type = isset($_GET['type']) ? (string)$_GET['type'] : '';
 $code = registrarc_safe_filename_part(registrarc_current_tournament_code());
@@ -52,7 +37,7 @@ function registrarc_send_csv($filename, array $header, array $lines) {
     fputcsv($out, $header, ';', '"', '\\');
 
     foreach ($lines as $line) {
-        fputcsv($out, $line, ';', '"', '\\');
+        fputcsv($out, array_map('registrarc_csv_cell', $line), ';', '"', '\\');
     }
 
     fclose($out);

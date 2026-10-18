@@ -1,0 +1,200 @@
+/* RegistrArc - assets/css/dashboard.css (styles de dashboard.php) */
+
+/* Couleurs des graphiques : palette catégorielle validée (daltonisme et
+   contraste sur le fond blanc des cartes), encre et grille en retrait */
+.rg-viz {
+    --viz-series-1: #2a78d6;   /* encaissé / payés */
+    --viz-series-2: #eb6834;   /* reste dû / à payer */
+    --viz-series-1-track: #cde2fb;
+    --viz-text-secondary: #52514e;
+    --viz-muted: #898781;
+    --viz-grid: #e1e0d9;
+    --viz-axis: #c3c2b7;
+    --viz-surface: #ffffff;
+}
+
+/* --- Filtres : une ligne au-dessus de tout ce qu'ils filtrent ------------- */
+.rg-viz-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px 18px;
+    margin-bottom: 14px;
+}
+
+.rg-viz-label { color: var(--rg-muted); font-size: 12px; }
+
+.rg-seg {
+    display: inline-flex;
+    border: 1px solid var(--rg-line-strong);
+    border-radius: var(--rg-radius);
+    overflow: hidden;
+    background: #fff;
+}
+
+.rg-seg button {
+    min-height: 34px;
+    padding: 0 14px;
+    border: none;
+    border-left: 1px solid var(--rg-line-strong);
+    background: transparent;
+    color: var(--rg-text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.rg-seg button:first-child { border-left: none; }
+.rg-seg button:hover { background: var(--rg-accent-soft); }
+.rg-seg button[aria-pressed="true"] { background: var(--rg-accent); color: #fff; }
+.rg-seg-small button { min-height: 28px; padding: 0 10px; font-size: 12px; }
+
+/* --- Chiffres clés ------------------------------------------------------- */
+.rg-viz .rg-figure strong { font-variant-numeric: normal; }
+
+.rg-viz-key {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: -1px;
+}
+
+.rg-viz-meter {
+    height: 8px;
+    margin-top: 12px;
+    border-radius: 999px;
+    background: var(--viz-series-1-track);
+    overflow: hidden;
+}
+
+.rg-viz-meter span {
+    display: block;
+    height: 100%;
+    background: var(--viz-series-1);
+    border-radius: 999px;
+}
+
+.rg-viz-meter-label { margin: 6px 0 0; }
+
+/* --- Cartes de graphique ----------------------------------------------------- */
+.rg-viz-card { position: relative; }
+
+.rg-viz-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px 16px;
+}
+
+.rg-viz-head > div:first-child { flex: 1 1 220px; min-width: 0; }
+.rg-viz-head > .rg-seg { flex-shrink: 0; }
+.rg-viz-head .rg-help { margin-bottom: 10px; }
+.rg-viz-body { min-width: 0; }
+.rg-viz-body svg { display: block; overflow: visible; }
+
+.rg-viz-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--viz-text-secondary);
+}
+
+.rg-viz-grid { stroke: var(--viz-grid); stroke-width: 1; shape-rendering: crispEdges; }
+.rg-viz-axis { stroke: var(--viz-axis); stroke-width: 1; shape-rendering: crispEdges; }
+
+.rg-viz-tick {
+    fill: var(--viz-muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.rg-viz-cat { fill: var(--rg-text); font-size: 12px; }
+.rg-viz-value { fill: var(--viz-text-secondary); font-size: 12px; font-weight: 600; }
+
+.rg-viz-hit { fill: transparent; }
+.rg-viz-row { outline: none; }
+.rg-viz-row:hover .rg-viz-hit,
+.rg-viz-row:focus .rg-viz-hit { fill: rgba(20, 51, 107, 0.05); }
+.rg-viz-row:focus-visible .rg-viz-hit { stroke: var(--rg-accent); stroke-width: 1; }
+.rg-viz-row.is-clickable { cursor: pointer; }
+.rg-viz-row:hover .rg-viz-bar { filter: brightness(1.08); }
+
+/* Courbe */
+.rg-viz-line {
+    fill: none;
+    stroke: var(--viz-series-1);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+.rg-viz-area { fill: var(--viz-series-1); fill-opacity: 0.1; }
+
+.rg-viz-dot {
+    fill: var(--viz-series-1);
+    stroke: var(--viz-surface);
+    stroke-width: 2;
+}
+
+.rg-viz-ref { stroke: var(--viz-muted); stroke-width: 1; shape-rendering: crispEdges; }
+.rg-viz-ref-label { fill: var(--viz-muted); font-size: 11px; }
+.rg-viz-cross line { stroke: var(--viz-text-secondary); stroke-width: 1; shape-rendering: crispEdges; }
+.rg-viz-overlay { fill: transparent; outline: none; cursor: crosshair; }
+.rg-viz-overlay:focus-visible { stroke: var(--rg-accent); stroke-width: 1; }
+
+.rg-viz-empty,
+.rg-viz-note { color: var(--rg-muted); margin: 8px 0 0; }
+
+.rg-viz-table { max-height: 380px; overflow-y: auto; }
+
+/* --- Infobulle : la valeur en premier, le libellé ensuite ------------------ */
+.rg-viz-tip {
+    position: absolute;
+    z-index: 5;
+    min-width: 140px;
+    max-width: 280px;
+    padding: 8px 10px;
+    background: #fff;
+    border: 1px solid var(--rg-line-strong);
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
+    font-size: 12px;
+    pointer-events: none;
+}
+
+.rg-viz-tip[hidden] { display: none; }
+.rg-viz-tip-title { color: var(--viz-text-secondary); margin-bottom: 4px; }
+
+.rg-viz-tip-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.6;
+}
+
+.rg-viz-tip-row strong { color: var(--rg-text); font-size: 13px; }
+.rg-viz-tip-row span { color: var(--viz-text-secondary); }
+
+.rg-viz-tip-key {
+    display: inline-block;
+    width: 12px;
+    height: 2px;
+    border-radius: 1px;
+}
+
+.rg-viz-tip-foot {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--rg-line);
+    color: var(--viz-muted);
+}
+
+@media print {
+    .rg-viz-tip { display: none !important; }
+    .rg-viz-table { max-height: none; overflow: visible; }
+}

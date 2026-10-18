@@ -107,6 +107,8 @@
 
 RegistrArc ne modifie jamais les inscriptions dans I@nseo : il les lit et garde ses propres informations à part.
 
+Ce mode d'emploi est aussi disponible dans le module, même sans internet : bouton **? Aide** en haut de chaque page.
+
 ## Le greffe en 4 étapes
 
 | | Quand | Quoi faire |
@@ -396,7 +398,8 @@ Pour **clôturer la caisse** (en fin de matinée, de journée…) : comptez les 
 
 <img src="docs/images/tableau-de-bord.png" alt="Tableau de bord" width="100%">
 
-- **Les chiffres** : montant attendu, encaissé, reste dû, nombre de payés, gratuits et remboursés, puis le détail par mode de paiement, par départ et par club.
+- **Les chiffres** : montant attendu, encaissé, reste dû, nombre de payés, gratuits et remboursés.
+- **Les graphiques** : l'encaissé au fil du temps, puis la répartition par départ, par mode de paiement et par club. Passez la souris (ou le doigt) sur une courbe ou une barre pour voir le détail. En haut, choisissez un **départ** et l'affichage en **montants** ou en nombre d'**engagements** : tous les chiffres et graphiques suivent. Cliquer sur un départ dans son graphique le sélectionne aussi. Le bouton **Tableau** de chaque graphique montre les mêmes chiffres en tableau.
 - **Les factures émises** du concours, à réimprimer.
 - **Pour le trésorier** : la liste des engagements et le journal des opérations en fichiers à ouvrir dans Excel ou LibreOffice.
 - **Sauvegarde** : un seul fichier avec toutes les informations du concours, à garder en lieu sûr ; **Restaurer** le recharge si besoin.
