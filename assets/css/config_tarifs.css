@@ -391,3 +391,11 @@ body {
         flex-direction: column;
     }
 }
+
+/* Version installée, discrète en bas à droite de la page */
+.settings-version {
+    margin-top: 10px;
+    text-align: right;
+    font-size: 11px;
+    color: #b9bec7;
+}

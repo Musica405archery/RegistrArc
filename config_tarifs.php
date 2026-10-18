@@ -28,6 +28,7 @@
 // ============================================================================
 
 require_once(dirname(__FILE__) . '/lib/registrarc_page.inc.php');
+require_once(dirname(__FILE__) . '/lib/registrarc_update.inc.php');
 
 $TourId = registrarc_page_tour_id();
 
@@ -1095,6 +1096,8 @@ include('Common/Templates/head.php');
             <a href="index.php" class="back-link">← Retour à la liste des engagements</a>
         </div>
     </form>
+
+    <div class="settings-version">RegistrArc <?php echo htmlspecialchars(registrarc_local_version_number()); ?></div>
 </div>
 
 <script>const registrarcAllowedRuleScopes = <?php echo json_encode($allowedRuleScopes, JSON_UNESCAPED_UNICODE); ?>;</script>
