@@ -1,7 +1,7 @@
 {
-    "version": "1.1.0",
-    "date": "2026-10-11",
-    "notes": "Nouveautés de la version 1.1.0 :\n\n- Caisse : journal de toutes les opérations (qui, quand, quel poste), clôture de caisse avec comptage des espèces et écart.\n- Remboursement d'un archer qui se désiste.\n- Remises de chèques : enregistrement des remises déposées, historique, réimpression.\n- Factures numérotées (2026-0001…) et réimpression à l'identique.\n- Tableau de bord : encaissé, reste dû, répartition par mode, départ et club.\n- Export tableur pour le trésorier, sauvegarde et restauration du concours.\n- Import des paiements HelloAsso.\n- Plafond par archer et majoration pour inscription tardive ; note par archer.\n- Concours clôturé : plus aucune modification jusqu'à réouverture.\n- QR codes à imprimer pour retrouver un archer au kiosque.\n- Liste des engagements au style du kiosque ; champ Opérateur.",
+    "version": "1.2.0",
+    "date": "2026-10-18",
+    "notes": "Nouveautés de la version 1.2.0 :\n\n- Aide : le mode d'emploi est consultable dans le module (bouton « ? Aide »), même sans internet, avec un sommaire qui suit la lecture.\n- Tableau de bord : graphiques interactifs (encaissé au fil du temps, par départ, par mode de paiement, par club), filtre par départ, affichage en montants ou en engagements, vue tableau.\n- Mise à jour plus sûre : chaque fichier téléchargé est vérifié avant d'être installé.\n- Export tableur protégé contre les formules dans les noms et les notes.\n- Pages plus rapides à charger : styles et scripts mis à part, gardés en cache par le navigateur.",
     "files": [
         "index.php",
         "kiosk.php",
