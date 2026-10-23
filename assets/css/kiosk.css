@@ -292,7 +292,7 @@ select {
 
 .kiosk-card {
     display: grid;
-    grid-template-columns: auto 48px minmax(0, 1fr) auto;
+    grid-template-columns: auto 48px minmax(0, 1fr) minmax(0, 0.7fr) auto;
     align-items: center;
     gap: 12px;
     padding: 11px 14px;
@@ -487,12 +487,60 @@ select {
     cursor: default;
 }
 
+/* Blason de l'archer (images de cibles d'I@nseo) : logo puis libellé à sa droite,
+   centré dans l'espace entre le nom et le prix */
+.row-face {
+    display: flex;
+    align-items: center;
+    justify-self: center;
+    gap: 6px;
+    width: 150px;
+    min-width: 0;
+    max-width: 100%;
+    font-size: 12px;
+    line-height: 1.25;
+    color: var(--muted);
+}
+
+.face-images {
+    display: flex;
+    flex-shrink: 0;
+    gap: 3px;
+}
+
+.face-images img {
+    width: 26px;
+    height: 26px;
+}
+
+.face-text { min-width: 0; }
+
+.face-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+}
+
+/* Deux diamètres : passent sur deux lignes plutôt que de déborder sur le prix */
+.face-size { overflow-wrap: anywhere; }
+
+/* Blason différent du blason par défaut de la catégorie (détail dans l'infobulle) */
+.row-face.is-not-default,
+.row-face.is-not-default .face-name {
+    color: var(--unpaid);
+    font-weight: 600;
+}
+
 @media (max-width: 520px) {
     .kiosk-card {
-        grid-template-columns: auto 42px minmax(0, 1fr) auto;
+        grid-template-columns: auto 42px minmax(0, 1fr) minmax(0, auto) auto;
         gap: 10px;
         padding: 10px 12px;
     }
+
+    .row-face { width: 92px; font-size: 11px; }
+    .face-images img { width: 22px; height: 22px; }
 
     .app-content {
         padding-left: 0;

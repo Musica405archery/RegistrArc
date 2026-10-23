@@ -127,6 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ---------------------------------------------------------------------------
 $rows = [];
 $sessions = [];
+$targetFaces = registrarc_load_target_faces($TourId);
 
 foreach (registrarc_load_engagements($TourId) as $engagement) {
     if ($engagement['session'] !== '') {
@@ -159,6 +160,7 @@ foreach (registrarc_load_engagements($TourId) as $engagement) {
         'is_free' => registrarc_nothing_due($engagement['amount_due']) || ($engagement['is_paid'] && $method === 'GRA'),
         'nothing_due' => registrarc_nothing_due($engagement['amount_due']),
         'note' => $engagement['note'],
+        'target_face' => isset($targetFaces[$engagement['engagement_id']]) ? $targetFaces[$engagement['engagement_id']] : null,
     ];
 }
 
@@ -325,7 +327,9 @@ foreach ($rows as $r) {
                     // Payé, gratuit ou remboursé : rien à encaisser, masqué par défaut
                     $isSettled = ($row['state'] !== 'due');
                     $amountData = number_format((float)$row['amount_due'], 2, '.', '');
+                    $faceLabel = registrarc_target_face_label($row['target_face']);
                     $searchText = mb_strtolower(
+                        $faceLabel . ' ' .
                         $row['licence'] . ' ' .
                         $row['nom'] . ' ' .
                         $row['prenom'] . ' ' .
@@ -389,6 +393,31 @@ foreach ($rows as $r) {
                                     <?php if ($row['note'] !== ''): ?>
                                         <span class="flag-note"><?php echo htmlspecialchars($row['note']); ?></span>
                                     <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Blason de l'archer (images de cibles d'I@nseo), entre le nom et le prix -->
+                        <?php
+                        // En rouge : blason différent du blason par défaut de la catégorie dans I@nseo
+                        $faceNotDefault = $faceLabel !== '' && empty($row['target_face']['is_default']);
+                        $faceTitle = $faceLabel === '' ? '' : 'Blason : ' . $faceLabel
+                            . ($faceNotDefault ? ' (blason par défaut de la catégorie : ' . $row['target_face']['default_name'] . ')' : '');
+                        ?>
+                        <div class="row-face<?php echo $faceNotDefault ? ' is-not-default' : ''; ?>"<?php echo $faceTitle !== '' ? ' title="' . htmlspecialchars($faceTitle) . '"' : ''; ?>>
+                            <?php if ($faceLabel !== ''): ?>
+                                <div class="face-images">
+                                    <?php foreach ($row['target_face']['faces'] as $face): ?>
+                                        <?php if ($face['image'] !== ''): ?>
+                                            <img src="<?php echo htmlspecialchars($face['image']); ?>" alt="" width="26" height="26" loading="lazy">
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                </div>
+                                <div class="face-text">
+                                    <?php if ($row['target_face']['name'] !== ''): ?>
+                                        <div class="face-name"><?php echo htmlspecialchars($row['target_face']['name']); ?></div>
+                                    <?php endif; ?>
+                                    <div class="face-size num"><?php echo htmlspecialchars(registrarc_target_face_sizes($row['target_face'])); ?></div>
                                 </div>
                             <?php endif; ?>
                         </div>

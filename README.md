@@ -340,6 +340,8 @@ Le bouton **Mode Kiosk** ouvre un écran fait pour encaisser debout, avec un té
 
 En haut de l'écran : le nombre d'archers à encaisser, la somme qui reste à encaisser, le nombre de payés et le nombre de reçus demandés.
 
+Chaque ligne indique aussi le **blason** de l'archer, tel qu'il est réglé dans I@nseo : son image, son nom et son diamètre (par exemple « Trispot · 40 cm »). On peut le taper dans la recherche pour retrouver tous les archers d'un même blason.
+
 Le « reçu demandé » se coche uniquement dans le mode Kiosk ; la liste des engagements l'affiche ensuite. Tapez votre prénom dans le champ **Opérateur** en haut de l'écran : il est retenu sur le téléphone.
 
 </details>

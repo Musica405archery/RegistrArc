@@ -24,6 +24,9 @@ define('AclReadOnly', 1);
 define('AclReadWrite', 2);
 
 $_SESSION = [];
+
+// Configuration I@nseo : images de cibles dans un dossier factice
+$CFG = (object)['ROOT_DIR' => '/', 'DOCUMENT_PATH' => REGISTRARC_DATA_DIR . '_ianseo/'];
 $_POST = [];
 $ModuleName = 'RegistrArc';
 $LegacyModuleName = 'Greffe2';
@@ -31,7 +34,7 @@ $LegacyModuleName = 'Greffe2';
 // ---------------------------------------------------------------------------
 // Base I@nseo simulée : tables Tournament et Entries (avec Countries / Qualifications)
 // ---------------------------------------------------------------------------
-$GLOBALS['test_db'] = ['tournament' => null, 'entries' => []];
+$GLOBALS['test_db'] = ['tournament' => null, 'entries' => [], 'targetfaces' => [], 'defaultfaces' => []];
 
 function test_set_tournament($organizerCode, $organizerName = 'Club organisateur', $name = 'Concours test') {
     $GLOBALS['test_db']['tournament'] = (object)[
@@ -69,6 +72,16 @@ function test_add_entry($licence, $categorie, $clubCode, $session = 1, $target =
 }
 
 function safe_r_sql($query) {
+    // Blasons : blasons possibles de la catégorie, triés comme I@nseo (premier = par défaut)
+    if (strpos($query, 'TfDefault') !== false) {
+        return ['rows' => $GLOBALS['test_db']['defaultfaces']];
+    }
+
+    // Blasons : jointure Entries / TargetFaces / Tournament
+    if (strpos($query, 'TargetFaces') !== false) {
+        return ['rows' => $GLOBALS['test_db']['targetfaces']];
+    }
+
     if (strpos($query, 'FROM Tournament') !== false) {
         return ['rows' => $GLOBALS['test_db']['tournament'] ? [$GLOBALS['test_db']['tournament']] : []];
     }
@@ -123,7 +136,7 @@ function test_reset() {
         }
     }
 
-    $GLOBALS['test_db'] = ['tournament' => null, 'entries' => []];
+    $GLOBALS['test_db'] = ['tournament' => null, 'entries' => [], 'targetfaces' => [], 'defaultfaces' => []];
     $_POST = ['operator' => 'Testeur'];
     test_set_tournament('1034000');
 }

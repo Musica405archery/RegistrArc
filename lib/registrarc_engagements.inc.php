@@ -315,3 +315,157 @@ function registrarc_engagements_by_ids($TourId, array $ids) {
 
     return $out;
 }
+
+// ---------------------------------------------------------------------------
+// Blasons (fonctionnement d'I@nseo, voir Partecipants/Fun_Targets.php et
+// Api/ISK-NG/config.php::getTargetFaces) :
+// Entries.EnTargetFace -> TargetFaces (nom, puis pour chaque distance n :
+// TfTn = type de cible Targets.TarId, TfWn = diamètre en cm)
+// Images : Common/Images/Targets/<TarId>.svg, 99 = image générique
+// ---------------------------------------------------------------------------
+// Retourne [EnId => ['id' => TfId, 'name' => nom du blason, 'faces' => [['target' => TarId,
+//           'size' => cm, 'image' => adresse], ...], 'is_default' => bool,
+//           'default_name' => nom du blason par défaut de la catégorie]], un type par cible/diamètre distinct
+function registrarc_load_target_faces($TourId) {
+    $TourId = intval($TourId);
+    $columns = [];
+
+    for ($i = 1; $i <= 8; $i++) {
+        $columns[] = "tf.TfT$i, tf.TfW$i";
+    }
+
+    $query = "
+        SELECT e.EnId, tf.TfId, tf.TfName, t.ToNumDist, " . implode(', ', $columns) . "
+        FROM Entries e
+        INNER JOIN TargetFaces tf
+            ON tf.TfTournament = e.EnTournament
+           AND tf.TfId = e.EnTargetFace
+        INNER JOIN Tournament t
+            ON t.ToId = e.EnTournament
+        WHERE e.EnTournament = $TourId
+          AND e.EnAthlete = 1
+    ";
+
+    $rs = safe_r_sql($query);
+    $out = [];
+
+    while ($rs && ($row = safe_fetch($rs))) {
+        $numDist = max(1, min(8, intval($row->ToNumDist)));
+        $faces = [];
+
+        for ($i = 1; $i <= $numDist; $i++) {
+            $target = intval($row->{'TfT' . $i});
+            $size = intval($row->{'TfW' . $i});
+
+            if ($target <= 0 || isset($faces[$target . '-' . $size])) {
+                continue;
+            }
+
+            $faces[$target . '-' . $size] = ['target' => $target, 'size' => $size, 'image' => registrarc_target_image_url($target)];
+        }
+
+        // Nom traduit comme dans I@nseo : "~Nom" est une chaîne traduisible, le reste est affiché tel quel
+        $name = trim((string)$row->TfName);
+
+        if ($name !== '' && function_exists('get_text')) {
+            $name = get_text($name, 'Tournament', '', true);
+        }
+
+        $out[intval($row->EnId)] = ['id' => intval($row->TfId), 'name' => $name, 'faces' => array_values($faces), 'is_default' => true, 'default_name' => ''];
+    }
+
+    // Blason par défaut de la catégorie de chaque archer, avec le tri d'I@nseo
+    // (Participants/getRows.php::getTargets) : blason marqué par défaut, puis le plus
+    // précis (expression régulière, code exact, motif). Seulement si la catégorie en a un.
+    $query = "
+        SELECT e.EnId, tf.TfId, tf.TfName, tf.TfDefault
+        FROM Entries e
+        INNER JOIN TargetFaces tf
+            ON tf.TfTournament = e.EnTournament
+           AND IF(tf.TfRegExp > '', CONCAT(TRIM(e.EnDivision), TRIM(e.EnClass)) REGEXP tf.TfRegExp, CONCAT(TRIM(e.EnDivision), TRIM(e.EnClass)) LIKE tf.TfClasses)
+        WHERE e.EnTournament = $TourId
+          AND e.EnAthlete = 1
+        ORDER BY
+            e.EnId,
+            tf.TfDefault DESC,
+            tf.TfRegExp > '' DESC,
+            CONCAT(TRIM(e.EnDivision), TRIM(e.EnClass)) = tf.TfClasses DESC,
+            LEFT(tf.TfClasses, 1) != '_' AND LEFT(tf.TfClasses, 1) != '%' DESC,
+            LEFT(tf.TfClasses, 1) = '_' DESC,
+            tf.TfClasses DESC,
+            tf.TfClasses = '%'
+    ";
+
+    $rs = safe_r_sql($query);
+    $seen = [];
+
+    while ($rs && ($row = safe_fetch($rs))) {
+        $id = intval($row->EnId);
+
+        if (isset($seen[$id])) {
+            continue;
+        }
+
+        $seen[$id] = true;
+
+        if (isset($out[$id]) && intval($row->TfDefault) === 1 && intval($row->TfId) !== $out[$id]['id']) {
+            $defaultName = trim((string)$row->TfName);
+
+            if ($defaultName !== '' && function_exists('get_text')) {
+                $defaultName = get_text($defaultName, 'Tournament', '', true);
+            }
+
+            $out[$id]['is_default'] = false;
+            $out[$id]['default_name'] = $defaultName;
+        }
+    }
+
+    return $out;
+}
+
+// Adresse de l'image SVG d'un type de cible fournie par I@nseo, ou '' si absente
+function registrarc_target_image_url($targetId) {
+    global $CFG;
+    static $cache = [];
+
+    $targetId = intval($targetId);
+
+    if (isset($cache[$targetId])) {
+        return $cache[$targetId];
+    }
+
+    $cache[$targetId] = '';
+
+    if (isset($CFG->ROOT_DIR, $CFG->DOCUMENT_PATH)) {
+        foreach ([$targetId, 99] as $id) {
+            if (is_file($CFG->DOCUMENT_PATH . 'Common/Images/Targets/' . $id . '.svg')) {
+                $cache[$targetId] = $CFG->ROOT_DIR . 'Common/Images/Targets/' . $id . '.svg';
+                break;
+            }
+        }
+    }
+
+    return $cache[$targetId];
+}
+
+// Diamètres du blason : "80 cm", ou "40 cm / 60 cm" si les distances diffèrent
+function registrarc_target_face_sizes($face) {
+    $sizes = [];
+
+    foreach (empty($face) ? [] : $face['faces'] as $f) {
+        if ($f['size'] > 0) {
+            $sizes[$f['size'] . ' cm'] = true;
+        }
+    }
+
+    return implode(' / ', array_keys($sizes));
+}
+
+// Libellé complet : "Piquet Bleu · 80 cm"
+function registrarc_target_face_label($face) {
+    if (empty($face)) {
+        return '';
+    }
+
+    return trim($face['name'] . ' · ' . registrarc_target_face_sizes($face), ' ·');
+}
