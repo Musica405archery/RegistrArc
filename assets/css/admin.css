@@ -1,0 +1,153 @@
+/* RegistrArc - assets/css/admin.css (styles de registrarc_ui.inc.php) */
+
+:root {
+    --rg-text: #1f2933;
+    --rg-muted: #6b7280;
+    --rg-line: #e3e7ee;
+    --rg-line-strong: #cfd6e1;
+    --rg-bg: #eef1f6;
+    --rg-surface: #ffffff;
+    --rg-accent: #14336b;
+    --rg-accent-soft: #e9effa;
+    --rg-paid: #15803d;
+    --rg-unpaid: #b91c1c;
+    --rg-warn: #b45309;
+    --rg-radius: 8px;
+}
+
+body {
+    background: var(--rg-bg);
+}
+
+.rg {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px 32px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    color: var(--rg-text);
+}
+
+.rg .num { font-variant-numeric: tabular-nums; }
+
+.rg-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 24px;
+    background: var(--rg-accent);
+    color: #fff;
+    margin: 0 -16px 16px;
+    padding: 14px 16px;
+}
+
+.rg-header h1 { margin: 0; font-size: 20px; }
+.rg-header .rg-sub { color: #c9d5ec; font-size: 13px; margin-top: 2px; }
+.rg-nav { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.rg-nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: var(--rg-radius);
+    color: #fff;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.rg-nav a:hover { background: rgba(255, 255, 255, 0.12); }
+.rg-nav a.is-active { background: #fff; color: var(--rg-accent); }
+
+.rg-card {
+    background: var(--rg-surface);
+    border-radius: var(--rg-radius);
+    box-shadow: 0 1px 2px rgba(20, 51, 107, 0.12);
+    padding: 16px 18px;
+    margin-bottom: 14px;
+}
+
+.rg-card h2 { font-size: 16px; margin: 0 0 4px; }
+.rg-help { color: var(--rg-muted); margin: 0 0 12px; }
+
+.rg-table { width: 100%; border-collapse: collapse; }
+.rg-table-wrap { overflow-x: auto; }
+
+.rg-table th {
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--rg-muted);
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--rg-line-strong);
+    background: #f6f8fb;
+    white-space: nowrap;
+}
+
+.rg-table td { padding: 7px 10px; border-bottom: 1px solid var(--rg-line); vertical-align: top; }
+.rg-table .right { text-align: right; }
+.rg-table tfoot td { font-weight: 700; border-bottom: none; }
+
+.rg-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+
+.rg-figures { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 6px 0 4px; }
+.rg-figure strong { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.rg-figure span { color: var(--rg-muted); font-size: 13px; }
+
+.rg-bar { height: 8px; border-radius: 999px; background: var(--rg-line); overflow: hidden; margin-top: 10px; }
+.rg-bar span { display: block; height: 100%; background: var(--rg-paid); }
+
+.rg-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; }
+.rg-field { display: flex; flex-direction: column; gap: 4px; }
+.rg-field label { color: var(--rg-muted); font-size: 12px; }
+
+.rg-field input,
+.rg-field select {
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--rg-line-strong);
+    border-radius: var(--rg-radius);
+    background: #fff;
+    font: inherit;
+}
+
+.rg-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 0 14px;
+    border-radius: var(--rg-radius);
+    border: 1px solid var(--rg-line-strong);
+    background: #fff;
+    color: var(--rg-text);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.rg-btn:hover { background: var(--rg-accent-soft); }
+.rg-btn-primary { background: var(--rg-accent); border-color: var(--rg-accent); color: #fff; }
+.rg-btn-primary:hover { background: #0f2652; }
+.rg-btn-success { background: var(--rg-paid); border-color: var(--rg-paid); color: #fff; }
+.rg-btn-danger { color: var(--rg-unpaid); border-color: #f3c4c4; }
+
+.rg-alert { padding: 10px 14px; border-radius: var(--rg-radius); border: 1px solid; margin-bottom: 12px; }
+.rg-alert-success { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
+.rg-alert-error { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+.rg-alert-info { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
+.rg-alert-warning { background: #fffbeb; border-color: #fde68a; color: #78350f; }
+
+.rg-paid { color: var(--rg-paid); }
+.rg-unpaid { color: var(--rg-unpaid); }
+.rg-muted { color: var(--rg-muted); }
+
+@media print {
+    .rg-header, .rg-noprint, #ianseo-menu, .menu { display: none !important; }
+    body { background: #fff; }
+    .rg-card { box-shadow: none; padding: 0; margin-bottom: 18px; }
+}

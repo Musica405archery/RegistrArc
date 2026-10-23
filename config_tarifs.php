@@ -27,24 +27,10 @@
 // - Double mixte si Events contient EvTeamEvent = 1 et EvMixedTeam = 1
 // ============================================================================
 
-define('debug', false);
+require_once(dirname(__FILE__) . '/lib/registrarc_page.inc.php');
+require_once(dirname(__FILE__) . '/lib/registrarc_update.inc.php');
 
-require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
-require_once('Common/Fun_Various.inc.php');
-require_once('Common/Fun_Sessions.inc.php');
-require_once(dirname(__FILE__) . '/lib/registrarc.inc.php');
-
-CheckTourSession(true);
-checkACL(AclParticipants, AclReadOnly);
-
-$ModuleName = 'RegistrArc';
-$LegacyModuleName = 'Greffe2';
-
-$TourId = isset($_SESSION['TourId']) ? intval($_SESSION['TourId']) : 0;
-
-if (!$TourId) {
-    die('Tournoi non défini');
-}
+$TourId = registrarc_page_tour_id();
 
 // ---------------------------------------------------------------------------
 // Paramètres module avec compatibilité ancien Greffe2
@@ -212,6 +198,7 @@ function registrarc_default_settings($TourId) {
         'tarifs' => registrarc_default_tarifs(),
         'payment_modes' => registrarc_default_payment_modes(),
         'rules' => [],
+        'options' => registrarc_default_pricing_options(),
     ];
 }
 
@@ -379,6 +366,7 @@ function registrarc_config_normalize_settings($TourId, $settings, array $allowed
     $out['tarifs'] = registrarc_normalize_tarifs(isset($settings['tarifs']) ? $settings['tarifs'] : null);
     $out['payment_modes'] = registrarc_normalize_payment_modes(isset($settings['payment_modes']) ? $settings['payment_modes'] : null);
     $out['rules'] = registrarc_normalize_rules(isset($settings['rules']) ? $settings['rules'] : [], $allowedRuleScopes);
+    $out['options'] = registrarc_normalize_pricing_options(isset($settings['options']) ? $settings['options'] : null);
 
     return $out;
 }
@@ -410,40 +398,14 @@ function registrarc_save_settings($TourId, array $settings, array $allowedRuleSc
 // ---------------------------------------------------------------------------
 // Infos tournoi
 // ---------------------------------------------------------------------------
-$tournamentQuery = "
-    SELECT ToCommitee, ToComDescr, ToName
-    FROM Tournament
-    WHERE ToId = $TourId
-";
-$tournamentRs = safe_r_sql($tournamentQuery);
-
-$organizerClubCode = null;
-$organizerClubName = null;
-$tournamentName = null;
+$tournament = registrarc_get_tournament_info($TourId);
+$organizerClubCode = $tournament['organizer_code'];
+$organizerClubName = $tournament['organizer_name'];
+$tournamentName = $tournament['name'];
 $tournamentCode = registrarc_current_tournament_code();
 
-if ($t = safe_fetch($tournamentRs)) {
-    $organizerClubCode = $t->ToCommitee;
-    $organizerClubName = $t->ToComDescr;
-    $tournamentName = $t->ToName;
-
-    if (empty($organizerClubName) && $organizerClubCode) {
-        $organizerNameQuery = "
-            SELECT CoName
-            FROM Countries
-            WHERE CoCode = " . StrSafe_DB($organizerClubCode) . "
-              AND CoTournament = $TourId
-        ";
-        $organizerNameRs = safe_r_sql($organizerNameQuery);
-
-        if ($on = safe_fetch($organizerNameRs)) {
-            $organizerClubName = $on->CoName;
-        }
-    }
-}
-
 $dataDirStatus = registrarc_data_dir_status();
-$canWrite = hasACL(AclParticipants, AclReadWrite);
+$canWrite = registrarc_can_write($TourId);
 
 // ---------------------------------------------------------------------------
 // Export
@@ -641,6 +603,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'tarifs' => $tarifs,
                 'payment_modes' => $modes,
                 'rules' => $rules,
+                'options' => [
+                    'cap_per_archer' => isset($_POST['cap_per_archer']) ? str_replace(',', '.', $_POST['cap_per_archer']) : 0,
+                    'late_fee' => isset($_POST['late_fee']) ? str_replace(',', '.', $_POST['late_fee']) : 0,
+                ],
             ];
 
             $settings = registrarc_config_normalize_settings($TourId, $settings, $allowedRuleScopes);
@@ -664,6 +630,7 @@ $currentAgeClasses = isset($currentSettings['age_classes']) ? registrarc_normali
 $currentTarifs = $currentSettings['tarifs'];
 $currentModes = $currentSettings['payment_modes'];
 $currentRules = $currentSettings['rules'];
+$currentOptions = registrarc_normalize_pricing_options(isset($currentSettings['options']) ? $currentSettings['options'] : null);
 
 $currentSettingsTimestamp = registrarc_settings_timestamp($currentSettings, registrarc_settings_file_path($TourId));
 $currentSettingsTimestampLabel = registrarc_format_timestamp_for_message($currentSettingsTimestamp);
@@ -689,403 +656,23 @@ $IncludeJquery = true;
 include('Common/Templates/head.php');
 ?>
 
-<style>
-    :root {
-        --primary-color: #2563eb;
-        --primary-dark: #1d4ed8;
-        --success-color: #16a34a;
-        --warning-color: #d97706;
-        --danger-color: #dc2626;
-        --border-radius: 6px;
-        --shadow-soft: 0 4px 12px rgba(15, 23, 42, 0.08);
-        --text-muted: #6b7280;
-        --text-strong: #111827;
-    }
-
-    body {
-        background: #f9fafb;
-    }
-
-    .registrarc-container {
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 16px;
-        box-sizing: border-box;
-    }
-
-    .registrarc-header {
-        margin-bottom: 16px;
-    }
-
-    .registrarc-header-title {
-        font-size: 20px;
-        font-weight: 700;
-        color: var(--text-strong);
-    }
-
-    .registrarc-header-sub {
-        font-size: 13px;
-        color: var(--text-muted);
-        margin-top: 4px;
-    }
-
-    .card {
-        background: #fff;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-soft);
-        padding: 12px 14px;
-        margin-bottom: 12px;
-        box-sizing: border-box;
-    }
-
-    .card-title {
-        font-size: 14px;
-        font-weight: 600;
-        margin-bottom: 8px;
-        color: var(--text-strong);
-    }
-
-    .card-help {
-        font-size: 12px;
-        color: var(--text-muted);
-        margin-bottom: 8px;
-        line-height: 1.45;
-    }
-
-    .grid-2,
-    .import-export-row {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-    }
-
-    .btn-primary,
-    .btn-success,
-    .btn-ghost,
-    .btn-warning {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        padding: 7px 14px;
-        border-radius: 999px;
-        font-size: 13px;
-        font-weight: 600;
-        border: none;
-        cursor: pointer;
-        text-decoration: none;
-        white-space: nowrap;
-    }
-
-    .btn-primary {
-        background: var(--primary-color);
-        color: #fff;
-    }
-
-    .btn-primary:hover {
-        background: var(--primary-dark);
-    }
-
-    .btn-success {
-        background: var(--success-color);
-        color: #fff;
-    }
-
-    .btn-warning {
-        background: var(--warning-color);
-        color: #fff;
-    }
-
-    .btn-ghost {
-        background: transparent;
-        color: var(--text-muted);
-        border: 1px solid #d1d5db;
-    }
-
-    .alert {
-        padding: 10px 12px;
-        border-radius: var(--border-radius);
-        font-size: 13px;
-        margin-bottom: 10px;
-    }
-
-    .alert-success {
-        background-color: #dcfce7;
-        border: 1px solid #bbf7d0;
-        color: #166534;
-    }
-
-    .alert-error {
-        background-color: #fee2e2;
-        border: 1px solid #fecaca;
-        color: #991b1b;
-    }
-
-    .alert-warning {
-        background-color: #fef3c7;
-        border: 1px solid #fde68a;
-        color: #92400e;
-    }
-
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 13px;
-    }
-
-    th,
-    td {
-        padding: 6px 8px;
-        border-bottom: 1px solid #e5e7eb;
-        text-align: left;
-    }
-
-    thead {
-        background: #f9fafb;
-    }
-
-    th {
-        font-size: 12px;
-        color: var(--text-muted);
-        font-weight: 600;
-    }
-
-    input[type="text"],
-    input[type="number"],
-    select,
-    .import-input,
-    textarea {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 5px 7px;
-        border-radius: 999px;
-        border: 1px solid #d1d5db;
-        font-size: 12px;
-        background: #f9fafb;
-    }
-
-    textarea {
-        border-radius: 10px;
-        min-height: 74px;
-        resize: vertical;
-        line-height: 1.4;
-    }
-
-    input[readonly] {
-        background: #e5e7eb;
-        color: #374151;
-        cursor: not-allowed;
-    }
-
-    .tarif-input {
-        max-width: 80px;
-        text-align: right;
-    }
-
-    .delete-btn {
-        border: none;
-        background: none;
-        color: var(--danger-color);
-        cursor: pointer;
-        font-size: 16px;
-    }
-
-    .delete-btn[disabled] {
-        color: #9ca3af;
-        cursor: not-allowed;
-    }
-
-    .form-footer {
-        margin-top: 12px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-    }
-
-    .back-link {
-        font-size: 13px;
-        color: var(--primary-color);
-        text-decoration: none;
-    }
-
-    .chip {
-        display: inline-flex;
-        align-items: center;
-        padding: 3px 8px;
-        border-radius: 999px;
-        background: #e5e7eb;
-        font-size: 11px;
-        color: #374151;
-    }
-
-    .age-preview {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px;
-        margin-top: 6px;
-    }
-
-    .age-chip-jeune {
-        background: #dbeafe;
-        color: #1d4ed8;
-    }
-
-    .age-chip-adulte {
-        background: #dcfce7;
-        color: #166534;
-    }
-
-    @media (max-width: 768px) {
-        .grid-2,
-        .import-export-row {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    /* --- Transfert de catégories (Classes d'âge) --- */
-    .age-search-input {
-        margin-bottom: 10px;
-    }
-
-    .age-transfer {
-        display: flex;
-        gap: 16px;
-        align-items: stretch;
-        flex-wrap: wrap;
-    }
-
-    .age-transfer-col {
-        flex: 1;
-        min-width: 240px;
-        background: linear-gradient(180deg, #f9fafb 0%, #ffffff 60%);
-        border: 1px solid #e5e7eb;
-        border-radius: 16px;
-        padding: 10px;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .age-transfer-col-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 2px 6px 10px 6px;
-        margin-bottom: 8px;
-        border-bottom: 1px dashed #e5e7eb;
-    }
-
-    .age-transfer-col-title {
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--text-strong);
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    .age-transfer-count {
-        font-size: 11px;
-        font-weight: 700;
-        background: #eef2ff;
-        color: var(--primary-dark);
-        padding: 2px 9px;
-        border-radius: 999px;
-        min-width: 20px;
-        text-align: center;
-    }
-
-    .age-dropzone {
-        flex: 1;
-        min-height: 220px;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        padding: 4px;
-        border-radius: 12px;
-        transition: background 0.15s ease, box-shadow 0.15s ease;
-    }
-
-    .age-dropzone.drag-over {
-        background: #eff6ff;
-        box-shadow: inset 0 0 0 2px var(--primary-color);
-    }
-
-    .age-dropzone-empty {
-        font-size: 12px;
-        color: var(--text-muted);
-        text-align: center;
-        padding: 20px 6px;
-        border: 1px dashed #d1d5db;
-        border-radius: 12px;
-    }
-
-    .age-card {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 8px 8px 8px 12px;
-        font-size: 12.5px;
-        color: var(--text-strong);
-        cursor: grab;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-        transition: box-shadow 0.15s ease, transform 0.1s ease, border-color 0.15s ease;
-    }
-
-    .age-card:hover {
-        border-color: var(--primary-color);
-        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.15);
-        transform: translateY(-1px);
-    }
-
-    .age-card.dragging {
-        opacity: 0.4;
-    }
-
-    .age-card-label {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .age-card-move {
-        flex-shrink: 0;
-        border: none;
-        background: #f3f4f6;
-        color: var(--primary-color);
-        width: 24px;
-        height: 24px;
-        border-radius: 999px;
-        font-size: 14px;
-        line-height: 1;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
-    }
-
-    .age-card-move:hover {
-        background: var(--primary-color);
-        color: #fff;
-        transform: scale(1.1);
-    }
-
-    @media (max-width: 768px) {
-        .age-transfer {
-            flex-direction: column;
-        }
-    }
-</style>
+<link rel="stylesheet" href="<?php echo registrarc_asset_url('assets/css/config_tarifs.css'); ?>">
 
 <div class="registrarc-container">
     <div class="registrarc-header">
-        <div class="registrarc-header-title">Gestion des engagements - Registr'Arc</div>
-        <div class="registrarc-header-sub">Le module de Greffe pour I@nseo</div>
+        <div>
+            <div class="registrarc-header-title">Paramètres</div>
+            <div class="registrarc-header-sub"><?php echo htmlspecialchars($tournamentName ?: "RegistrArc, le module de greffe pour I@nseo"); ?></div>
+        </div>
+
+        <div class="header-actions">
+            <a href="index.php">Liste</a>
+            <a href="dashboard.php">Tableau de bord</a>
+            <a href="caisse.php">Caisse</a>
+            <a href="kiosk.php">Mode Kiosk</a>
+            <a href="config_tarifs.php" class="is-active">⚙ Paramètres</a>
+            <a href="aide.php#régler-les-tarifs-et-les-paiements">? Aide</a>
+        </div>
     </div>
 
     <?php if (!$dataDirStatus['ok']): ?>
@@ -1161,14 +748,14 @@ include('Common/Templates/head.php');
                 <input
                     type="text"
                     class="age-search-input"
-                    placeholder="🔎 Filtrer les catégories..."
+                    placeholder="Filtrer les catégories…"
                     oninput="filterAgeCards(this.value);"
                 >
 
                 <div class="age-transfer">
                     <div class="age-transfer-col">
                         <div class="age-transfer-col-header">
-                            <span class="age-transfer-col-title">🏹 Jeunes</span>
+                            <span class="age-transfer-col-title">Jeunes</span>
                             <span class="age-transfer-count" id="jeunesCount">0</span>
                         </div>
                         <div
@@ -1195,7 +782,7 @@ include('Common/Templates/head.php');
 
                     <div class="age-transfer-col">
                         <div class="age-transfer-col-header">
-                            <span class="age-transfer-col-title">🧓 Adultes</span>
+                            <span class="age-transfer-col-title">Adultes</span>
                             <span class="age-transfer-count" id="adultesCount">0</span>
                         </div>
                         <div
@@ -1299,6 +886,29 @@ include('Common/Templates/head.php');
                     </table>
                 </div>
             </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Réductions et majorations</div>
+            <div class="card-help">
+                Laisser à 0 pour ne pas utiliser une option. Elles s'appliquent après le tarif normal ou la règle avancée,
+                dans cet ordre : plafond, puis majoration.
+            </div>
+
+            <table>
+                <tbody>
+                    <tr>
+                        <td style="width:34%;"><strong>Plafond par archer</strong></td>
+                        <td style="width:16%;"><input type="number" name="cap_per_archer" value="<?php echo htmlspecialchars((string)$currentOptions['cap_per_archer']); ?>" min="0" step="0.5" class="tarif-input"> €</td>
+                        <td>Montant maximal payé par un archer pour l'ensemble de ses départs.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Majoration inscription tardive</strong></td>
+                        <td><input type="number" name="late_fee" value="<?php echo htmlspecialchars((string)$currentOptions['late_fee']); ?>" min="0" step="0.5" class="tarif-input"> €</td>
+                        <td>Ajoutée aux départs marqués « inscription tardive » depuis la liste des engagements.</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
 
         <div class="card">
@@ -1486,530 +1096,11 @@ include('Common/Templates/head.php');
             <a href="index.php" class="back-link">← Retour à la liste des engagements</a>
         </div>
     </form>
+
+    <div class="settings-version">RegistrArc <?php echo htmlspecialchars(registrarc_local_version_number()); ?></div>
 </div>
 
-<script>
-const registrarcAllowedRuleScopes = <?php echo json_encode($allowedRuleScopes, JSON_UNESCAPED_UNICODE); ?>;
-const registrarcDefaultRuleMatches = {};
-
-Object.keys(registrarcAllowedRuleScopes).forEach(function(scopeCode) {
-    if (scopeCode === 'categorie') {
-        registrarcDefaultRuleMatches[scopeCode] = 'CL';
-    } else if (scopeCode === 'region') {
-        registrarcDefaultRuleMatches[scopeCode] = '34';
-    } else if (scopeCode === 'departement') {
-        registrarcDefaultRuleMatches[scopeCode] = '34';
-    } else {
-        registrarcDefaultRuleMatches[scopeCode] = 'OUI';
-    }
-});
-
-function splitAgeClasses(value) {
-    if (!value) {
-        return [];
-    }
-
-    const parts = String(value).split(/[,;\r\n]+/);
-    const out = [];
-    const seen = new Set();
-
-    parts.forEach(function(part) {
-        const clean = String(part || '').trim().toUpperCase();
-
-        if (clean !== '' && !seen.has(clean)) {
-            seen.add(clean);
-            out.push(clean);
-        }
-    });
-
-    return out;
-}
-
-function renderAgeChips(containerId, inputId, className) {
-    const container = document.getElementById(containerId);
-    const input = document.getElementById(inputId);
-
-    if (!container || !input) {
-        return;
-    }
-
-    const values = splitAgeClasses(input.value);
-    let html = '';
-
-    values.forEach(function(value) {
-        html += '<span class="chip ' + className + '">' + escapeHtml(value) + '</span>';
-    });
-
-    container.innerHTML = html;
-}
-
-function updateAgePreview() {
-    renderAgeChips('agePreviewJeunes', 'age_classes_jeunes', 'age-chip-jeune');
-    renderAgeChips('agePreviewAdultes', 'age_classes_adultes', 'age-chip-adulte');
-}
-
-function syncAgeClassesFromLists() {
-    const jeunesZone = document.getElementById('jeunesZone');
-    const adultesZone = document.getElementById('adultesZone');
-
-    const jeunes = jeunesZone ? Array.from(jeunesZone.querySelectorAll('.age-card')).map(function(card) { return card.dataset.classId; }) : [];
-    const adultes = adultesZone ? Array.from(adultesZone.querySelectorAll('.age-card')).map(function(card) { return card.dataset.classId; }) : [];
-
-    const jeunesInput = document.getElementById('age_classes_jeunes');
-    const adultesInput = document.getElementById('age_classes_adultes');
-
-    if (jeunesInput) {
-        jeunesInput.value = jeunes.join(', ');
-    }
-
-    if (adultesInput) {
-        adultesInput.value = adultes.join(', ');
-    }
-
-    const jeunesCount = document.getElementById('jeunesCount');
-    const adultesCount = document.getElementById('adultesCount');
-
-    if (jeunesCount) {
-        jeunesCount.textContent = jeunes.length;
-    }
-
-    if (adultesCount) {
-        adultesCount.textContent = adultes.length;
-    }
-
-    updateAgePreview();
-    updateAgeDropzoneEmptyStates();
-}
-
-function updateAgeDropzoneEmptyStates() {
-    document.querySelectorAll('.age-dropzone').forEach(function(zone) {
-        const hasCards = zone.querySelector('.age-card') !== null;
-        let emptyEl = zone.querySelector('.age-dropzone-empty');
-
-        if (!hasCards) {
-            if (!emptyEl) {
-                emptyEl = document.createElement('div');
-                emptyEl.className = 'age-dropzone-empty';
-                emptyEl.textContent = 'Glisse une catégorie ici';
-                zone.appendChild(emptyEl);
-            }
-        } else if (emptyEl) {
-            emptyEl.remove();
-        }
-    });
-}
-
-function refreshAgeCard(card) {
-    const zone = card.closest('.age-dropzone');
-
-    if (!zone) {
-        return;
-    }
-
-    const group = zone.dataset.group;
-    const otherGroup = (group === 'jeunes') ? 'adultes' : 'jeunes';
-    card.dataset.group = group;
-
-    const btn = card.querySelector('.age-card-move');
-
-    if (btn) {
-        btn.textContent = (group === 'jeunes') ? '→' : '←';
-        btn.title = 'Déplacer vers ' + (otherGroup === 'jeunes' ? 'Jeunes' : 'Adultes');
-        btn.dataset.target = otherGroup;
-    }
-}
-
-function moveAgeCardTo(card, targetGroup) {
-    const targetZone = document.querySelector('.age-dropzone[data-group="' + targetGroup + '"]');
-
-    if (!targetZone || !card) {
-        return;
-    }
-
-    targetZone.appendChild(card);
-    refreshAgeCard(card);
-    syncAgeClassesFromLists();
-}
-
-function handleAgeCardMoveClick(btn) {
-    const card = btn.closest('.age-card');
-
-    if (!card) {
-        return;
-    }
-
-    moveAgeCardTo(card, btn.dataset.target);
-}
-
-let draggedAgeCard = null;
-
-function handleAgeCardDragStart(e) {
-    draggedAgeCard = e.currentTarget;
-    e.currentTarget.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-
-    try {
-        e.dataTransfer.setData('text/plain', e.currentTarget.dataset.classId || '');
-    } catch (err) {
-        // Certains navigateurs sont plus stricts sur setData, on ignore l'erreur sans bloquer le drag.
-    }
-}
-
-function handleAgeCardDragEnd(e) {
-    e.currentTarget.classList.remove('dragging');
-    draggedAgeCard = null;
-}
-
-function handleZoneDragOver(e) {
-    e.preventDefault();
-    e.currentTarget.classList.add('drag-over');
-}
-
-function handleZoneDragLeave(e) {
-    e.currentTarget.classList.remove('drag-over');
-}
-
-function handleZoneDrop(e) {
-    e.preventDefault();
-    e.currentTarget.classList.remove('drag-over');
-
-    if (draggedAgeCard) {
-        e.currentTarget.appendChild(draggedAgeCard);
-        refreshAgeCard(draggedAgeCard);
-        syncAgeClassesFromLists();
-    }
-}
-
-function filterAgeCards(term) {
-    term = term.trim().toLowerCase();
-
-    document.querySelectorAll('.age-card').forEach(function(card) {
-        const text = card.textContent.toLowerCase();
-        card.style.display = (term === '' || text.includes(term)) ? '' : 'none';
-    });
-}
-
-function escapeHtml(value) {
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
-
-function buildRuleScopeOptionsHtml(selectedValue) {
-    let html = '';
-
-    Object.keys(registrarcAllowedRuleScopes).forEach(function(scopeCode) {
-        const selected = scopeCode === selectedValue ? ' selected' : '';
-        html += '<option value="' + scopeCode + '" data-default="' + registrarcDefaultRuleMatches[scopeCode] + '"' + selected + '>' + registrarcAllowedRuleScopes[scopeCode] + '</option>';
-    });
-
-    return html;
-}
-
-function updateRuleDefaultValue(selectEl) {
-    const row = selectEl.closest('tr');
-
-    if (!row) {
-        return;
-    }
-
-    const input = row.querySelector('input[name^="rule_match"]');
-
-    if (!input) {
-        return;
-    }
-
-    const selectedOption = selectEl.options[selectEl.selectedIndex];
-    const newDefault = selectedOption ? selectedOption.getAttribute('data-default') : '';
-
-    const currentValue = input.value.trim();
-    const knownDefaults = Object.values(registrarcDefaultRuleMatches);
-
-    if (currentValue === '' || knownDefaults.includes(currentValue)) {
-        input.value = newDefault || '';
-        input.dataset.autoValue = '1';
-    }
-}
-
-function parseRegistrArcDate(value) {
-    if (!value || typeof value !== 'string') {
-        return 0;
-    }
-
-    const normalized = value.trim().replace(' ', 'T');
-    const timestamp = Date.parse(normalized);
-
-    if (Number.isNaN(timestamp)) {
-        return 0;
-    }
-
-    return Math.floor(timestamp / 1000);
-}
-
-function formatTimestampForAlert(timestamp) {
-    timestamp = parseInt(timestamp, 10);
-
-    if (!timestamp || timestamp <= 0) {
-        return 'date inconnue';
-    }
-
-    const d = new Date(timestamp * 1000);
-    return d.toLocaleString('fr-FR');
-}
-
-function getImportedJsonTimestamp(data, file) {
-    if (data && typeof data === 'object') {
-        if (data.saved_at) {
-            const savedTs = parseRegistrArcDate(String(data.saved_at));
-
-            if (savedTs > 0) {
-                return {
-                    timestamp: savedTs,
-                    source: 'saved_at'
-                };
-            }
-        }
-
-        if (data.exported_at) {
-            const exportedTs = parseRegistrArcDate(String(data.exported_at));
-
-            if (exportedTs > 0) {
-                return {
-                    timestamp: exportedTs,
-                    source: 'exported_at'
-                };
-            }
-        }
-    }
-
-    if (file && file.lastModified) {
-        return {
-            timestamp: Math.floor(file.lastModified / 1000),
-            source: 'date du fichier'
-        };
-    }
-
-    return {
-        timestamp: 0,
-        source: 'aucune balise de date'
-    };
-}
-
-function getImportedTournamentCode(data) {
-    if (!data || typeof data !== 'object') {
-        return '';
-    }
-
-    if (data.tournament_code) {
-        return String(data.tournament_code).trim();
-    }
-
-    if (data.tournament && typeof data.tournament === 'object' && data.tournament.code) {
-        return String(data.tournament.code).trim();
-    }
-
-    return '';
-}
-
-function handleImportSubmit(event) {
-    const form = event.currentTarget;
-
-    if (form.dataset.confirmed === '1') {
-        return true;
-    }
-
-    const fileInput = document.getElementById('settings_file');
-
-    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-        alert('Aucun fichier JSON sélectionné.');
-        event.preventDefault();
-        return false;
-    }
-
-    event.preventDefault();
-
-    const file = fileInput.files[0];
-    const currentTs = parseInt(form.dataset.currentTs || '0', 10);
-    const currentLabel = form.dataset.currentLabel || formatTimestampForAlert(currentTs);
-    const currentCode = String(form.dataset.currentCode || '').trim();
-
-    const reader = new FileReader();
-
-    reader.onload = function(e) {
-        let data = null;
-
-        try {
-            data = JSON.parse(e.target.result);
-        } catch (err) {
-            alert("Le fichier sélectionné n'est pas un JSON valide.");
-            return;
-        }
-
-        const imported = getImportedJsonTimestamp(data, file);
-        const importedTs = imported.timestamp;
-        const importedLabel = formatTimestampForAlert(importedTs);
-        const importedCode = getImportedTournamentCode(data);
-
-        let warnings = [];
-
-        if (importedTs <= 0) {
-            warnings.push(
-                'Impossible de lire une balise de date dans ce JSON.\n' +
-                'Balises attendues : saved_at ou exported_at.'
-            );
-        } else if (currentTs > 0 && importedTs < currentTs) {
-            warnings.push(
-                'Le JSON importé semble plus ancien que le paramétrage actuellement utilisé.\n' +
-                'Date du JSON importé (' + imported.source + ') : ' + importedLabel + '\n' +
-                'Date du paramétrage actuel : ' + currentLabel
-            );
-        }
-
-        if (importedCode !== '' && currentCode !== '' && importedCode.toUpperCase() !== currentCode.toUpperCase()) {
-            warnings.push(
-                'Le code tournoi du JSON importé est différent du code tournoi courant.\n' +
-                'Code importé : ' + importedCode + '\n' +
-                'Code courant : ' + currentCode
-            );
-        }
-
-        if (importedCode === '') {
-            warnings.push('Le JSON importé ne contient pas de code tournoi.');
-        }
-
-        let message = '';
-
-        if (warnings.length > 0) {
-            message =
-                'Attention avant import :\n\n' +
-                warnings.join('\n\n') +
-                '\n\nImporter quand même et remplacer le paramétrage actuel ?';
-        } else {
-            message =
-                'Importer ce fichier JSON et remplacer le paramétrage actuel ?\n\n' +
-                'Code tournoi détecté : ' + importedCode + '\n' +
-                'Date détectée (' + imported.source + ') : ' + importedLabel;
-        }
-
-        if (!confirm(message)) {
-            return;
-        }
-
-        form.dataset.confirmed = '1';
-        form.submit();
-    };
-
-    reader.onerror = function() {
-        alert('Impossible de lire le fichier sélectionné.');
-    };
-
-    reader.readAsText(file);
-
-    return false;
-}
-
-function addPaymentModeRow() {
-    const tbody = document.getElementById('pmTableBody');
-
-    if (!tbody) {
-        return;
-    }
-
-    const tr = document.createElement('tr');
-
-    tr.innerHTML = `
-        <td><input type="text" name="pm_code[]" value="" placeholder="ESP"></td>
-        <td><input type="text" name="pm_label[]" value="" placeholder="Espèces"></td>
-        <td style="text-align:center;">
-            <button type="button" class="delete-btn" onclick="deletePaymentModeRow(this)">🗑</button>
-        </td>
-    `;
-
-    tbody.appendChild(tr);
-}
-
-function deletePaymentModeRow(btn) {
-    const tr = btn.closest('tr');
-
-    if (!tr) {
-        return;
-    }
-
-    const codeInput = tr.querySelector('input[name="pm_code[]"]');
-    const code = codeInput ? codeInput.value.trim().toUpperCase() : '';
-
-    if (code === 'GRA') {
-        alert('Le mode de paiement GRA / Gratuit est protégé et ne peut pas être supprimé.');
-        return;
-    }
-
-    tr.remove();
-}
-
-function addRuleRow() {
-    const tbody = document.getElementById('rulesTableBody');
-
-    if (!tbody) {
-        return;
-    }
-
-    const index = tbody.querySelectorAll('tr').length;
-    const tr = document.createElement('tr');
-
-    tr.innerHTML = `
-        <td style="text-align:center;">
-            <input type="checkbox" name="rule_active[${index}]" value="1">
-        </td>
-        <td>
-            <input type="text" name="rule_label[${index}]" value="" placeholder="ex : Tarif spécial">
-        </td>
-        <td>
-            <select name="rule_scope[${index}]" onchange="updateRuleDefaultValue(this)">
-                ${buildRuleScopeOptionsHtml('categorie')}
-            </select>
-        </td>
-        <td>
-            <input type="text" name="rule_match[${index}]" value="CL" data-auto-value="1">
-        </td>
-        <td>
-            <input type="number" name="rule_value[${index}]" value="0" step="0.01">
-        </td>
-        <td style="text-align:center;">
-            <button type="button" class="delete-btn" onclick="deleteRuleRow(this)">🗑</button>
-        </td>
-    `;
-
-    tbody.appendChild(tr);
-}
-
-function deleteRuleRow(btn) {
-    const tr = btn.closest('tr');
-
-    if (tr) {
-        tr.remove();
-    }
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    const importForm = document.getElementById('importSettingsForm');
-
-    if (importForm) {
-        importForm.addEventListener('submit', handleImportSubmit);
-    }
-
-    const mainForm = document.getElementById('mainSettingsForm');
-
-    if (mainForm) {
-        mainForm.addEventListener('submit', function() {
-            syncAgeClassesFromLists();
-        });
-    }
-
-    syncAgeClassesFromLists();
-});
-</script>
+<script>const registrarcAllowedRuleScopes = <?php echo json_encode($allowedRuleScopes, JSON_UNESCAPED_UNICODE); ?>;</script>
+<script src="<?php echo registrarc_asset_url('assets/js/config_tarifs.js'); ?>"></script>
 
 <?php include('Common/Templates/tail.php'); ?>

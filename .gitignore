@@ -1,2 +1,30 @@
 # Données de compétition (paiements, paramètres, remises) : jamais versionnées
 data/
+
+# Copies, verrous et fichiers temporaires
+*.bak
+*.lock
+*.tmp
+*.tmp-*
+*.log
+*.orig
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Éditeurs et environnements de développement
+.vscode/
+.idea/
+*.swp
+*~
+*.sublime-project
+*.sublime-workspace
+.claude/settings.local.json
+
+# Dépendances et caches d'outils de développement
+vendor/
+node_modules/
+.phpunit.result.cache

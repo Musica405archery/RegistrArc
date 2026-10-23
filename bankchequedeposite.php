@@ -15,24 +15,9 @@
 // Groupes lus depuis   : data/cheque_groups_<TourId>.json
 // ============================================================================
 
-define('debug', false);
+require_once(dirname(__FILE__) . '/lib/registrarc_page.inc.php');
 
-require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
-require_once('Common/Fun_Various.inc.php');
-require_once('Common/Fun_Sessions.inc.php');
-require_once(dirname(__FILE__) . '/lib/registrarc.inc.php');
-
-CheckTourSession(true);
-checkACL(AclParticipants, AclReadOnly);
-
-$ModuleName = 'RegistrArc';
-$LegacyModuleName = 'Greffe2';
-
-$TourId = isset($_SESSION['TourId']) ? intval($_SESSION['TourId']) : 0;
-
-if (!$TourId) {
-    die('Tournoi non défini');
-}
+$TourId = registrarc_page_tour_id();
 
 // ---------------------------------------------------------------------------
 // Lecture paramètres
@@ -54,166 +39,71 @@ if ($idsParam !== '') {
     $selectedIds = array_values(array_unique($selectedIds));
 }
 
-$isGroupMode = ($groupId !== '');
-$isSelectionMode = !$isGroupMode && !empty($selectedIds);
-$isAllMode = !$isGroupMode && !$isSelectionMode;
+$depositParam = isset($_GET['remise']) ? trim((string)$_GET['remise']) : '';
+
+$isDepositMode = ($depositParam !== '');
+$isGroupMode = !$isDepositMode && ($groupId !== '');
+$isSelectionMode = !$isDepositMode && !$isGroupMode && !empty($selectedIds);
+$isAllMode = !$isDepositMode && !$isGroupMode && !$isSelectionMode;
+$canWrite = registrarc_can_write($TourId);
 
 // ---------------------------------------------------------------------------
 // Engagements
 // ---------------------------------------------------------------------------
-function registrarc_get_cheque_engagements($TourId, array $selectedIds) {
-    $TourId = intval($TourId);
-    $whereIds = '';
-
-    if (!empty($selectedIds)) {
-        $ids = array_values(array_unique(array_filter(array_map('intval', $selectedIds))));
-
-        if (!empty($ids)) {
-            $whereIds = ' AND e.EnId IN (' . implode(',', $ids) . ') ';
-        }
-    }
-
-    $query = "
-        SELECT
-            e.EnId AS engagement_id,
-            UPPER(TRIM(e.EnCode)) AS licence,
-            UPPER(TRIM(e.EnFirstName)) AS nom,
-            TRIM(e.EnName) AS prenom,
-            CONCAT(e.EnDivision, e.EnClass) AS categorie,
-            c.CoName AS club,
-            c.CoCode AS country_code,
-            q.QuSession AS session_no,
-            q.QuTarget AS target,
-            q.QuLetter AS letter,
-            e.EnIndClEvent,
-            e.EnTeamClEvent,
-            e.EnIndFEvent,
-            e.EnTeamFEvent,
-            e.EnTeamMixEvent
-        FROM Entries e
-        LEFT JOIN Countries c
-            ON e.EnCountry = c.CoId
-           AND e.EnTournament = c.CoTournament
-        LEFT JOIN Qualifications q
-            ON e.EnId = q.QuId
-        WHERE e.EnTournament = $TourId
-          AND e.EnAthlete = 1
-          AND TRIM(e.EnCode) <> ''
-          $whereIds
-        ORDER BY c.CoName, UPPER(TRIM(e.EnFirstName)), TRIM(e.EnName), q.QuSession, q.QuTarget, q.QuLetter, e.EnId
-    ";
-
-    $rs = safe_r_sql($query);
+// Chèques : engagements payés par chèque (calcul commun à toutes les pages)
+// $selectedIds vide = tous les engagements
+// ---------------------------------------------------------------------------
+function registrarc_cheque_rows($TourId, array $selectedIds, array $paymentModes, $includeDeposited = false) {
+    $wanted = empty($selectedIds) ? null : array_flip(array_map('intval', $selectedIds));
     $rows = [];
 
-    if ($rs) {
-        while ($row = safe_fetch($rs)) {
-            $rows[] = [
-                'engagement_id' => intval($row->engagement_id),
-                'licence' => strtoupper(trim((string)$row->licence)),
-                'nom' => strtoupper(trim((string)$row->nom)),
-                'prenom' => trim((string)$row->prenom),
-                'categorie' => $row->categorie,
-                'club' => $row->club,
-                'country_code' => $row->country_code,
-                'session_no' => trim((string)$row->session_no),
-                'target' => $row->target,
-                'letter' => $row->letter,
-                'EnIndClEvent' => $row->EnIndClEvent,
-                'EnTeamClEvent' => $row->EnTeamClEvent,
-                'EnIndFEvent' => $row->EnIndFEvent,
-                'EnTeamFEvent' => $row->EnTeamFEvent,
-                'EnTeamMixEvent' => $row->EnTeamMixEvent,
-            ];
-        }
-    }
-
-    return $rows;
-}
-
-function registrarc_build_cheque_rows(array $rows, array $payments, array $paymentModes, array $tarifs, $organizerClubCode, array $engagementNumbers, array $tarifRules, $ageClasses = null) {
-    $result = [];
-
-    foreach ($rows as $row) {
-        $engagementId = intval($row['engagement_id']);
-
-        $payment = isset($payments[(string)$engagementId]) && is_array($payments[(string)$engagementId])
-            ? $payments[(string)$engagementId]
-            : [];
-
-        $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
-        $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
-
-        if ($status !== 'PAYE' || $method !== 'CHQ') {
+    foreach (registrarc_load_engagements($TourId) as $id => $e) {
+        if ($wanted !== null && !isset($wanted[$id])) {
             continue;
         }
 
-        $numeroEngagement = isset($engagementNumbers[$engagementId]) ? intval($engagementNumbers[$engagementId]) : 1;
-
-        $target = trim((string)$row['target']);
-        $letter = trim((string)$row['letter']);
-        $targetNo = trim($target . $letter);
-
-        $targetIsUnassigned = registrarc_is_null_empty_or_zero($row['target']) || registrarc_is_null_empty_or_zero($row['letter']);
-
-        if ($targetIsUnassigned) {
-            $targetLabel = 'Archer non affecté';
-        } else {
-            $targetLabel = $targetNo;
+        if (!$e['is_paid'] || $e['payment_method'] !== 'CHQ') {
+            continue;
         }
 
-        $entryForRules = [
-            'categorie' => $row['categorie'],
-            'country_code' => $row['country_code'],
-            'EnIndClEvent' => $row['EnIndClEvent'],
-            'EnTeamClEvent' => $row['EnTeamClEvent'],
-            'EnIndFEvent' => $row['EnIndFEvent'],
-            'EnTeamFEvent' => $row['EnTeamFEvent'],
-            'EnTeamMixEvent' => $row['EnTeamMixEvent'],
+        // Un chèque déjà déposé à la banque ne figure plus sur les bordereaux à préparer
+        if (!$includeDeposited && $e['deposit_id'] !== '') {
+            continue;
+        }
+
+        $specialLabel = registrarc_engagement_special_label($e);
+
+        $rows[] = [
+            'engagement_id' => $id,
+            'licence' => $e['licence'],
+            'nom' => $e['nom'],
+            'prenom' => $e['prenom'],
+            'categorie' => $e['categorie'],
+            'club' => $e['club'],
+            'country_code' => $e['country_code'],
+            'session_no' => $e['session'],
+            'target' => $e['target'],
+            'letter' => $e['letter'],
+            'numero_engagement' => $e['numero'],
+            'session_label' => $e['session'] !== '' ? 'Départ ' . $e['session'] : '—',
+            'target_label' => $e['target_label'],
+            'payment_method' => 'CHQ',
+            'payment_method_label' => isset($paymentModes['CHQ']) ? $paymentModes['CHQ'] : 'CHQ',
+            'deposit_id' => $e['deposit_id'],
+            'tarif_rule_label' => $specialLabel,
+            'tarif_type_label' => $specialLabel !== '' ? ($e['rule_count'] > 1 ? 'Cumul : ' : '') . $specialLabel : 'Standard',
+            'tarif_type_class' => $specialLabel !== '' ? 'tarif-rule' : 'tarif-standard',
+            'amount' => $e['amount'],
         ];
-
-        $ruleResult = registrarc_apply_tarif_rules($entryForRules, $tarifRules);
-
-        if (!empty($ruleResult['matched'])) {
-            $amountBase = (float)$ruleResult['amount'];
-            $ruleLabel = $ruleResult['label'];
-
-            if (!empty($ruleResult['count']) && intval($ruleResult['count']) > 1) {
-                $tarifTypeLabel = 'Cumul : ' . $ruleLabel;
-            } else {
-                $tarifTypeLabel = $ruleLabel !== '' ? $ruleLabel : 'Spécial';
-            }
-
-            $tarifTypeClass = 'tarif-rule';
-        } else {
-            $amountBase = registrarc_prix_engagement(
-                $row['country_code'],
-                $row['categorie'],
-                $numeroEngagement,
-                $tarifs,
-                $organizerClubCode,
-                $ageClasses
-            );
-
-            $ruleLabel = '';
-            $tarifTypeLabel = 'Standard';
-            $tarifTypeClass = 'tarif-standard';
-        }
-
-        $row['numero_engagement'] = $numeroEngagement;
-        $row['session_label'] = $row['session_no'] !== '' ? 'Départ ' . $row['session_no'] : '—';
-        $row['target_label'] = $targetLabel;
-        $row['payment_method'] = $method;
-        $row['payment_method_label'] = isset($paymentModes[$method]) ? $paymentModes[$method] : $method;
-        $row['tarif_rule_label'] = $ruleLabel;
-        $row['tarif_type_label'] = $tarifTypeLabel;
-        $row['tarif_type_class'] = $tarifTypeClass;
-        $row['amount'] = registrarc_is_free_method($method) ? 0 : $amountBase;
-
-        $result[] = $row;
     }
 
-    return $result;
+    // Ordre du bordereau : club, nom, prénom, départ
+    usort($rows, function ($a, $b) {
+        return [$a['club'], $a['nom'], $a['prenom'], $a['session_no'], $a['target'], $a['letter'], $a['engagement_id']]
+            <=> [$b['club'], $b['nom'], $b['prenom'], $b['session_no'], $b['target'], $b['letter'], $b['engagement_id']];
+    });
+
+    return $rows;
 }
 
 function registrarc_sum_rows(array $rows) {
@@ -345,32 +235,41 @@ $paymentModes = registrarc_load_payment_modes($TourId);
 $tarifs = registrarc_load_tarifs($TourId, $tournament['organizer_code'], $tournament['organizer_name']);
 $tarifRules = registrarc_load_tarif_rules($TourId);
 $ageClasses = registrarc_load_age_classes($TourId);
-$engagementNumbers = registrarc_get_engagement_numbers($TourId);
 $chequeGroups = registrarc_load_cheque_groups($TourId);
 
 $groupData = null;
 $groupBlocks = [];
 $singleRows = [];
+$deposits = registrarc_load_deposits($TourId);
+$depositData = null;
 
-if ($isGroupMode) {
+if ($isDepositMode) {
+    if (isset($deposits[$depositParam]) && is_array($deposits[$depositParam])) {
+        $depositData = $deposits[$depositParam];
+
+        foreach ($depositData['cheques'] as $index => $cheque) {
+            $rows = registrarc_cheque_rows($TourId, $cheque['engagement_ids'], $paymentModes, true);
+
+            if (count($cheque['engagement_ids']) > 1) {
+                $groupBlocks[] = [
+                    'id' => $cheque['group_id'] !== '' ? $cheque['group_id'] : 'n° ' . ($index + 1),
+                    'data' => ['created_at' => $depositData['created_at']],
+                    'rows' => $rows,
+                    'total' => registrarc_sum_rows($rows),
+                ];
+            } else {
+                $singleRows = array_merge($singleRows, $rows);
+            }
+        }
+    }
+} elseif ($isGroupMode) {
     if (isset($chequeGroups[$groupId]) && is_array($chequeGroups[$groupId])) {
         $groupData = $chequeGroups[$groupId];
         $selectedIds = isset($groupData['engagement_ids']) && is_array($groupData['engagement_ids'])
             ? array_values(array_unique(array_filter(array_map('intval', $groupData['engagement_ids']))))
             : [];
 
-        $rawRows = registrarc_get_cheque_engagements($TourId, $selectedIds);
-
-        $rows = registrarc_build_cheque_rows(
-            $rawRows,
-            $payments,
-            $paymentModes,
-            $tarifs,
-            $tournament['organizer_code'],
-            $engagementNumbers,
-            $tarifRules,
-            $ageClasses
-        );
+        $rows = registrarc_cheque_rows($TourId, $selectedIds, $paymentModes);
 
         $groupBlocks[] = [
             'id' => $groupId,
@@ -380,18 +279,7 @@ if ($isGroupMode) {
         ];
     }
 } elseif ($isSelectionMode) {
-    $rawRows = registrarc_get_cheque_engagements($TourId, $selectedIds);
-
-    $singleRows = registrarc_build_cheque_rows(
-        $rawRows,
-        $payments,
-        $paymentModes,
-        $tarifs,
-        $tournament['organizer_code'],
-        $engagementNumbers,
-        $tarifRules,
-        $ageClasses
-    );
+    $singleRows = registrarc_cheque_rows($TourId, $selectedIds, $paymentModes);
 } else {
     foreach ($chequeGroups as $id => $group) {
         if (!is_array($group)) {
@@ -406,18 +294,7 @@ if ($isGroupMode) {
             continue;
         }
 
-        $rawRows = registrarc_get_cheque_engagements($TourId, $ids);
-
-        $rows = registrarc_build_cheque_rows(
-            $rawRows,
-            $payments,
-            $paymentModes,
-            $tarifs,
-            $tournament['organizer_code'],
-            $engagementNumbers,
-            $tarifRules,
-            $ageClasses
-        );
+        $rows = registrarc_cheque_rows($TourId, $ids, $paymentModes);
 
         if (empty($rows)) {
             continue;
@@ -432,18 +309,7 @@ if ($isGroupMode) {
     }
 
     $groupedIdsMap = registrarc_get_group_ids_map($chequeGroups);
-    $rawRows = registrarc_get_cheque_engagements($TourId, []);
-
-    $allChequeRows = registrarc_build_cheque_rows(
-        $rawRows,
-        $payments,
-        $paymentModes,
-        $tarifs,
-        $tournament['organizer_code'],
-        $engagementNumbers,
-        $tarifRules,
-        $ageClasses
-    );
+    $allChequeRows = registrarc_cheque_rows($TourId, [], $paymentModes);
 
     $singleRows = registrarc_filter_rows_not_in_map($allChequeRows, $groupedIdsMap);
 }
@@ -465,6 +331,59 @@ foreach ($singleRows as $row) {
 }
 
 $documentDate = date('d/m/Y');
+
+if ($depositData) {
+    $documentDate = date('d/m/Y', strtotime($depositData['created_at']));
+}
+
+// ---------------------------------------------------------------------------
+// Enregistrer ou annuler une remise
+// ---------------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    checkACL(AclParticipants, AclReadWrite);
+
+    $formError = registrarc_check_form($TourId);
+    $redirect = 'bankchequedeposite.php';
+
+    if ($formError !== '') {
+        $_SESSION['RegistrArc_deposit_message'] = $formError;
+    } elseif (isset($_POST['deposit_create']) && !$isDepositMode) {
+        // Chèques du périmètre affiché : un par groupe, un par paiement individuel
+        $cheques = [];
+
+        foreach ($groupBlocks as $block) {
+            $cheques[] = ['group_id' => (string)$block['id'], 'engagement_ids' => array_column($block['rows'], 'engagement_id'), 'amount' => $block['total']];
+        }
+
+        foreach ($singleRows as $row) {
+            $cheques[] = ['group_id' => '', 'engagement_ids' => [$row['engagement_id']], 'amount' => $row['amount']];
+        }
+
+        $newDeposit = registrarc_create_deposit($TourId, $cheques);
+
+        if ($newDeposit !== '') {
+            $_SESSION['RegistrArc_deposit_message'] = 'Remise ' . $newDeposit . ' enregistrée comme déposée. Ses chèques ne figureront plus sur les prochains bordereaux.';
+            $redirect = 'bankchequedeposite.php?remise=' . rawurlencode($newDeposit);
+        } else {
+            $_SESSION['RegistrArc_deposit_message'] = "Aucun chèque à déposer n'a pu être enregistré." . registrarc_storage_error_suffix();
+        }
+    } elseif (isset($_POST['deposit_cancel'])) {
+        $cancelId = (string)$_POST['deposit_cancel'];
+        $_SESSION['RegistrArc_deposit_message'] = registrarc_cancel_deposit($TourId, $cancelId)
+            ? 'Remise ' . $cancelId . ' annulée : ses chèques sont de nouveau à déposer.'
+            : 'Remise introuvable.';
+    }
+
+    header('Location: ' . $redirect);
+    exit();
+}
+
+$depositMessage = '';
+
+if (isset($_SESSION['RegistrArc_deposit_message'])) {
+    $depositMessage = $_SESSION['RegistrArc_deposit_message'];
+    unset($_SESSION['RegistrArc_deposit_message']);
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -472,353 +391,24 @@ $documentDate = date('d/m/Y');
     <meta charset="UTF-8">
     <title>Remise de chèque - RegistrArc</title>
 
-    <style>
-        @page {
-            size: A4 portrait;
-            margin: 10mm;
-        }
-
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: Arial, Helvetica, sans-serif;
-            color: #111827;
-            background: #f3f4f6;
-            font-size: 12px;
-        }
-
-        .page {
-            width: 210mm;
-            min-height: 297mm;
-            margin: 20px auto;
-            background: #fff;
-            padding: 14mm;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            gap: 18px;
-            border-bottom: 2px solid #111827;
-            padding-bottom: 12px;
-            margin-bottom: 16px;
-        }
-
-        .title {
-            font-size: 24px;
-            font-weight: 800;
-            margin-bottom: 4px;
-        }
-
-        .subtitle {
-            color: #4b5563;
-            font-size: 12px;
-            line-height: 1.4;
-        }
-
-        .meta {
-            text-align: right;
-            line-height: 1.5;
-            font-size: 12px;
-        }
-
-        .summary {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            margin-bottom: 12px;
-            flex-wrap: wrap;
-        }
-
-        .summary-item {
-            border-radius: 999px;
-            background: #eef2ff;
-            color: #3730a3;
-            padding: 6px 12px;
-            font-weight: 700;
-        }
-
-        .section-title {
-            font-size: 15px;
-            font-weight: 800;
-            color: #111827;
-            margin: 16px 0 8px;
-            padding-bottom: 4px;
-            border-bottom: 1px solid #d1d5db;
-        }
-
-        .group-block {
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 14px;
-            page-break-inside: avoid;
-        }
-
-        .group-title {
-            font-size: 14px;
-            font-weight: 800;
-            margin-bottom: 4px;
-            color: #111827;
-        }
-
-        .group-subtitle {
-            color: #6b7280;
-            font-size: 10.5px;
-            margin-bottom: 8px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 10px;
-            margin-bottom: 10px;
-        }
-
-        th,
-        td {
-            border: 1px solid #d1d5db;
-            padding: 5px 6px;
-            text-align: left;
-            vertical-align: top;
-        }
-
-        th {
-            background: #f3f4f6;
-            font-weight: 700;
-            color: #374151;
-        }
-
-        tbody tr:nth-child(even) {
-            background: #f9fafb;
-        }
-
-        .right {
-            text-align: right;
-        }
-
-        .center {
-            text-align: center;
-        }
-
-        .empty {
-            text-align: center;
-            padding: 22px;
-            color: #991b1b;
-            font-weight: 700;
-            border: 1px solid #fecaca;
-            background: #fee2e2;
-            border-radius: 6px;
-        }
-
-        .tarif-standard {
-            display: inline-flex;
-            padding: 2px 6px;
-            border-radius: 999px;
-            background: #e0f2fe;
-            color: #075985;
-            font-size: 9px;
-            font-weight: 700;
-            white-space: normal;
-        }
-
-        .tarif-rule {
-            display: inline-flex;
-            padding: 2px 6px;
-            border-radius: 999px;
-            background: #ede9fe;
-            color: #5b21b6;
-            font-size: 9px;
-            font-weight: 700;
-            white-space: normal;
-        }
-
-        .manual-fields {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 18px;
-            align-items: end;
-            padding: 8px 0 2px;
-        }
-
-        .manual-field {
-            min-height: 42px;
-        }
-
-        .manual-label {
-            font-size: 10px;
-            font-weight: 700;
-            color: #374151;
-            margin-bottom: 14px;
-        }
-
-        .manual-write-line {
-            height: 24px;
-            border-bottom: 1.5px solid #111827;
-        }
-
-        .single-entry-manual {
-            border: 1px solid #d1d5db;
-            border-top: none;
-            padding: 8px 10px 12px;
-            margin-bottom: 12px;
-            page-break-inside: avoid;
-        }
-
-        .single-entry-card {
-            page-break-inside: avoid;
-            margin-bottom: 12px;
-        }
-
-        .single-entry-card table {
-            margin-bottom: 0;
-        }
-
-        .total-line {
-            text-align: right;
-            font-weight: 800;
-            font-size: 13px;
-            margin-top: 8px;
-        }
-
-        .signature-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 14px;
-            margin-top: 18px;
-            page-break-inside: avoid;
-        }
-
-        .signature-box {
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            min-height: 42px;
-            padding: 8px 10px;
-        }
-
-        .signature-title {
-            font-weight: 700;
-            color: #374151;
-            margin-bottom: 12px;
-        }
-
-        .signature-line {
-            border-bottom: 1px solid #6b7280;
-            height: 18px;
-        }
-
-        .actions {
-            width: 210mm;
-            margin: 12px auto 24px;
-            display: flex;
-            gap: 8px;
-            justify-content: flex-end;
-        }
-
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 8px 14px;
-            border-radius: 999px;
-            border: none;
-            text-decoration: none;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 700;
-        }
-
-        .btn-primary {
-            background: #2563eb;
-            color: #fff;
-        }
-
-        .btn-ghost {
-            background: #fff;
-            color: #374151;
-            border: 1px solid #d1d5db;
-        }
-
-        @media print {
-            body {
-                background: #fff;
-            }
-
-            .page {
-                width: auto;
-                min-height: auto;
-                margin: 0;
-                padding: 5mm;
-                box-shadow: none;
-            }
-
-            .actions {
-                display: none;
-            }
-
-            .header,
-            .group-block,
-            .single-entry-card,
-            .signature-grid {
-                break-inside: avoid;
-            }
-
-            thead {
-                display: table-header-group;
-            }
-
-            .manual-write-line {
-                border-bottom-color: #000;
-            }
-        }
-
-        @media (max-width: 700px) {
-            .page {
-                width: 100%;
-                min-height: auto;
-                margin: 0;
-                padding: 14px;
-                box-shadow: none;
-            }
-
-            .header,
-            .signature-grid,
-            .manual-fields {
-                display: block;
-            }
-
-            .meta {
-                text-align: left;
-                margin-top: 12px;
-            }
-
-            .signature-box,
-            .manual-field {
-                margin-bottom: 10px;
-            }
-
-            .actions {
-                width: auto;
-                margin: 10px;
-                justify-content: flex-start;
-                flex-wrap: wrap;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="<?php echo registrarc_asset_url('assets/css/bankchequedeposite.css'); ?>">
 </head>
 
 <body>
+    <?php if ($depositMessage !== ''): ?>
+        <div class="notice no-print"><?php echo htmlspecialchars($depositMessage); ?></div>
+    <?php endif; ?>
+
     <div class="page">
         <div class="header">
             <div>
-                <div class="title">Remise de chèque</div>
+                <div class="title">Remise de chèque<?php echo $depositData ? ' ' . htmlspecialchars($depositData['id']) : ''; ?></div>
                 <div class="subtitle">
-                    Document interne - Registr'Arc
+                    <?php if ($depositData): ?>
+                        Enregistrée comme déposée le <?php echo htmlspecialchars(date('d/m/Y à H:i', strtotime($depositData['created_at']))); ?><?php echo !empty($depositData['operator']) ? ' par ' . htmlspecialchars($depositData['operator']) : ''; ?>
+                    <?php else: ?>
+                        Document interne - RegistrArc
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -841,7 +431,11 @@ $documentDate = date('d/m/Y');
             </div>
         </div>
 
-        <?php if ($isGroupMode && !$groupData): ?>
+        <?php if ($isDepositMode && !$depositData): ?>
+            <div class="empty">
+                Remise introuvable.
+            </div>
+        <?php elseif ($isGroupMode && !$groupData): ?>
             <div class="empty">
                 Groupe de chèque introuvable.
             </div>
@@ -933,7 +527,52 @@ $documentDate = date('d/m/Y');
         <button type="button" class="btn btn-primary" onclick="window.print();">
             Imprimer / Enregistrer en PDF
         </button>
+
+        <?php if ($canWrite && !$isDepositMode && $countCheques > 0): ?>
+            <form method="POST" style="display:inline;" onsubmit="return confirm(<?php echo htmlspecialchars(json_encode('Enregistrer ces ' . $countCheques . ' chèque(s) (' . registrarc_format_montant($total) . ' €) comme déposés à la banque ?'), ENT_QUOTES); ?>);">
+                <?php echo registrarc_form_fields($TourId); ?>
+                <button type="submit" name="deposit_create" value="1" class="btn btn-success">Enregistrer comme déposée</button>
+            </form>
+        <?php endif; ?>
     </div>
+
+    <?php if (!empty($deposits)): ?>
+        <div class="history no-print">
+            <h2>Remises déjà déposées</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Remise</th>
+                        <th>Date</th>
+                        <th>Opérateur</th>
+                        <th class="right">Chèques</th>
+                        <th class="right">Total</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach (array_reverse($deposits, true) as $deposit): ?>
+                        <tr>
+                            <td><strong><?php echo htmlspecialchars($deposit['id']); ?></strong></td>
+                            <td><?php echo htmlspecialchars(date('d/m/Y H:i', strtotime($deposit['created_at']))); ?></td>
+                            <td><?php echo htmlspecialchars(isset($deposit['operator']) ? $deposit['operator'] : ''); ?></td>
+                            <td class="right"><?php echo intval($deposit['count']); ?></td>
+                            <td class="right"><?php echo registrarc_format_montant($deposit['total']); ?> €</td>
+                            <td class="right">
+                                <a href="bankchequedeposite.php?remise=<?php echo rawurlencode($deposit['id']); ?>">Voir / réimprimer</a>
+                                <?php if ($canWrite): ?>
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm(<?php echo htmlspecialchars(json_encode('Annuler la remise ' . $deposit['id'] . ' ? Ses chèques seront de nouveau à déposer.'), ENT_QUOTES); ?>);">
+                                        <?php echo registrarc_form_fields($TourId); ?>
+                                        <button type="submit" name="deposit_cancel" value="<?php echo htmlspecialchars($deposit['id']); ?>" class="link-btn">Annuler</button>
+                                    </form>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
 
     <script>
         function closeDepositTab() {

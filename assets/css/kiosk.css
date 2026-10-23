@@ -1,0 +1,559 @@
+/* RegistrArc - assets/css/kiosk.css (styles de kiosk.php) */
+
+:root {
+    --text: #1f2933;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --line-strong: #d1d5db;
+    --bg: #eef1f6;
+    --surface: #ffffff;
+    --accent: #14336b;
+    --accent-soft: #e9effa;
+    --on-accent: #ffffff;
+    --on-accent-muted: #c9d5ec;
+    --paid: #15803d;
+    --unpaid: #b91c1c;
+    --warn: #b45309;
+    --radius: 8px;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    min-height: 100%;
+    background: var(--bg);
+}
+
+body {
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.35;
+    -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select {
+    font: inherit;
+    color: inherit;
+}
+
+.num {
+    font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.app-shell {
+    max-width: 860px;
+    margin: 0 auto;
+}
+
+/* --- En-tête ---------------------------------------------------------- */
+.topbar {
+    background: var(--accent);
+    color: var(--on-accent);
+    padding: 12px 14px 14px;
+}
+
+.topbar-line {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.title {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.subtitle {
+    color: var(--on-accent-muted);
+    font-size: 13px;
+    margin-top: 1px;
+}
+
+.topbar a {
+    color: var(--on-accent);
+    font-size: 14px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.topbar-links {
+    display: flex;
+    gap: 14px;
+}
+
+.summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--on-accent-muted);
+}
+
+.summary strong {
+    color: var(--on-accent);
+    font-weight: 600;
+}
+
+.summary .is-unpaid strong {
+    color: #ffb4b4;
+}
+
+.summary .is-paid strong {
+    color: #9ff0bd;
+}
+
+/* --- Recherche et filtres --------------------------------------------- */
+.toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--bg);
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--line);
+}
+
+.search-input-wrap {
+    position: relative;
+}
+
+.search-input-wrap input[type="text"] {
+    width: 100%;
+    height: 42px;
+    padding: 0 40px 0 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--surface);
+    font-size: 16px;
+    outline: none;
+}
+
+.search-input-wrap input[type="text"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
+}
+
+.search-clear {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    width: 34px;
+    height: 34px;
+    border: none;
+    background: none;
+    color: var(--muted);
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    margin-top: 8px;
+}
+
+.segmented {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 1px;
+    background: var(--line-strong);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.session-pill,
+.pay-mode {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 12px;
+    background: var(--surface);
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.session-pill input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.session-pill.is-on,
+.pay-mode.is-active {
+    background: var(--accent);
+    color: #fff;
+}
+
+.check {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.check input,
+.row-check {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.results {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.results-count {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.select-all {
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.select-all:disabled {
+    border-color: var(--line-strong);
+    color: var(--muted);
+    cursor: default;
+}
+
+/* --- Liste ------------------------------------------------------------ */
+.app-content {
+    padding: 12px 14px;
+    padding-bottom: calc(210px + var(--safe-bottom));
+}
+
+.alert {
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    border: 1px solid;
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+.alert-success { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
+.alert-error { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+.alert-info { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
+.alert-warning { background: #fffbeb; border-color: #fde68a; color: #78350f; }
+
+.list {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 2px rgba(20, 51, 107, 0.12);
+    overflow: hidden;
+}
+
+.empty-state {
+    padding: 28px 16px;
+    text-align: center;
+    color: var(--muted);
+}
+
+.kiosk-card {
+    display: grid;
+    grid-template-columns: auto 48px minmax(0, 1fr) minmax(0, 0.7fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 14px;
+    border-top: 1px solid var(--line);
+    cursor: pointer;
+}
+
+.list > .kiosk-card:first-child,
+#noResults[hidden] + .kiosk-card {
+    border-top: none;
+}
+
+.kiosk-card.is-selected {
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.row-target {
+    color: var(--accent);
+    font-size: 17px;
+    font-weight: 700;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.row-target.is-unassigned {
+    color: var(--muted);
+    font-weight: 400;
+}
+
+.row-main {
+    min-width: 0;
+}
+
+.row-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.row-name span {
+    font-weight: 400;
+}
+
+.row-meta {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.row-flags {
+    margin-top: 3px;
+    font-size: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+}
+
+.flag-warn { color: var(--unpaid); }
+.flag-receipt { color: var(--warn); }
+.flag-tarif { color: var(--accent); }
+.flag-note { color: var(--muted); font-style: italic; }
+
+.operator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--on-accent-muted);
+}
+
+.operator input {
+    flex: 1;
+    max-width: 200px;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--on-accent);
+    font: inherit;
+}
+
+.operator input::placeholder {
+    color: var(--on-accent-muted);
+}
+
+.row-amount {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.amount {
+    font-size: 17px;
+    font-weight: 600;
+}
+
+.state {
+    margin-top: 2px;
+    font-size: 12px;
+}
+
+.state-unpaid { color: var(--unpaid); }
+.state-paid { color: var(--paid); }
+
+.kiosk-card.is-paid .row-target,
+.kiosk-card.is-paid .row-name,
+.kiosk-card.is-paid .amount {
+    color: var(--muted);
+}
+
+/* --- Barre d'encaissement --------------------------------------------- */
+.bottom-bulk-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    background: var(--surface);
+    border-top: 1px solid var(--line-strong);
+    padding: 10px 14px calc(10px + var(--safe-bottom));
+}
+
+.bottom-bulk-inner {
+    max-width: 832px;
+    margin: 0 auto;
+    display: grid;
+    gap: 10px;
+}
+
+.bulk-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.bulk-head strong {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.bulk-total strong {
+    font-size: 20px;
+}
+
+.bulk-details {
+    display: none;
+    gap: 10px;
+}
+
+.has-selection .bulk-details {
+    display: grid;
+}
+
+.pay-modes {
+    display: flex;
+}
+
+.pay-modes .pay-mode {
+    flex: 1 1 0;
+}
+
+.bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.btn-validate-wide {
+    flex: 1;
+    height: 48px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-validate-wide:disabled {
+    background: var(--line-strong);
+    color: var(--muted);
+    cursor: default;
+}
+
+/* Blason de l'archer (images de cibles d'I@nseo) : logo puis libellé à sa droite,
+   centré dans l'espace entre le nom et le prix */
+.row-face {
+    display: flex;
+    align-items: center;
+    justify-self: center;
+    gap: 6px;
+    width: 150px;
+    min-width: 0;
+    max-width: 100%;
+    font-size: 12px;
+    line-height: 1.25;
+    color: var(--muted);
+}
+
+.face-images {
+    display: flex;
+    flex-shrink: 0;
+    gap: 3px;
+}
+
+.face-images img {
+    width: 26px;
+    height: 26px;
+}
+
+.face-text { min-width: 0; }
+
+.face-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+}
+
+/* Deux diamètres : passent sur deux lignes plutôt que de déborder sur le prix */
+.face-size { overflow-wrap: anywhere; }
+
+/* Blason différent du blason par défaut de la catégorie (détail dans l'infobulle) */
+.row-face.is-not-default,
+.row-face.is-not-default .face-name {
+    color: var(--unpaid);
+    font-weight: 600;
+}
+
+@media (max-width: 520px) {
+    .kiosk-card {
+        grid-template-columns: auto 42px minmax(0, 1fr) minmax(0, auto) auto;
+        gap: 10px;
+        padding: 10px 12px;
+    }
+
+    .row-face { width: 92px; font-size: 11px; }
+    .face-images img { width: 22px; height: 22px; }
+
+    .app-content {
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .list {
+        border-radius: 0;
+    }
+
+    .results {
+        margin-left: 0;
+        width: 100%;
+        justify-content: space-between;
+    }
+}

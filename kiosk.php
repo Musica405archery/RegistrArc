@@ -10,58 +10,17 @@
 // - validation groupée avec notion de reçu sauvegardée dans le JSON
 // ============================================================================
 
-define('debug', false);
+require_once(dirname(__FILE__) . '/lib/registrarc_page.inc.php');
 
-require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
-require_once('Common/Fun_Various.inc.php');
-require_once('Common/Fun_Sessions.inc.php');
-require_once(dirname(__FILE__) . '/lib/registrarc.inc.php');
-
-CheckTourSession(true);
-checkACL(AclParticipants, AclReadOnly);
-
-$ModuleName = 'RegistrArc';
-$LegacyModuleName = 'Greffe2';
-
-$TourId = isset($_SESSION['TourId']) ? intval($_SESSION['TourId']) : 0;
-
-if (!$TourId) {
-    die('Tournoi non défini');
-}
+$TourId = registrarc_page_tour_id();
 
 // ---------------------------------------------------------------------------
 // Infos tournoi
 // ---------------------------------------------------------------------------
-$tournamentQuery = "
-    SELECT ToCommitee, ToComDescr, ToName
-    FROM Tournament
-    WHERE ToId = $TourId
-";
-$tournamentRs = safe_r_sql($tournamentQuery);
-
-$organizerClubCode = null;
-$organizerClubName = null;
-$tournamentName = null;
-
-if ($t = safe_fetch($tournamentRs)) {
-    $organizerClubCode = $t->ToCommitee;
-    $organizerClubName = $t->ToComDescr;
-    $tournamentName = $t->ToName;
-
-    if (empty($organizerClubName) && $organizerClubCode) {
-        $organizerNameQuery = "
-            SELECT CoName
-            FROM Countries
-            WHERE CoCode = " . StrSafe_DB($organizerClubCode) . "
-              AND CoTournament = $TourId
-        ";
-        $organizerNameRs = safe_r_sql($organizerNameQuery);
-
-        if ($on = safe_fetch($organizerNameRs)) {
-            $organizerClubName = $on->CoName;
-        }
-    }
-}
+$tournament = registrarc_get_tournament_info($TourId);
+$organizerClubCode = $tournament['organizer_code'];
+$organizerClubName = $tournament['organizer_name'];
+$tournamentName = $tournament['name'];
 
 // ---------------------------------------------------------------------------
 // Chargement données globales
@@ -71,7 +30,8 @@ $tarifs = registrarc_load_tarifs($TourId, $organizerClubCode, $organizerClubName
 $ageClasses = registrarc_load_age_classes($TourId);
 $tarifRules = registrarc_load_tarif_rules($TourId);
 $dataDirStatus = registrarc_data_dir_status();
-$canWrite = hasACL(AclParticipants, AclReadWrite);
+$canWrite = registrarc_can_write($TourId);
+$isClosed = registrarc_is_closed($TourId);
 
 // ---------------------------------------------------------------------------
 // POST
@@ -119,16 +79,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ids = array_values(array_unique($ids));
 
         if (!empty($ids)) {
-            $saved = registrarc_update_payments($TourId, function (array &$payments) use ($ids, $method, $receiptRequired) {
-                foreach ($ids as $id) {
-                    registrarc_set_payment_in_array($payments, $id, $method, $receiptRequired);
-                }
-            });
+            $paymentResult = registrarc_record_payments($TourId, $ids, $method, $receiptRequired, 'kiosque');
+            $saved = $paymentResult['ok'];
+            $skippedMessage = registrarc_skipped_message($TourId, $paymentResult['skipped']);
 
             if ($saved) {
-                if ($createChequeGroupAfterPayment && count($ids) >= 2) {
-                    $paymentsAfterSave = registrarc_load_payments($TourId);
-                    $result = registrarc_create_cheque_group($TourId, $ids, $paymentsAfterSave);
+                if ($createChequeGroupAfterPayment && count($paymentResult['done']) >= 2) {
+                    $result = registrarc_create_cheque_group($TourId, $paymentResult['done'], registrarc_load_payments($TourId));
 
                     if (!empty($result['ok'])) {
                         $_SESSION['RegistrArc_kiosk_message'] = 'Paiements validés et chèque groupé créé.';
@@ -138,8 +95,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION['RegistrArc_kiosk_message_type'] = 'warning';
                     }
                 } else {
-                    $_SESSION['RegistrArc_kiosk_message'] = 'Paiements validés pour ' . count($ids) . ' engagement(s).';
+                    $_SESSION['RegistrArc_kiosk_message'] = 'Paiements validés pour ' . count($paymentResult['done']) . ' engagement(s).';
                     $_SESSION['RegistrArc_kiosk_message_type'] = 'success';
+                }
+
+                if ($skippedMessage !== '') {
+                    $_SESSION['RegistrArc_kiosk_message'] .= $skippedMessage;
+                    $_SESSION['RegistrArc_kiosk_message_type'] = 'warning';
                 }
             } else {
                 $_SESSION['RegistrArc_kiosk_message'] = "Erreur lors de l'écriture du JSON paiements." . registrarc_storage_error_suffix();
@@ -161,134 +123,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ---------------------------------------------------------------------------
-// Chargement engagements
+// Chargement engagements (calcul commun à toutes les pages)
 // ---------------------------------------------------------------------------
-$paymentsData = registrarc_load_payments($TourId);
-$engagementNumbers = registrarc_get_engagement_numbers($TourId);
-
-$query = "
-    SELECT
-        e.EnId AS engagement_id,
-        UPPER(TRIM(e.EnCode)) AS licence,
-        UPPER(TRIM(e.EnFirstName)) AS nom,
-        TRIM(e.EnName) AS prenom,
-        CONCAT(e.EnDivision, e.EnClass) AS categorie,
-        c.CoName AS club,
-        c.CoCode AS country_code,
-        q.QuSession AS session_no,
-        q.QuTarget AS target,
-        q.QuLetter AS letter,
-        e.EnIndClEvent,
-        e.EnTeamClEvent,
-        e.EnIndFEvent,
-        e.EnTeamFEvent,
-        e.EnTeamMixEvent
-    FROM Entries e
-    LEFT JOIN Countries c
-        ON e.EnCountry = c.CoId
-       AND e.EnTournament = c.CoTournament
-    LEFT JOIN Qualifications q
-        ON e.EnId = q.QuId
-    WHERE e.EnTournament = $TourId
-      AND e.EnAthlete = 1
-      AND TRIM(e.EnCode) <> ''
-    ORDER BY UPPER(TRIM(e.EnFirstName)), TRIM(e.EnName), e.EnId
-";
-
-$rs = safe_r_sql($query);
 $rows = [];
 $sessions = [];
+$targetFaces = registrarc_load_target_faces($TourId);
 
-if ($rs) {
-    while ($row = safe_fetch($rs)) {
-        $engagementId = intval($row->engagement_id);
-        $numeroEngagement = isset($engagementNumbers[$engagementId]) ? intval($engagementNumbers[$engagementId]) : 1;
-
-        $payment = isset($paymentsData[(string)$engagementId]) && is_array($paymentsData[(string)$engagementId])
-            ? $paymentsData[(string)$engagementId]
-            : [];
-
-        $status = isset($payment['status']) && $payment['status'] === 'PAYE' ? 'PAYE' : 'NON_PAYE';
-        $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
-        $receiptRequired = !empty($payment['receipt_required']);
-
-        $session = trim((string)$row->session_no);
-        $target = trim((string)$row->target);
-        $letter = trim((string)$row->letter);
-        $targetNo = trim($target . $letter);
-
-        if ($session !== '') {
-            $sessions[$session] = true;
-        }
-
-        $targetIsUnassigned = registrarc_is_null_empty_or_zero($target) || registrarc_is_null_empty_or_zero($letter);
-
-        if ($targetIsUnassigned) {
-            $targetLabel = 'Archer non affecté';
-        } else {
-            $targetLabel = $targetNo;
-        }
-
-        $entryForRules = [
-            'categorie' => $row->categorie,
-            'country_code' => $row->country_code,
-            'EnIndClEvent' => $row->EnIndClEvent,
-            'EnTeamClEvent' => $row->EnTeamClEvent,
-            'EnIndFEvent' => $row->EnIndFEvent,
-            'EnTeamFEvent' => $row->EnTeamFEvent,
-            'EnTeamMixEvent' => $row->EnTeamMixEvent,
-        ];
-
-        $ruleResult = registrarc_apply_tarif_rules($entryForRules, $tarifRules);
-
-        $hasSpecialTarif = false;
-
-        if (!empty($ruleResult['matched'])) {
-            $amountDue = (float)$ruleResult['amount'];
-            $tarifLabel = $ruleResult['label'] !== '' ? $ruleResult['label'] : 'Spécial';
-            $hasSpecialTarif = true;
-
-            if (!empty($ruleResult['count']) && intval($ruleResult['count']) > 1) {
-                $tarifLabel = 'Cumul : ' . $tarifLabel;
-            }
-        } else {
-            $amountDue = registrarc_prix_engagement(
-                $row->country_code,
-                $row->categorie,
-                $numeroEngagement,
-                $tarifs,
-                $organizerClubCode,
-                $ageClasses
-            );
-
-            $tarifLabel = 'Standard';
-        }
-
-        $isFree = (floatval($amountDue) == 0 || $method === 'GRA');
-
-        $rows[] = [
-            'engagement_id' => $engagementId,
-            'numero_engagement' => $numeroEngagement,
-            'licence' => strtoupper(trim((string)$row->licence)),
-            'nom' => strtoupper(trim((string)$row->nom)),
-            'prenom' => trim((string)$row->prenom),
-            'categorie' => trim((string)$row->categorie),
-            'club' => trim((string)$row->club),
-            'country_code' => trim((string)$row->country_code),
-            'session' => $session,
-            'target_label' => $targetLabel,
-            'target_is_unassigned' => $targetIsUnassigned,
-            'payment_status' => $status,
-            'payment_method' => $method,
-            'payment_method_label' => ($method !== '' && isset($paymentModes[$method])) ? $paymentModes[$method] : $method,
-            'receipt_required' => $receiptRequired,
-            'amount_due' => $amountDue,
-            'tarif_label' => $tarifLabel,
-            'has_special_tarif' => $hasSpecialTarif,
-            'is_free' => $isFree,
-            'nothing_due' => registrarc_nothing_due($amountDue),
-        ];
+foreach (registrarc_load_engagements($TourId) as $engagement) {
+    if ($engagement['session'] !== '') {
+        $sessions[$engagement['session']] = true;
     }
+
+    $method = $engagement['payment_method'];
+    $specialLabel = registrarc_engagement_special_label($engagement);
+
+    $rows[] = [
+        'engagement_id' => $engagement['engagement_id'],
+        'numero_engagement' => $engagement['numero'],
+        'licence' => $engagement['licence'],
+        'nom' => $engagement['nom'],
+        'prenom' => $engagement['prenom'],
+        'categorie' => $engagement['categorie'],
+        'club' => $engagement['club'],
+        'country_code' => $engagement['country_code'],
+        'session' => $engagement['session'],
+        'target_label' => $engagement['target_label'],
+        'target_is_unassigned' => $engagement['target_is_unassigned'],
+        'payment_status' => $engagement['is_paid'] ? 'PAYE' : 'NON_PAYE',
+        'state' => $engagement['state'],
+        'payment_method' => $method,
+        'payment_method_label' => ($method !== '' && isset($paymentModes[$method])) ? $paymentModes[$method] : $method,
+        'receipt_required' => $engagement['receipt_required'],
+        'amount_due' => $engagement['amount_due'],
+        'tarif_label' => $specialLabel !== '' ? ($engagement['rule_count'] > 1 ? 'Cumul : ' : '') . $specialLabel : 'Standard',
+        'has_special_tarif' => $specialLabel !== '',
+        'is_free' => registrarc_nothing_due($engagement['amount_due']) || ($engagement['is_paid'] && $method === 'GRA'),
+        'nothing_due' => registrarc_nothing_due($engagement['amount_due']),
+        'note' => $engagement['note'],
+        'target_face' => isset($targetFaces[$engagement['engagement_id']]) ? $targetFaces[$engagement['engagement_id']] : null,
+    ];
 }
 
 // Tri final demandé : nom, prénom, numéro d'engagement
@@ -350,486 +223,7 @@ foreach ($rows as $r) {
     <title>RegistrArc - Kiosk</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
-    <style>
-        :root {
-            --text: #1f2933;
-            --muted: #6b7280;
-            --line: #e5e7eb;
-            --line-strong: #d1d5db;
-            --bg: #eef1f6;
-            --surface: #ffffff;
-            --accent: #14336b;
-            --accent-soft: #e9effa;
-            --on-accent: #ffffff;
-            --on-accent-muted: #c9d5ec;
-            --paid: #15803d;
-            --unpaid: #b91c1c;
-            --warn: #b45309;
-            --radius: 8px;
-            --safe-bottom: env(safe-area-inset-bottom, 0px);
-        }
-
-        * {
-            box-sizing: border-box;
-        }
-
-        html,
-        body {
-            margin: 0;
-            min-height: 100%;
-            background: var(--bg);
-        }
-
-        body {
-            color: var(--text);
-            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-            font-size: 15px;
-            line-height: 1.35;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        button,
-        input,
-        select {
-            font: inherit;
-            color: inherit;
-        }
-
-        .num {
-            font-variant-numeric: tabular-nums;
-        }
-
-        .sr-only {
-            position: absolute !important;
-            width: 1px;
-            height: 1px;
-            margin: -1px;
-            overflow: hidden;
-            clip: rect(0, 0, 0, 0);
-            white-space: nowrap;
-            border: 0;
-        }
-
-        .app-shell {
-            max-width: 860px;
-            margin: 0 auto;
-        }
-
-        /* --- En-tête ---------------------------------------------------------- */
-        .topbar {
-            background: var(--accent);
-            color: var(--on-accent);
-            padding: 12px 14px 14px;
-        }
-
-        .topbar-line {
-            display: flex;
-            align-items: baseline;
-            justify-content: space-between;
-            gap: 12px;
-        }
-
-        .title {
-            font-size: 18px;
-            font-weight: 700;
-        }
-
-        .subtitle {
-            color: var(--on-accent-muted);
-            font-size: 13px;
-            margin-top: 1px;
-        }
-
-        .topbar a {
-            color: var(--on-accent);
-            font-size: 14px;
-            text-decoration: none;
-            white-space: nowrap;
-        }
-
-        .summary {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px 16px;
-            margin-top: 8px;
-            font-size: 13px;
-            color: var(--on-accent-muted);
-        }
-
-        .summary strong {
-            color: var(--on-accent);
-            font-weight: 600;
-        }
-
-        .summary .is-unpaid strong {
-            color: #ffb4b4;
-        }
-
-        .summary .is-paid strong {
-            color: #9ff0bd;
-        }
-
-        /* --- Recherche et filtres --------------------------------------------- */
-        .toolbar {
-            position: sticky;
-            top: 0;
-            z-index: 50;
-            background: var(--bg);
-            padding: 10px 14px 8px;
-            border-bottom: 1px solid var(--line);
-        }
-
-        .search-input-wrap {
-            position: relative;
-        }
-
-        .search-input-wrap input[type="text"] {
-            width: 100%;
-            height: 42px;
-            padding: 0 40px 0 12px;
-            border: 1px solid var(--line-strong);
-            border-radius: var(--radius);
-            background: var(--surface);
-            font-size: 16px;
-            outline: none;
-        }
-
-        .search-input-wrap input[type="text"]:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
-        }
-
-        .search-clear {
-            position: absolute;
-            right: 4px;
-            top: 4px;
-            width: 34px;
-            height: 34px;
-            border: none;
-            background: none;
-            color: var(--muted);
-            font-size: 20px;
-            cursor: pointer;
-        }
-
-        .filters {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 8px 14px;
-            margin-top: 8px;
-        }
-
-        .segmented {
-            display: inline-flex;
-            flex-wrap: wrap;
-            gap: 1px;
-            background: var(--line-strong);
-            border: 1px solid var(--line-strong);
-            border-radius: var(--radius);
-            overflow: hidden;
-        }
-
-        .session-pill,
-        .pay-mode {
-            position: relative;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 36px;
-            padding: 0 12px;
-            background: var(--surface);
-            border: none;
-            font-size: 14px;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .session-pill input {
-            position: absolute;
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        .session-pill.is-on,
-        .pay-mode.is-active {
-            background: var(--accent);
-            color: #fff;
-        }
-
-        .check {
-            display: inline-flex;
-            align-items: center;
-            gap: 7px;
-            font-size: 14px;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .check input,
-        .row-check {
-            width: 20px;
-            height: 20px;
-            margin: 0;
-            accent-color: var(--accent);
-        }
-
-        .results {
-            margin-left: auto;
-            display: inline-flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .results-count {
-            color: var(--muted);
-            font-size: 13px;
-        }
-
-        .select-all {
-            min-height: 36px;
-            padding: 0 12px;
-            border: 1px solid var(--accent);
-            border-radius: var(--radius);
-            background: var(--surface);
-            color: var(--accent);
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .select-all:disabled {
-            border-color: var(--line-strong);
-            color: var(--muted);
-            cursor: default;
-        }
-
-        /* --- Liste ------------------------------------------------------------ */
-        .app-content {
-            padding: 12px 14px;
-            padding-bottom: calc(210px + var(--safe-bottom));
-        }
-
-        .alert {
-            padding: 10px 12px;
-            border-radius: var(--radius);
-            border: 1px solid;
-            font-size: 14px;
-            margin-bottom: 12px;
-        }
-
-        .alert-success { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
-        .alert-error { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
-        .alert-info { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
-        .alert-warning { background: #fffbeb; border-color: #fde68a; color: #78350f; }
-
-        .list {
-            background: var(--surface);
-            border-radius: var(--radius);
-            box-shadow: 0 1px 2px rgba(20, 51, 107, 0.12);
-            overflow: hidden;
-        }
-
-        .empty-state {
-            padding: 28px 16px;
-            text-align: center;
-            color: var(--muted);
-        }
-
-        .kiosk-card {
-            display: grid;
-            grid-template-columns: auto 48px minmax(0, 1fr) auto;
-            align-items: center;
-            gap: 12px;
-            padding: 11px 14px;
-            border-top: 1px solid var(--line);
-            cursor: pointer;
-        }
-
-        .list > .kiosk-card:first-child,
-        #noResults[hidden] + .kiosk-card {
-            border-top: none;
-        }
-
-        .kiosk-card.is-selected {
-            background: var(--accent-soft);
-            box-shadow: inset 3px 0 0 var(--accent);
-        }
-
-        .row-target {
-            color: var(--accent);
-            font-size: 17px;
-            font-weight: 700;
-            text-align: center;
-            white-space: nowrap;
-        }
-
-        .row-target.is-unassigned {
-            color: var(--muted);
-            font-weight: 400;
-        }
-
-        .row-main {
-            min-width: 0;
-        }
-
-        .row-name {
-            font-weight: 600;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .row-name span {
-            font-weight: 400;
-        }
-
-        .row-meta {
-            margin-top: 2px;
-            color: var(--muted);
-            font-size: 13px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .row-flags {
-            margin-top: 3px;
-            font-size: 12px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 2px 10px;
-        }
-
-        .flag-warn { color: var(--unpaid); }
-        .flag-receipt { color: var(--warn); }
-        .flag-tarif { color: var(--accent); }
-
-        .row-amount {
-            text-align: right;
-            white-space: nowrap;
-        }
-
-        .amount {
-            font-size: 17px;
-            font-weight: 600;
-        }
-
-        .state {
-            margin-top: 2px;
-            font-size: 12px;
-        }
-
-        .state-unpaid { color: var(--unpaid); }
-        .state-paid { color: var(--paid); }
-
-        .kiosk-card.is-paid .row-target,
-        .kiosk-card.is-paid .row-name,
-        .kiosk-card.is-paid .amount {
-            color: var(--muted);
-        }
-
-        /* --- Barre d'encaissement --------------------------------------------- */
-        .bottom-bulk-bar {
-            position: fixed;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 60;
-            background: var(--surface);
-            border-top: 1px solid var(--line-strong);
-            padding: 10px 14px calc(10px + var(--safe-bottom));
-        }
-
-        .bottom-bulk-inner {
-            max-width: 832px;
-            margin: 0 auto;
-            display: grid;
-            gap: 10px;
-        }
-
-        .bulk-head {
-            display: flex;
-            align-items: baseline;
-            justify-content: space-between;
-            gap: 12px;
-            font-size: 14px;
-            color: var(--muted);
-        }
-
-        .bulk-head strong {
-            color: var(--text);
-            font-weight: 600;
-        }
-
-        .bulk-total strong {
-            font-size: 20px;
-        }
-
-        .bulk-details {
-            display: none;
-            gap: 10px;
-        }
-
-        .has-selection .bulk-details {
-            display: grid;
-        }
-
-        .pay-modes {
-            display: flex;
-        }
-
-        .pay-modes .pay-mode {
-            flex: 1 1 0;
-        }
-
-        .bulk-actions {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-        }
-
-        .btn-validate-wide {
-            flex: 1;
-            height: 48px;
-            border: none;
-            border-radius: var(--radius);
-            background: var(--accent);
-            color: var(--on-accent);
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .btn-validate-wide:disabled {
-            background: var(--line-strong);
-            color: var(--muted);
-            cursor: default;
-        }
-
-        @media (max-width: 520px) {
-            .kiosk-card {
-                grid-template-columns: auto 42px minmax(0, 1fr) auto;
-                gap: 10px;
-                padding: 10px 12px;
-            }
-
-            .app-content {
-                padding-left: 0;
-                padding-right: 0;
-            }
-
-            .list {
-                border-radius: 0;
-            }
-
-            .results {
-                margin-left: 0;
-                width: 100%;
-                justify-content: space-between;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="<?php echo registrarc_asset_url('assets/css/kiosk.css'); ?>">
 </head>
 
 <body>
@@ -841,8 +235,18 @@ foreach ($rows as $r) {
                     <div class="subtitle"><?php echo htmlspecialchars($tournamentName ?: 'RegistrArc'); ?></div>
                 </div>
 
-                <a href="index.php?desktop=1">Version complète</a>
+                <span class="topbar-links">
+                    <a href="aide.php#encaisser-sur-un-téléphone">Aide</a>
+                    <a href="index.php?desktop=1">Version complète</a>
+                </span>
             </div>
+
+            <?php if ($canWrite): ?>
+                <label class="operator">
+                    Opérateur
+                    <input type="text" id="operatorName" placeholder="Votre prénom" maxlength="40" autocomplete="off">
+                </label>
+            <?php endif; ?>
 
             <div class="summary num">
                 <span class="is-unpaid"><strong><?php echo intval($unpaidRows); ?></strong> à encaisser</span>
@@ -893,6 +297,10 @@ foreach ($rows as $r) {
         </div>
 
         <main class="app-content">
+            <?php if ($isClosed): ?>
+                <div class="alert alert-info">Concours clôturé : consultation seulement.</div>
+            <?php endif; ?>
+
             <?php if (!$dataDirStatus['ok']): ?>
                 <div class="alert alert-warning">
                     <strong>Attention :</strong>
@@ -915,12 +323,13 @@ foreach ($rows as $r) {
 
                 <?php foreach ($rows as $row): ?>
                     <?php
-                    $isPaid = ($row['payment_status'] === 'PAYE');
-                    $isFreeDue = !$isPaid && !empty($row['nothing_due']);
-                    // Payé ou gratuit : rien à encaisser, masqué par défaut comme les payés
-                    $isSettled = $isPaid || $isFreeDue;
+                    $isPaid = ($row['state'] === 'paid');
+                    // Payé, gratuit ou remboursé : rien à encaisser, masqué par défaut
+                    $isSettled = ($row['state'] !== 'due');
                     $amountData = number_format((float)$row['amount_due'], 2, '.', '');
+                    $faceLabel = registrarc_target_face_label($row['target_face']);
                     $searchText = mb_strtolower(
+                        $faceLabel . ' ' .
                         $row['licence'] . ' ' .
                         $row['nom'] . ' ' .
                         $row['prenom'] . ' ' .
@@ -967,7 +376,7 @@ foreach ($rows as $r) {
 
                             <div class="row-meta"><?php echo htmlspecialchars(implode(' · ', $meta)); ?></div>
 
-                            <?php if (!empty($row['target_is_unassigned']) || !empty($row['receipt_required']) || !empty($row['has_special_tarif'])): ?>
+                            <?php if (!empty($row['target_is_unassigned']) || !empty($row['receipt_required']) || !empty($row['has_special_tarif']) || $row['note'] !== ''): ?>
                                 <div class="row-flags">
                                     <?php if (!empty($row['target_is_unassigned'])): ?>
                                         <span class="flag-warn">Sans cible</span>
@@ -980,6 +389,35 @@ foreach ($rows as $r) {
                                     <?php if (!empty($row['has_special_tarif'])): ?>
                                         <span class="flag-tarif"><?php echo htmlspecialchars($row['tarif_label']); ?></span>
                                     <?php endif; ?>
+
+                                    <?php if ($row['note'] !== ''): ?>
+                                        <span class="flag-note"><?php echo htmlspecialchars($row['note']); ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Blason de l'archer (images de cibles d'I@nseo), entre le nom et le prix -->
+                        <?php
+                        // En rouge : blason différent du blason par défaut de la catégorie dans I@nseo
+                        $faceNotDefault = $faceLabel !== '' && empty($row['target_face']['is_default']);
+                        $faceTitle = $faceLabel === '' ? '' : 'Blason : ' . $faceLabel
+                            . ($faceNotDefault ? ' (blason par défaut de la catégorie : ' . $row['target_face']['default_name'] . ')' : '');
+                        ?>
+                        <div class="row-face<?php echo $faceNotDefault ? ' is-not-default' : ''; ?>"<?php echo $faceTitle !== '' ? ' title="' . htmlspecialchars($faceTitle) . '"' : ''; ?>>
+                            <?php if ($faceLabel !== ''): ?>
+                                <div class="face-images">
+                                    <?php foreach ($row['target_face']['faces'] as $face): ?>
+                                        <?php if ($face['image'] !== ''): ?>
+                                            <img src="<?php echo htmlspecialchars($face['image']); ?>" alt="" width="26" height="26" loading="lazy">
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                </div>
+                                <div class="face-text">
+                                    <?php if ($row['target_face']['name'] !== ''): ?>
+                                        <div class="face-name"><?php echo htmlspecialchars($row['target_face']['name']); ?></div>
+                                    <?php endif; ?>
+                                    <div class="face-size num"><?php echo htmlspecialchars(registrarc_target_face_sizes($row['target_face'])); ?></div>
                                 </div>
                             <?php endif; ?>
                         </div>
@@ -992,8 +430,10 @@ foreach ($rows as $r) {
                                 <?php
                                 if ($isPaid) {
                                     echo htmlspecialchars('Payé' . ($row['payment_method_label'] !== '' ? ' · ' . $row['payment_method_label'] : ''));
-                                } elseif ($isFreeDue) {
+                                } elseif ($row['state'] === 'free') {
                                     echo 'Rien à payer';
+                                } elseif ($row['state'] === 'refunded') {
+                                    echo 'Remboursé';
                                 } else {
                                     echo 'À payer';
                                 }
@@ -1053,403 +493,7 @@ foreach ($rows as $r) {
         </div>
     </form>
 
-    <script>
-        const KIOSK_FILTERS_KEY = 'RegistrArcKioskFilters_<?php echo intval($TourId); ?>';
-
-        let KIOSK_FILTERS_LOADING = false;
-
-        function sessionCheckboxes() {
-            return Array.from(document.querySelectorAll('.session-filter'));
-        }
-
-        function ensureAtLeastTwoSessionsSelected() {
-            const boxes = sessionCheckboxes();
-
-            if (boxes.length === 0) {
-                return;
-            }
-
-            const checked = boxes.filter(cb => cb.checked);
-
-            if (checked.length > 0) {
-                return;
-            }
-
-            boxes.slice(0, Math.min(2, boxes.length)).forEach(cb => {
-                cb.checked = true;
-            });
-        }
-
-        function selectedSessions() {
-            ensureAtLeastTwoSessionsSelected();
-
-            const checked = Array.from(document.querySelectorAll('.session-filter:checked'));
-            return checked.map(input => String(input.value || ''));
-        }
-
-        function saveKioskFiltersState() {
-            if (KIOSK_FILTERS_LOADING) {
-                return;
-            }
-
-            ensureAtLeastTwoSessionsSelected();
-
-            const searchInput = document.getElementById('kioskSearch');
-            const showPaidCheckbox = document.getElementById('showPaidCheckbox');
-
-            const state = {
-                selectedSessions: selectedSessions(),
-                showPaid: showPaidCheckbox ? !!showPaidCheckbox.checked : false,
-                search: searchInput ? String(searchInput.value || '') : ''
-            };
-
-            try {
-                localStorage.setItem(KIOSK_FILTERS_KEY, JSON.stringify(state));
-            } catch (e) {
-                // localStorage indisponible : pas bloquant
-            }
-        }
-
-        function loadKioskFiltersState() {
-            KIOSK_FILTERS_LOADING = true;
-
-            let state = null;
-
-            try {
-                const raw = localStorage.getItem(KIOSK_FILTERS_KEY);
-
-                if (raw) {
-                    state = JSON.parse(raw);
-                }
-            } catch (e) {
-                state = null;
-            }
-
-            const boxes = sessionCheckboxes();
-            const searchInput = document.getElementById('kioskSearch');
-            const showPaidCheckbox = document.getElementById('showPaidCheckbox');
-
-            if (state && Array.isArray(state.selectedSessions)) {
-                boxes.forEach(cb => {
-                    cb.checked = state.selectedSessions.indexOf(String(cb.value || '')) !== -1;
-                });
-            } else {
-                boxes.forEach(cb => {
-                    cb.checked = true;
-                });
-            }
-
-            ensureAtLeastTwoSessionsSelected();
-
-            if (showPaidCheckbox) {
-                showPaidCheckbox.checked = state ? !!state.showPaid : false;
-            }
-
-            if (searchInput) {
-                searchInput.value = state && typeof state.search === 'string' ? state.search : '';
-            }
-
-            document.querySelectorAll('.bulk-checkbox').forEach(cb => {
-                cb.checked = false;
-            });
-
-            document.querySelectorAll('.kiosk-card').forEach(card => {
-                card.classList.remove('is-selected');
-            });
-
-            const groupInput = document.getElementById('create_cheque_group_after_payment');
-
-            if (groupInput) {
-                groupInput.value = '0';
-            }
-
-            KIOSK_FILTERS_LOADING = false;
-        }
-
-        function formatEuro(value) {
-            const amount = Number(value || 0);
-
-            if (Number.isNaN(amount)) {
-                return '0 €';
-            }
-
-            if (Math.floor(amount) === amount) {
-                return String(amount) + ' €';
-            }
-
-            return amount.toLocaleString('fr-FR', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }) + ' €';
-        }
-
-        function filterCards() {
-            ensureAtLeastTwoSessionsSelected();
-
-            const input = document.getElementById('kioskSearch');
-            const query = String(input ? input.value : '').toLowerCase();
-            const showPaid = document.getElementById('showPaidCheckbox')
-                ? document.getElementById('showPaidCheckbox').checked
-                : false;
-
-            const selected = selectedSessions();
-            const hasSessionFilter = selected.length > 0;
-            const cards = document.querySelectorAll('.kiosk-card');
-            let visible = 0;
-
-            cards.forEach(card => {
-                const haystack = String(card.dataset.search || '');
-                const session = String(card.dataset.session || '');
-                const isPaid = String(card.dataset.paid || '0') === '1';
-
-                const matchesSearch = query === '' || haystack.indexOf(query) !== -1;
-                const matchesSession = !hasSessionFilter || selected.indexOf(session) !== -1;
-                const matchesPaid = showPaid || !isPaid;
-
-                if (matchesSearch && matchesSession && matchesPaid) {
-                    card.style.display = '';
-                    visible++;
-                } else {
-                    card.style.display = 'none';
-
-                    const checkbox = card.querySelector('.bulk-checkbox');
-
-                    if (checkbox) {
-                        checkbox.checked = false;
-                    }
-
-                    card.classList.remove('is-selected');
-                }
-            });
-
-            const visibleCount = document.getElementById('visibleCount');
-
-            if (visibleCount) {
-                visibleCount.textContent = String(visible);
-            }
-
-            const noResults = document.getElementById('noResults');
-
-            if (noResults) {
-                noResults.hidden = visible > 0;
-            }
-
-            syncToggles();
-            updateBulkSummary();
-            saveKioskFiltersState();
-        }
-
-        // Aspect "activé" des pastilles de départ, de l'interrupteur Payés et du bouton Reçu
-        function syncToggles() {
-            document.querySelectorAll('.session-pill, .switch, .pay-receipt').forEach(label => {
-                const input = label.querySelector('input');
-                label.classList.toggle('is-on', !!(input && input.checked));
-            });
-        }
-
-        // Les boutons de mode de paiement pilotent la liste cachée bulk_payment_method
-        function selectPaymentMode(btn) {
-            const select = document.getElementById('bulk_payment_method');
-
-            if (select) {
-                select.value = String(btn.dataset.code || '');
-            }
-
-            syncPaymentModes();
-        }
-
-        function syncPaymentModes() {
-            const current = currentBulkPaymentMethod();
-
-            document.querySelectorAll('.pay-mode').forEach(btn => {
-                btn.classList.toggle('is-active', String(btn.dataset.code || '').toUpperCase() === current);
-            });
-        }
-
-        function clearSearch() {
-            const input = document.getElementById('kioskSearch');
-
-            if (input) {
-                input.value = '';
-                input.focus();
-            }
-
-            filterCards();
-        }
-
-        function selectedBulkCheckboxes() {
-            return Array.from(document.querySelectorAll('.bulk-checkbox:checked'));
-        }
-
-        function selectedBulkCount() {
-            return selectedBulkCheckboxes().length;
-        }
-
-        function selectedBulkTotal() {
-            let total = 0;
-
-            selectedBulkCheckboxes().forEach(cb => {
-                const card = cb.closest('.kiosk-card');
-
-                if (!card) {
-                    return;
-                }
-
-                const amount = Number(card.dataset.amount || 0);
-
-                if (!Number.isNaN(amount)) {
-                    total += amount;
-                }
-            });
-
-            return total;
-        }
-
-        function visibleCards() {
-            return Array.from(document.querySelectorAll('.kiosk-card')).filter(card => card.style.display !== 'none');
-        }
-
-        // Coche toutes les lignes affichées, ou les décoche si elles le sont déjà toutes
-        function toggleSelectAllVisible() {
-            const boxes = visibleCards()
-                .map(card => card.querySelector('.bulk-checkbox'))
-                .filter(cb => cb);
-            const allChecked = boxes.length > 0 && boxes.every(cb => cb.checked);
-
-            boxes.forEach(cb => {
-                cb.checked = !allChecked;
-            });
-
-            updateBulkSummary();
-        }
-
-        function updateSelectAllButton() {
-            const btn = document.getElementById('selectAllBtn');
-
-            if (!btn) {
-                return;
-            }
-
-            const boxes = visibleCards()
-                .map(card => card.querySelector('.bulk-checkbox'))
-                .filter(cb => cb);
-            const allChecked = boxes.length > 0 && boxes.every(cb => cb.checked);
-
-            btn.disabled = boxes.length === 0;
-            btn.textContent = allChecked ? 'Tout désélectionner' : 'Tout sélectionner';
-        }
-
-        function updateBulkSummary() {
-            const count = selectedBulkCount();
-            const total = selectedBulkTotal();
-
-            const countEl = document.getElementById('bulkCount');
-            const totalEl = document.getElementById('bulkTotal');
-
-            if (countEl) {
-                countEl.textContent = String(count);
-            }
-
-            if (totalEl) {
-                totalEl.textContent = formatEuro(total);
-            }
-
-            const form = document.getElementById('bulkForm');
-
-            if (form) {
-                form.classList.toggle('has-selection', count > 0);
-            }
-
-            const submit = document.getElementById('bulkSubmit');
-
-            if (submit) {
-                submit.disabled = count === 0;
-                submit.textContent = count === 0
-                    ? 'Valider'
-                    : (total > 0 ? 'Encaisser ' + formatEuro(total) : 'Valider ' + count + ' engagement(s)');
-            }
-
-            document.querySelectorAll('.kiosk-card').forEach(card => {
-                const cb = card.querySelector('.bulk-checkbox');
-
-                if (cb && cb.checked) {
-                    card.classList.add('is-selected');
-                } else {
-                    card.classList.remove('is-selected');
-                }
-            });
-
-            updateSelectAllButton();
-        }
-
-        function currentBulkPaymentMethod() {
-            const select = document.getElementById('bulk_payment_method');
-            return select ? String(select.value || '').toUpperCase() : '';
-        }
-
-        function confirmBulk() {
-            const count = selectedBulkCount();
-            const total = selectedBulkTotal();
-            const method = currentBulkPaymentMethod();
-            const groupInput = document.getElementById('create_cheque_group_after_payment');
-
-            if (groupInput) {
-                groupInput.value = '0';
-            }
-
-            if (count === 0) {
-                alert('Aucun engagement sélectionné.');
-                return false;
-            }
-
-            if (method === 'CHQ' && count >= 2) {
-                const createGroup = confirm(
-                    'Valider le paiement par chèque pour ' + count + ' engagement(s) ?\n\n' +
-                    'Total dû : ' + formatEuro(total) + '\n\n' +
-                    'Créer un chèque groupé pour ces engagements ?'
-                );
-
-                if (groupInput) {
-                    groupInput.value = createGroup ? '1' : '0';
-                }
-
-                return true;
-            }
-
-            return confirm(
-                'Valider le paiement pour ' + count + ' engagement(s) ?\n\n' +
-                'Total dû : ' + formatEuro(total)
-            );
-        }
-
-        function toggleCardSelection(event, card) {
-            if (event.target.closest('input, button, select, a, label, summary')) {
-                return;
-            }
-
-            const checkbox = card.querySelector('.bulk-checkbox');
-
-            if (!checkbox) {
-                return;
-            }
-
-            checkbox.checked = !checkbox.checked;
-            updateBulkSummary();
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            loadKioskFiltersState();
-            syncPaymentModes();
-            updateBulkSummary();
-            filterCards();
-        });
-
-        window.addEventListener('pageshow', function() {
-            loadKioskFiltersState();
-            syncPaymentModes();
-            updateBulkSummary();
-            filterCards();
-        });
-    </script>
+    <script>const KIOSK_FILTERS_KEY = 'RegistrArcKioskFilters_<?php echo intval($TourId); ?>';</script>
+    <script src="<?php echo registrarc_asset_url('assets/js/kiosk.js'); ?>"></script>
 </body>
 </html>

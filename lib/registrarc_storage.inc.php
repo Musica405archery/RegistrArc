@@ -40,6 +40,26 @@ function registrarc_storage_protect_dir($dir) {
         );
     }
 
+    // Serveur IIS : refuse tous les fichiers du dossier (filtrage de requêtes intégré)
+    $webConfig = $dir . '/web.config';
+
+    if (!is_file($webConfig)) {
+        @file_put_contents(
+            $webConfig,
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            . "<!-- RegistrArc : données privées, aucun accès web direct -->\n"
+            . "<configuration>\n"
+            . "    <system.webServer>\n"
+            . "        <security>\n"
+            . "            <requestFiltering>\n"
+            . "                <fileExtensions allowUnlisted=\"false\" />\n"
+            . "            </requestFiltering>\n"
+            . "        </security>\n"
+            . "    </system.webServer>\n"
+            . "</configuration>\n"
+        );
+    }
+
     $index = $dir . '/index.html';
 
     if (!is_file($index)) {
@@ -145,7 +165,11 @@ function registrarc_storage_replace($file, array $data) {
         return false;
     }
 
-    flock($lock, LOCK_EX);
+    if (!flock($lock, LOCK_EX)) {
+        fclose($lock);
+        registrarc_storage_error("Verrouillage impossible pour " . basename($file) . ".");
+        return false;
+    }
 
     try {
         return registrarc_storage_write($file, $data);

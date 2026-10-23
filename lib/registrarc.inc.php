@@ -9,6 +9,11 @@
 // ============================================================================
 
 require_once(dirname(__FILE__) . '/registrarc_storage.inc.php');
+require_once(dirname(__FILE__) . '/registrarc_engagements.inc.php');
+require_once(dirname(__FILE__) . '/registrarc_caisse.inc.php');
+require_once(dirname(__FILE__) . '/registrarc_ui.inc.php');
+require_once(dirname(__FILE__) . '/registrarc_invoices.inc.php');
+require_once(dirname(__FILE__) . '/registrarc_backup.inc.php');
 
 // ---------------------------------------------------------------------------
 // Paramètres module avec fallback ancien Greffe2
@@ -28,8 +33,9 @@ function registrarc_get_module_parameter($name, $default = '') {
 // ---------------------------------------------------------------------------
 // Dossiers / fichiers JSON
 // ---------------------------------------------------------------------------
+// REGISTRARC_DATA_DIR permet aux tests de travailler dans un dossier temporaire
 function registrarc_data_dir() {
-    return dirname(dirname(__FILE__)) . '/data';
+    return defined('REGISTRARC_DATA_DIR') ? REGISTRARC_DATA_DIR : dirname(dirname(__FILE__)) . '/data';
 }
 
 function registrarc_payments_file_path($TourId) {
@@ -141,6 +147,21 @@ function registrarc_safe_filename_part($value) {
 
     $value = preg_replace('/[^A-Za-z0-9_\-]+/', '_', $value);
     return trim($value, '_');
+}
+
+// Cellule de tableur : une valeur saisie (note, nom, club) qui commence par
+// = + - @ serait exécutée comme une formule par Excel ou LibreOffice.
+// Une apostrophe en tête la garde en texte ; les nombres (-12,50) restent des nombres.
+function registrarc_csv_cell($value) {
+    if (!is_string($value) || $value === '') {
+        return $value;
+    }
+
+    if (preg_match('/^-?\d+([.,]\d+)?$/', $value)) {
+        return $value;
+    }
+
+    return preg_match('/^[=+\-@\t\r]/', $value) ? "'" . $value : $value;
 }
 
 function registrarc_timestamp_from_value($value) {
@@ -667,10 +688,15 @@ function registrarc_normalize_settings($TourId, $settings) {
         'age_classes' => registrarc_default_age_classes(),
         'payment_modes' => registrarc_default_payment_modes(),
         'rules' => [],
+        'options' => registrarc_default_pricing_options(),
     ];
 
     if (!is_array($settings)) {
         return $out;
+    }
+
+    if (isset($settings['options'])) {
+        $out['options'] = registrarc_normalize_pricing_options($settings['options']);
     }
 
     if (isset($settings['tarifs']) && is_array($settings['tarifs'])) {
@@ -1100,12 +1126,17 @@ function registrarc_check_token() {
     return '';
 }
 
-// Retourne '' si l'envoi est valide, sinon le message d'erreur à afficher
-function registrarc_check_form($TourId) {
+// Retourne '' si l'envoi est valide, sinon le message d'erreur à afficher.
+// Un concours clôturé refuse toute modification, sauf sa réouverture ($allowWhenClosed).
+function registrarc_check_form($TourId, $allowWhenClosed = false) {
     $tokenError = registrarc_check_token();
 
     if ($tokenError !== '') {
         return $tokenError;
+    }
+
+    if (!$allowWhenClosed && registrarc_is_closed($TourId)) {
+        return "Le concours est clôturé : aucune modification n'est possible. Il peut être rouvert depuis le tableau de bord.";
     }
 
     $postedTour = isset($_POST['registrarc_tour']) ? intval($_POST['registrarc_tour']) : 0;
