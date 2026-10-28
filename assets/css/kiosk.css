@@ -347,6 +347,12 @@ select {
     text-overflow: ellipsis;
 }
 
+/* Archer surclassé : catégorie d'âge différente de la catégorie de classement */
+.row-meta .is-upgraded {
+    color: var(--unpaid);
+    font-weight: 600;
+}
+
 .row-flags {
     margin-top: 3px;
     font-size: 12px;

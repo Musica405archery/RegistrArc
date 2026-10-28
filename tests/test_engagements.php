@@ -96,3 +96,15 @@ test('paramètres illisibles : tarifs par défaut', function () {
     $e = registrarc_load_engagements(1, true);
     assert_same(10.0, $e[$id]['amount_due']);
 });
+
+test('surclassé : catégorie d\'âge différente de la catégorie de classement', function () {
+    $up = test_add_entry('A1', 'CLU18F', '1099000', 1, '1', 'A', ['class_code' => 'U18F', 'age_class' => 'U15F']);
+    $same = test_add_entry('B1', 'CLU18F', '1099000', 1, '1', 'B', ['class_code' => 'U18F', 'age_class' => 'u18f']);
+    $unknown = test_add_entry('C1', 'CLS1H', '1099000', 1, '1', 'C', ['class_code' => 'S1H', 'age_class' => '']);
+
+    $e = registrarc_load_engagements(1, true);
+    assert_true($e[$up]['is_upgraded'], 'U15 qui tire en U18');
+    assert_same('U15F', $e[$up]['age_class']);
+    assert_same(false, $e[$same]['is_upgraded'], 'même catégorie, casse différente');
+    assert_same(false, $e[$unknown]['is_upgraded'], 'date de naissance inconnue : pas signalé');
+});

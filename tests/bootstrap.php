@@ -56,6 +56,8 @@ function test_add_entry($licence, $categorie, $clubCode, $session = 1, $target =
         'nom' => 'NOM' . $id,
         'prenom' => 'Prénom' . $id,
         'categorie' => $categorie,
+        'class_code' => '',
+        'age_class' => '',
         'club' => 'Club ' . $clubCode,
         'country_code' => $clubCode,
         'session_no' => $session,

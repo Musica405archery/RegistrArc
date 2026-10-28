@@ -144,6 +144,9 @@ foreach (registrarc_load_engagements($TourId) as $engagement) {
         'nom' => $engagement['nom'],
         'prenom' => $engagement['prenom'],
         'categorie' => $engagement['categorie'],
+        'age_class' => $engagement['age_class'],
+        'class_code' => $engagement['class_code'],
+        'is_upgraded' => $engagement['is_upgraded'],
         'club' => $engagement['club'],
         'country_code' => $engagement['country_code'],
         'session' => $engagement['session'],
@@ -336,13 +339,23 @@ foreach ($rows as $r) {
                         $row['club'] . ' ' .
                         $row['country_code'] . ' ' .
                         $row['categorie'] . ' ' .
+                        (!empty($row['is_upgraded']) ? 'surclassé ' : '') .
                         $row['tarif_label']
                     );
                     // Départ et catégorie d'abord : le club, souvent long, est coupé en premier
+                    // Départ, catégorie (en rouge si surclassé), club ; chaque morceau échappé
+                    $categoryHtml = htmlspecialchars($row['categorie']);
+
+                    if (!empty($row['is_upgraded'])) {
+                        $categoryHtml = '<span class="is-upgraded" title="'
+                            . htmlspecialchars('Surclassé : catégorie d\x27âge ' . $row['age_class'] . ', tire en ' . $row['class_code']) . '">'
+                            . $categoryHtml . '</span>';
+                    }
+
                     $meta = array_filter([
-                        $row['session'] !== '' ? 'Départ ' . $row['session'] : '',
-                        $row['categorie'],
-                        $row['club'],
+                        $row['session'] !== '' ? htmlspecialchars('Départ ' . $row['session']) : '',
+                        $row['categorie'] !== '' ? $categoryHtml : '',
+                        htmlspecialchars($row['club']),
                     ]);
                     ?>
                     <div
@@ -374,7 +387,7 @@ foreach ($rows as $r) {
                                 <span><?php echo htmlspecialchars($row['prenom']); ?></span>
                             </div>
 
-                            <div class="row-meta"><?php echo htmlspecialchars(implode(' · ', $meta)); ?></div>
+                            <div class="row-meta"><?php echo implode(' · ', $meta); ?></div>
 
                             <?php if (!empty($row['target_is_unassigned']) || !empty($row['receipt_required']) || !empty($row['has_special_tarif']) || $row['note'] !== ''): ?>
                                 <div class="row-flags">
