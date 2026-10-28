@@ -462,7 +462,8 @@ En haut, choisissez la **page** qui correspond à votre rôle, et éventuellemen
   </tr>
 </table>
 
-- **La carte des clubs** place une bulle par département, d'après le numéro de club FFTA (3e et 4e chiffres) ; sa taille suit le nombre d'archers et le survol donne la liste des clubs. Le fond de carte vient d'OpenStreetMap et demande une connexion internet : sans internet, les bulles restent placées sur un fond vide. Les clubs dont le numéro ne correspond à aucun département (club étranger par exemple) sont listés sous la carte.
+- **La carte des clubs** place une bulle par club, sur sa ville. I@nseo ne connaissant pas la ville des clubs, RegistrArc la cherche dans le nom du club, parmi les communes de son département (3e et 4e chiffres du numéro de club FFTA). La taille de la bulle suit le nombre d'archers ; le survol donne le club, ses archers, ses engagements, son reste dû et sa ville. Une bulle **pâle en pointillé** signale un club dont la ville n'a pas été trouvée : il est placé au centre de son département.
+- **Villes des clubs** (lien sous la carte, ou bouton dans « Outils ») : la liste des clubs du concours avec la ville trouvée ; tapez une autre commune pour corriger ou compléter (des suggestions s'affichent). La correction est retenue pour tous les concours suivants ; laissez le champ vide pour revenir à la ville trouvée automatiquement. Le fond de carte vient d'OpenStreetMap et demande une connexion internet : sans internet, les bulles restent placées sur un fond vide. Les clubs dont le numéro ne correspond à aucun département (club étranger par exemple) sont listés sous la carte.
 
 <img src="docs/images/carte-clubs.jpg" alt="Carte des clubs par département" width="100%">
 

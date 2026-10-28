@@ -151,6 +151,7 @@ registrarc_render_flash($flash);
         <div class="rg-form">
             <a class="rg-btn" href="helloasso.php">Importer des paiements HelloAsso</a>
             <a class="rg-btn" href="qrcodes.php">Imprimer les QR codes</a>
+            <a class="rg-btn" href="clubs.php">Villes des clubs (carte)</a>
         </div>
     </div>
 </div>
