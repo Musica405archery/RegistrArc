@@ -1,7 +1,7 @@
 {
-    "version": "1.2.2",
+    "version": "1.2.3",
     "date": "2026-10-28",
-    "notes": "Version 1.2.2 : vérification du système de mise à jour automatique (contenu identique à la 1.2.1).\n\nNouveautés depuis la version 1.1.0 :\n\n- Aide : le mode d'emploi est consultable dans le module (bouton « ? Aide »), même sans internet, avec un sommaire qui suit la lecture.\n- Tableau de bord en trois pages (Greffe, Trésorier, Terrain) : chiffres clés, points à vérifier signalés, graphiques interactifs, filtre par départ.\n- Carte des clubs : une bulle par club, placée sur sa ville (trouvée dans le nom du club, corrigeable dans la page « Villes des clubs »).\n- Mode Kiosk : blason de chaque archer (en rouge s'il n'est pas celui de sa catégorie) et archers surclassés signalés en rouge.\n- Mode Kiosk : un archer remboursé n'est plus compté dans « à encaisser » ni dans « restant dû ».\n- Mise à jour plus sûre : chaque fichier téléchargé est vérifié avant d'être installé.\n- Export tableur protégé contre les formules ; version installée affichée dans les paramètres ; pages plus rapides à charger.",
+    "notes": "Version 1.2.3 : la mise à jour installe toujours la dernière version publiée, avec tous ses fichiers ensemble (plus d'attente après une publication).\n\nNouveautés depuis la version 1.1.0 :\n\n- Aide : le mode d'emploi est consultable dans le module (bouton « ? Aide »), même sans internet, avec un sommaire qui suit la lecture.\n- Tableau de bord en trois pages (Greffe, Trésorier, Terrain) : chiffres clés, points à vérifier signalés, graphiques interactifs, filtre par départ.\n- Carte des clubs : une bulle par club, placée sur sa ville (trouvée dans le nom du club, corrigeable dans la page « Villes des clubs »).\n- Mode Kiosk : blason de chaque archer (en rouge s'il n'est pas celui de sa catégorie) et archers surclassés signalés en rouge.\n- Mode Kiosk : un archer remboursé n'est plus compté dans « à encaisser » ni dans « restant dû ».\n- Mise à jour plus sûre : chaque fichier téléchargé est vérifié avant d'être installé.\n- Export tableur protégé contre les formules ; version installée affichée dans les paramètres ; pages plus rapides à charger.",
     "files": [
         "index.php",
         "kiosk.php",
@@ -71,7 +71,7 @@
         "version.json"
     ],
     "sha256": {
-        "README.md": "3179e7fcb7ed51805213e5f13948fcd72610724988d03409910c1f0663dc15b4",
+        "README.md": "27d54c51ea4a0e17708a24cb83acffb84de00b65946fb69a415be08fd5ee3161",
         "aide.php": "82be1bbba8f74d5b90a06c25abcd0cc96b85123bb8c925401cd30d57ec08353c",
         "assets/css/admin.css": "de4321e2439354dff90a0ea41922a9cfe46cf464f04f842db74afdcb300238da",
         "assets/css/aide.css": "a1037ffaaeb7f25909015962aa35a365ddb95947555089ad077af425ccf853a2",
@@ -132,9 +132,9 @@
         "lib/registrarc_page.inc.php": "a2255caec46d923123a641da403266ffa85048614bd43254fb925488f0ee4b23",
         "lib/registrarc_storage.inc.php": "d5dae6bfe292f0defacf21a31d2e02de63ada14691088261aabfee831152036e",
         "lib/registrarc_ui.inc.php": "c981b01d0b24c484d32f6dc8a879b2a68c9c68ca85fffdd12dc485cd9ebc6c5f",
-        "lib/registrarc_update.inc.php": "4ac64bde2750a9abcfd7ad2c56da7210f6c0032a733ceb60b5d0c8ea370f9a94",
+        "lib/registrarc_update.inc.php": "a1497b5b1dce99f4b7dcd32752f8a1c3cbe5768389ef5d4e7ceaf047d90b7516",
         "menu.php": "7e6639a04bc5e4cbf7bc6edf6d1191b32959012413f39d1c60a620dd3952b512",
         "qrcodes.php": "9a5597eb7a160ab5f8e486aaac0bc6dfe6d94dbc51a99b0d682ce3b9f1ce9ec9",
-        "update.php": "79bb3923f093e0fffa9f80173a55bde78130a89a19f5983ccbb7cce564be4f2f"
+        "update.php": "f3473062eadcfafb5f031d1ed97b075161253d163779068dfc9f6c89dd3d981b"
     }
 }

@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/module-I%40nseo-14336b" alt="Module I@nseo">
-  <img src="https://img.shields.io/badge/version-1.2.2-14336b" alt="Version 1.2.2">
+  <img src="https://img.shields.io/badge/version-1.2.3-14336b" alt="Version 1.2.3">
   <img src="https://img.shields.io/badge/langue-fran%C3%A7ais-14336b" alt="En français">
   <img src="https://img.shields.io/badge/tir%20%C3%A0%20l'arc-greffe-e3242b" alt="Tir à l'arc, greffe">
 </p>
@@ -551,6 +551,8 @@ Le bouton ouvre une page qui montre la version installée, la nouvelle version e
 
 - Vos paiements et vos réglages ne sont pas touchés.
 - Chaque fichier téléchargé est vérifié avant d'être installé ; si un seul ne correspond pas, ou si l'installation échoue en route, rien n'est changé.
+- La mise à jour installe toujours la dernière version publiée, et tous ses fichiers ensemble.
+- Le module vérifie s'il existe une nouvelle version toutes les 6 heures. Pour vérifier tout de suite, l'administrateur ouvre la page de mise à jour avec `update.php?force=1`.
 - Sans internet, RegistrArc fonctionne normalement : le bouton n'apparaît simplement pas.
 
 </details>
@@ -645,7 +647,7 @@ Le concours a été clôturé depuis le tableau de bord. Rouvrez-le au même end
 
 <br>
 
-Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.2 »), et dans le sous-titre de la page d'aide.
+Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.3 »), et dans le sous-titre de la page d'aide.
 
 </details>
 

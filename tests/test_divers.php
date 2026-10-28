@@ -109,3 +109,23 @@ test('version.json : chaque fichier distribué existe et a son empreinte', funct
         assert_true(in_array($required, $version['files'], true), "$required distribué");
     }
 });
+
+test('mise à jour : dernière version lue à un commit précis', function () {
+    $cfg = ['github_url' => 'https://github.com/Musica405archery/RegistrArc', 'github_branch' => 'main', 'github_path' => '', 'github_token' => '', 'github_ref' => 'latest'];
+    $sha = str_repeat('ab', 20);
+
+    assert_same('https://raw.githubusercontent.com/Musica405archery/RegistrArc/' . $sha, registrarc_update_raw_base($cfg, $sha), 'fichiers lus au commit');
+    assert_same('https://raw.githubusercontent.com/Musica405archery/RegistrArc/main', registrarc_update_raw_base($cfg), 'repli sur la branche');
+    assert_same(['Musica405archery', 'RegistrArc'], registrarc_update_github_repo($cfg));
+    assert_same('', registrarc_update_latest_commit(['github_ref' => 'branch'] + $cfg), 'ancienne méthode : pas d\'appel à l\'API');
+    assert_same('', registrarc_update_latest_commit(['github_url' => 'https://exemple.fr/x'] + $cfg), 'adresse invalide');
+});
+
+test('mise à jour : "latest" par défaut, même sans la ligne dans module.json', function () {
+    $repo = json_decode(file_get_contents(dirname(dirname(__FILE__)) . '/module.json'), true);
+    assert_same('latest', $repo['github_ref'], 'module.json du dépôt');
+    assert_same('', registrarc_update_github_repo(['github_url' => '']) === null ? '' : 'x');
+
+    $defaults = registrarc_update_config();
+    assert_same('latest', $defaults['github_ref']);
+});
