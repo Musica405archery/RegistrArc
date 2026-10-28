@@ -185,8 +185,8 @@ include('Common/Templates/head.php');
                     <span style="color:#991b1b;font-weight:400;">Vérification impossible : <?php echo htmlspecialchars($status['error']); ?></span>
                 <?php else: ?>
                     <?php echo htmlspecialchars($status['remote']); ?>
-                    <?php if ($status['date'] !== ''): ?>
-                        <span style="font-weight:400;color:#6b7280;">(<?php echo htmlspecialchars($status['date']); ?>)</span>
+                    <?php if ($status['date'] !== '' || !empty($status['commit'])): ?>
+                        <span style="font-weight:400;color:#6b7280;">(<?php echo htmlspecialchars(implode(' · ', array_filter([$status['date'], !empty($status['commit']) ? 'commit ' . $status['commit'] : '']))); ?>)</span>
                     <?php endif; ?>
                 <?php endif; ?>
             </dd>

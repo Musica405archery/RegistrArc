@@ -94,8 +94,9 @@ Commun à tous les tournois : `invoices.json`, registre des factures émises (co
 
 ## Mise à jour du module
 
-- `module.json` indique le dépôt (`github_url`), la branche (`github_branch`, `main` par défaut) et le dossier (`github_path`). Il n'est jamais remplacé par une mise à jour.
-- La version publiée est lue dans `version.json` sur la branche indiquée. Le résultat est gardé en cache dans `data/update_check.json` : 6 h, ou 30 min après un échec.
+- `module.json` indique le dépôt (`github_url`), la branche (`github_branch`, `main` par défaut), le dossier (`github_path`) et la façon de lire la dernière version (`github_ref`). Il n'est jamais remplacé par une mise à jour.
+- **Toujours la dernière version** (`"github_ref": "latest"`, valeur par défaut, même si la ligne manque) : le module demande à l'API GitHub le dernier commit de la branche (`api.github.com/repos/…/commits/<branche>`), puis lit `version.json` et **tous les fichiers à ce commit précis**. Le cache de `raw.githubusercontent.com` (plusieurs minutes) ne joue plus, et une installation ne peut jamais mélanger deux versions. Le commit lu s'affiche sur la page de mise à jour. Si l'API ne répond pas (hors ligne, limite de 60 requêtes par heure sans jeton), repli automatique sur la lecture à la branche. `"github_ref": "branch"` force l'ancienne méthode.
+- La version publiée est lue dans `version.json` (au dernier commit, voir ci-dessus). Le résultat est gardé en cache dans `data/update_check.json` : 6 h, ou 30 min après un échec. `update.php?force=1` refait la vérification tout de suite.
 - L'installation télécharge d'abord tous les fichiers listés dans `files` dans un dossier temporaire et ne remplace rien si un seul échoue. Les fichiers remplacés sont sauvegardés dans `data/backup_<version>_<date>/`. `version.json` est remplacé en dernier. `data/` et `module.json` ne sont jamais touchés.
 - Chaque fichier téléchargé doit correspondre à son empreinte SHA-256 (`sha256` dans `version.json`), sinon rien n'est installé. Cela écarte un fichier tronqué, ou un mélange de versions quand le cache de GitHub sert encore d'anciens fichiers juste après une publication. Ces empreintes viennent du même dépôt que les fichiers : elles ne protègent pas contre un dépôt GitHub compromis.
 
