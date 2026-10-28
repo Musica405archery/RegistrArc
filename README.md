@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/module-I%40nseo-14336b" alt="Module I@nseo">
-  <img src="https://img.shields.io/badge/version-1.2.1-14336b" alt="Version 1.2.1">
+  <img src="https://img.shields.io/badge/version-1.2.2-14336b" alt="Version 1.2.2">
   <img src="https://img.shields.io/badge/langue-fran%C3%A7ais-14336b" alt="En français">
   <img src="https://img.shields.io/badge/tir%20%C3%A0%20l'arc-greffe-e3242b" alt="Tir à l'arc, greffe">
 </p>
@@ -645,7 +645,7 @@ Le concours a été clôturé depuis le tableau de bord. Rouvrez-le au même end
 
 <br>
 
-Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.1 »), et dans le sous-titre de la page d'aide.
+Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.2 »), et dans le sous-titre de la page d'aide.
 
 </details>
 
