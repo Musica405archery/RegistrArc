@@ -15,6 +15,8 @@ function registrarc_dashboard_data($TourId) {
 
     $clubs = [];
     $clubDeps = [];
+    $clubPlaces = [];
+    $clubCities = registrarc_load_club_cities();
     $clubIndex = [];
     $archerIndex = [];
     $sessions = [];
@@ -27,6 +29,10 @@ function registrarc_dashboard_data($TourId) {
             $clubIndex[$club] = count($clubs);
             $clubs[] = $club;
             $clubDeps[] = registrarc_club_departement($e['country_code']);
+
+            // Ville du club (corrigée, détectée dans son nom, ou centre du département)
+            $place = registrarc_club_location($e['country_code'], [$club, $e['club_full']], $clubCities);
+            $clubPlaces[] = $place ? [$place['city'], round($place['lat'], 4), round($place['lon'], 4), $place['source']] : null;
         }
 
         if (!isset($archerIndex[$e['licence']])) {
@@ -123,6 +129,7 @@ function registrarc_dashboard_data($TourId) {
         'records' => $records,
         'clubs' => $clubs,
         'club_deps' => $clubDeps,          // département de chaque club ('' si inconnu)
+        'club_places' => $clubPlaces,      // [commune, latitude, longitude, manual|auto|departement] ou null
         'departements' => (object)$departements,   // code => [nom, latitude, longitude], toujours un objet JSON
         'sessions' => $sessions,
         'modes' => registrarc_load_payment_modes($TourId),

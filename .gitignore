@@ -1,5 +1,6 @@
 # Données de compétition (paiements, paramètres, remises) : jamais versionnées
-data/
+# (seulement le dossier data/ à la racine : lib/data/ contient des fichiers du module)
+/data/
 
 # Copies, verrous et fichiers temporaires
 *.bak

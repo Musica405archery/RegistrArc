@@ -90,6 +90,14 @@ foreach ($listed as $rel) {
         continue;
     }
 
+    // Un fichier ignoré par git ne serait jamais publié : la mise à jour échouerait
+    [$code] = run_git($root, 'check-ignore -q --no-index -- ' . escapeshellarg($rel));
+
+    if ($code === 0) {
+        $errors[] = "$rel est ignoré par .gitignore : il ne serait pas publié sur GitHub.";
+        continue;
+    }
+
     // hash-object -w applique la normalisation de git puis range le contenu,
     // cat-file le relit exactement comme il sera publié
     // (git peut aussi écrire un avertissement sur les fins de ligne : seul l'identifiant compte)

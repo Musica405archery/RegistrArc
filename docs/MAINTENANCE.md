@@ -32,6 +32,7 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 | `export.php` | téléchargements : `?type=engagements`, `journal` (CSV), `backup` (JSON) |
 | `helloasso.php` | import des paiements HelloAsso |
 | `qrcodes.php` | étiquettes QR codes à imprimer |
+| `clubs.php` | villes des clubs pour la carte du tableau de bord : ville détectée, correction mémorisée par numéro de club |
 | `aide.php` | mode d'emploi : le `README.md` affiché dans le module (`aide.php#la-caisse` ouvre directement une partie) |
 | `update.php` | page de mise à jour |
 | `menu.php` | entrée du menu I@nseo |
@@ -41,6 +42,8 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 | `lib/registrarc_caisse.inc.php` | opérations de paiement journalisées, remises déposées, clôtures de caisse, concours clôturé |
 | `lib/registrarc_invoices.inc.php` | registre des factures émises |
 | `lib/registrarc_dashboard.inc.php` | données du tableau de bord (pages Greffe, Trésorier, Terrain) : un enregistrement par engagement, sans nom ni licence, et les opérations de caisse ; dessin par `assets/js/dashboard.js` |
+| `lib/registrarc_clubs.inc.php` | ville des clubs : détection dans le nom du club parmi les communes de son département, corrections (`data/club_cities.json`), repli au centre du département |
+| `lib/data/communes.json` | communes de métropole et de Corse avec leur centre (geo.api.gouv.fr, Licence Ouverte, généré), pour placer les clubs sans service en ligne |
 | `lib/registrarc_departements.inc.php` | nom et centre de chaque département (fichier généré à partir des contours IGN Admin Express, Licence Ouverte, via france-geojson) pour la carte des clubs |
 | `lib/registrarc_backup.inc.php` | sauvegarde et restauration |
 | `lib/registrarc_helloasso.inc.php` | lecture et rapprochement des exports HelloAsso |
@@ -76,7 +79,7 @@ Tout est dans `Modules/Custom/RegistrArc/data/`. Par tournoi :
 | `closures_<n°>.json` | clôtures de caisse ; chaque clôture retient sa position dans le journal (`journal_from` / `journal_to`) |
 | `state_<n°>.json` | concours clôturé ou non |
 
-Commun à tous les tournois : `invoices.json`, registre des factures émises (compteur par année et copie figée de chaque facture).
+Commun à tous les tournois : `invoices.json`, registre des factures émises (compteur par année et copie figée de chaque facture), et `club_cities.json`, villes des clubs corrigées dans la page « Villes des clubs » (par numéro de club).
 
 - **Écritures fiables** : chaque modification se fait sous verrou exclusif (`<fichier>.lock`) pendant tout le cycle lecture / modification / écriture, puis par fichier temporaire et renommage. Plusieurs postes peuvent encaisser en même temps.
 - **Copie de secours** : la version précédente de chaque fichier est gardée en `.bak`. Si un fichier devient illisible, le module refuse d'écrire par-dessus.
