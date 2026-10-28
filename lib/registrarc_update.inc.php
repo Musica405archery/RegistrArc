@@ -8,6 +8,12 @@
 // - version.json : version publiée et liste des fichiers du module (files[]).
 //                  Il vient du dépôt : son contenu est contrôlé avant usage.
 //
+// Dernière version : avec "github_ref": "latest" (valeur par défaut, déclarée
+// dans module.json), le module demande à l'API GitHub le dernier commit de la
+// branche, puis lit version.json et tous les fichiers à ce commit précis : aucun
+// cache de raw.githubusercontent.com, jamais de mélange de deux versions. Si
+// l'API ne répond pas (hors ligne, quota), repli sur la branche comme avant.
+//
 // Vérification : mise en cache dans data/update_check.json pour ne pas
 // interroger GitHub à chaque affichage, et rester rapide sans internet.
 //
@@ -45,6 +51,8 @@ function registrarc_update_config() {
         'github_branch' => 'main',
         'github_path' => '',
         'github_token' => '',
+        // 'latest' : dernier commit de la branche (aucun cache) ; 'branch' : ancienne méthode
+        'github_ref' => 'latest',
     ];
 
     $data = registrarc_storage_read(registrarc_module_dir() . '/module.json');
@@ -52,17 +60,51 @@ function registrarc_update_config() {
     return is_array($data) ? array_merge($cfg, $data) : $cfg;
 }
 
-function registrarc_update_raw_base(array $cfg) {
+// [propriétaire, dépôt] d'après l'adresse GitHub, ou null
+function registrarc_update_github_repo(array $cfg) {
     if (!preg_match('#github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$#i', trim((string)$cfg['github_url']), $m)) {
+        return null;
+    }
+
+    return [$m[1], $m[2]];
+}
+
+function registrarc_update_branch(array $cfg) {
+    return trim((string)$cfg['github_branch']) !== '' ? trim((string)$cfg['github_branch']) : 'main';
+}
+
+// Adresse des fichiers bruts, à la branche ou à un commit précis ($ref)
+function registrarc_update_raw_base(array $cfg, $ref = '') {
+    $repo = registrarc_update_github_repo($cfg);
+
+    if (!$repo) {
         return '';
     }
 
-    $branch = trim((string)$cfg['github_branch']) !== '' ? trim((string)$cfg['github_branch']) : 'main';
+    $ref = $ref !== '' ? $ref : registrarc_update_branch($cfg);
     $path = trim((string)$cfg['github_path'], '/');
 
-    return 'https://raw.githubusercontent.com/' . $m[1] . '/' . $m[2] . '/'
-        . str_replace('%2F', '/', rawurlencode($branch))
+    return 'https://raw.githubusercontent.com/' . $repo[0] . '/' . $repo[1] . '/'
+        . str_replace('%2F', '/', rawurlencode($ref))
         . ($path !== '' ? '/' . $path : '');
+}
+
+// Dernier commit de la branche (40 caractères), ou '' si désactivé ou injoignable
+function registrarc_update_latest_commit(array $cfg, $timeout = 15) {
+    $repo = registrarc_update_github_repo($cfg);
+
+    if (!$repo || strtolower(trim((string)$cfg['github_ref'])) !== 'latest') {
+        return '';
+    }
+
+    $url = 'https://api.github.com/repos/' . $repo[0] . '/' . $repo[1] . '/commits/'
+        . str_replace('%2F', '/', rawurlencode(registrarc_update_branch($cfg)));
+
+    // Réponse réduite au seul identifiant du commit
+    $res = registrarc_update_http_get($url, (string)$cfg['github_token'], $timeout, ['Accept: application/vnd.github.sha']);
+    $sha = strtolower(trim($res['body']));
+
+    return $res['ok'] && preg_match('/^[0-9a-f]{40}$/', $sha) ? $sha : '';
 }
 
 function registrarc_local_version() {
@@ -81,8 +123,8 @@ function registrarc_local_version_number() {
 // Téléchargement
 // ---------------------------------------------------------------------------
 // Retourne ['ok' => bool, 'body' => string, 'error' => string]
-function registrarc_update_http_get($url, $token = '', $timeout = 15) {
-    $headers = ['User-Agent: RegistrArc-updater'];
+function registrarc_update_http_get($url, $token = '', $timeout = 15, array $extraHeaders = []) {
+    $headers = array_merge(['User-Agent: RegistrArc-updater'], $extraHeaders);
 
     if ($token !== '') {
         $headers[] = 'Authorization: token ' . $token;
@@ -149,9 +191,12 @@ function registrarc_update_http_get($url, $token = '', $timeout = 15) {
     return ['ok' => true, 'body' => (string)$body, 'error' => ''];
 }
 
-// Retourne le version.json distant validé, ou ['_error' => message]
+// Retourne le version.json distant validé, ou ['_error' => message].
+// '_commit' : commit lu ('' si lu à la branche) ; '_base' : adresse des fichiers
+// de ce même commit, à utiliser pour toute l'installation
 function registrarc_update_fetch_remote(array $cfg, $timeout = 15) {
-    $base = registrarc_update_raw_base($cfg);
+    $commit = registrarc_update_latest_commit($cfg, $timeout);
+    $base = registrarc_update_raw_base($cfg, $commit);
 
     if ($base === '') {
         return ['_error' => "module.json : adresse du dépôt GitHub invalide."];
@@ -172,6 +217,9 @@ function registrarc_update_fetch_remote(array $cfg, $timeout = 15) {
     if (empty($data['files']) || !is_array($data['files'])) {
         return ['_error' => "version.json distant sans liste de fichiers."];
     }
+
+    $data['_commit'] = $commit;
+    $data['_base'] = $base;
 
     return $data;
 }
@@ -208,6 +256,7 @@ function registrarc_update_status($force = false) {
         'update' => false,
         'error' => '',
         'checked_at' => time(),
+        'commit' => '',
     ];
 
     if (isset($remote['_error'])) {
@@ -217,6 +266,7 @@ function registrarc_update_status($force = false) {
         $status['date'] = isset($remote['date']) ? (string)$remote['date'] : '';
         $status['notes'] = isset($remote['notes']) ? (string)$remote['notes'] : '';
         $status['update'] = version_compare($status['remote'], $localVer, '>');
+        $status['commit'] = substr((string)$remote['_commit'], 0, 7);
     }
 
     if (registrarc_ensure_data_dir()) {
@@ -377,7 +427,8 @@ function registrarc_update_apply() {
             return $result;
         }
 
-        $base = registrarc_update_raw_base($cfg);
+        // Même commit que le version.json lu : jamais de mélange de deux versions
+        $base = $remote['_base'];
 
         foreach ($files as $rel) {
             $res = registrarc_update_http_get($base . '/' . $rel, (string)$cfg['github_token'], 20);
