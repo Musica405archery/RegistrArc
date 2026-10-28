@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/module-I%40nseo-14336b" alt="Module I@nseo">
-  <img src="https://img.shields.io/badge/version-1.2.0-14336b" alt="Version 1.2.0">
+  <img src="https://img.shields.io/badge/version-1.2.1-14336b" alt="Version 1.2.1">
   <img src="https://img.shields.io/badge/langue-fran%C3%A7ais-14336b" alt="En français">
   <img src="https://img.shields.io/badge/tir%20%C3%A0%20l'arc-greffe-e3242b" alt="Tir à l'arc, greffe">
 </p>
@@ -122,6 +122,7 @@ RegistrArc ne modifie jamais les inscriptions dans I@nseo : il les lit et garde 
 
 - **Aide intégrée** : ce mode d'emploi s'ouvre dans le module avec le bouton **? Aide**, même sans internet, avec un sommaire sur la droite qui suit la lecture.
 - **Tableau de bord en trois pages** : Greffe, Trésorier et Terrain, avec des chiffres clés, des graphiques interactifs, les points à vérifier signalés ⚠ et un filtre par départ.
+- **Carte des clubs** : une bulle par club, placée sur sa ville, avec la page **Villes des clubs** pour corriger.
 - **Blasons dans le kiosque** : chaque archer affiche son blason. Il est en rouge s'il diffère du blason par défaut de sa catégorie.
 - **Archers surclassés** signalés en rouge dans le kiosque.
 - **Mises à jour plus sûres** : chaque fichier téléchargé est vérifié avant d'être installé.
@@ -644,7 +645,7 @@ Le concours a été clôturé depuis le tableau de bord. Rouvrez-le au même end
 
 <br>
 
-Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.0 »), et dans le sous-titre de la page d'aide.
+Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.1 »), et dans le sous-titre de la page d'aide.
 
 </details>
 
