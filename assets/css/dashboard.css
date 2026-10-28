@@ -213,6 +213,25 @@
 
 #rgVizPage { margin-bottom: 14px; }
 
+/* --- Carte des clubs (Leaflet, fond OpenStreetMap) ------------------------ */
+/* Empilement isolé : les calques de la carte ne passent pas sur le menu d'I@nseo */
+.rg-viz-map {
+    position: relative;
+    z-index: 0;
+    height: 440px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #eef1f6;
+}
+
+.rg-viz-map-tip { font-size: 12px; line-height: 1.45; }
+.rg-viz-map-tip strong { display: block; font-size: 13px; }
+.rg-viz-map-club { color: var(--viz-text-secondary); }
+
+@media (max-width: 640px) {
+    .rg-viz-map { height: 320px; }
+}
+
 /* --- Infobulle : la valeur en premier, le libellé ensuite ------------------ */
 .rg-viz-tip {
     position: absolute;

@@ -203,11 +203,13 @@ $receiptRows = 0;
 $unpaidAmount = 0;
 
 foreach ($rows as $r) {
-    if ($r['payment_status'] === 'PAYE') {
+    // Par état, comme la liste et le tableau de bord : un archer remboursé n'a plus
+    // rien à payer et n'est compté ni dans « à encaisser » ni dans « restant dû »
+    if ($r['state'] === 'paid') {
         $paidRows++;
-    } elseif (!empty($r['nothing_due'])) {
+    } elseif ($r['state'] === 'free') {
         $freeRows++;
-    } else {
+    } elseif ($r['state'] === 'due') {
         $unpaidRows++;
         $unpaidAmount += (float)$r['amount_due'];
     }

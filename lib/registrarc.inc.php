@@ -15,6 +15,7 @@ require_once(dirname(__FILE__) . '/registrarc_ui.inc.php');
 require_once(dirname(__FILE__) . '/registrarc_invoices.inc.php');
 require_once(dirname(__FILE__) . '/registrarc_backup.inc.php');
 require_once(dirname(__FILE__) . '/registrarc_dashboard.inc.php');
+require_once(dirname(__FILE__) . '/registrarc_departements.inc.php');
 
 // ---------------------------------------------------------------------------
 // Paramètres module avec fallback ancien Greffe2

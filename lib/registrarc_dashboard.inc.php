@@ -14,6 +14,7 @@ function registrarc_dashboard_data($TourId) {
     $ageClasses = registrarc_load_age_classes($TourId);
 
     $clubs = [];
+    $clubDeps = [];
     $clubIndex = [];
     $archerIndex = [];
     $sessions = [];
@@ -25,6 +26,7 @@ function registrarc_dashboard_data($TourId) {
         if (!isset($clubIndex[$club])) {
             $clubIndex[$club] = count($clubs);
             $clubs[] = $club;
+            $clubDeps[] = registrarc_club_departement($e['country_code']);
         }
 
         if (!isset($archerIndex[$e['licence']])) {
@@ -108,14 +110,39 @@ function registrarc_dashboard_data($TourId) {
         ];
     }
 
+    // Carte : seulement les départements des clubs présents
+    $allDeps = registrarc_departements();
+    $departements = [];
+
+    foreach (array_unique(array_filter($clubDeps)) as $code) {
+        $departements[$code] = $allDeps[$code];
+    }
+
     return [
         'now' => date('Y-m-d H:i:s'),
         'records' => $records,
         'clubs' => $clubs,
+        'club_deps' => $clubDeps,          // département de chaque club ('' si inconnu)
+        'departements' => (object)$departements,   // code => [nom, latitude, longitude], toujours un objet JSON
         'sessions' => $sessions,
         'modes' => registrarc_load_payment_modes($TourId),
         'journal' => $journal,
         'deposits' => $deposits,
         'closures' => $closures,
     ];
+}
+
+// Département d'un club d'après son numéro FFTA (3e et 4e chiffres, comme les
+// règles de tarif par département) ; '' si le numéro ne correspond à aucun département
+function registrarc_club_departement($clubCode) {
+    $digits = preg_replace('/\D+/', '', (string)$clubCode);
+
+    if (strlen($digits) < 4) {
+        return '';
+    }
+
+    $code = substr($digits, 2, 2);
+    $departements = registrarc_departements();
+
+    return isset($departements[$code]) ? $code : '';
 }

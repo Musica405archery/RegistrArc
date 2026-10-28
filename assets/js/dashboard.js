@@ -821,8 +821,134 @@
 
                 barsOrTable(card, body, asTable, total ? rows : [], [{ name: 'Archers', color: COLOR.paid }], { format: FMT.count, header: 'Départs', empty: 'Aucun archer.' });
             }
+        },
+        {
+            id: 'g-map',
+            wide: true,
+            title: 'Carte des clubs',
+            subtitle: function () { return 'Une bulle par département, d\'après le numéro de club FFTA ; sa taille suit le nombre d\'archers.'; },
+            render: renderMap
         }
     ];
+
+    // Carte des clubs : une bulle par département, sur le fond OpenStreetMap (en ligne)
+    let currentMap = null;
+
+    function removeMap() {
+        if (currentMap) {
+            currentMap.remove();
+            currentMap = null;
+        }
+    }
+
+    function clubsByDepartement(A) {
+        const deps = {};
+        const unplaced = [];
+
+        Object.keys(A.clubArchers).forEach(function (c) {
+            const archers = Object.keys(A.clubArchers[c]).length;
+            const code = (data.club_deps && data.club_deps[c]) || '';
+            const dep = code && data.departements ? data.departements[code] : null;
+
+            if (!dep) {
+                unplaced.push({ name: data.clubs[c], archers: archers });
+                return;
+            }
+
+            const d = deps[code] || (deps[code] = { code: code, name: dep[0], lat: dep[1], lon: dep[2], archers: 0, clubs: [] });
+            d.archers += archers;
+            d.clubs.push({ name: data.clubs[c], archers: archers });
+        });
+
+        const list = Object.keys(deps).map(function (k) { return deps[k]; }).sort(function (a, b) { return b.archers - a.archers; });
+
+        list.forEach(function (d) {
+            d.clubs.sort(function (a, b) { return b.archers - a.archers || a.name.localeCompare(b.name, 'fr'); });
+        });
+
+        return { deps: list, unplaced: unplaced };
+    }
+
+    function renderMap(card, body, A, asTable) {
+        const g = clubsByDepartement(A);
+
+        if (asTable) {
+            body.appendChild(table(['Département', 'Clubs', 'Archers'], g.deps.map(function (d) {
+                return [d.name + ' (' + d.code + ')', d.clubs.map(function (c) { return c.name; }).join(', '), nf0.format(d.archers)];
+            }).concat(g.unplaced.map(function (u) {
+                return ['Non placé', u.name, nf0.format(u.archers)];
+            })), 2));
+            return;
+        }
+
+        if (!g.deps.length && !g.unplaced.length) {
+            empty(body, 'Aucun club.');
+            return;
+        }
+
+        if (!window.L) {
+            empty(body, 'La carte n\'a pas pu être chargée. Le bouton Tableau donne la répartition par département.');
+        } else {
+            const box = el('div', { class: 'rg-viz-map', role: 'region', 'aria-label': 'Carte des clubs par département' });
+            body.appendChild(box);
+
+            const map = window.L.map(box, { scrollWheelZoom: false });
+            currentMap = map;
+
+            const tiles = window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 12,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">contributeurs OpenStreetMap</a>'
+            });
+            let warned = false;
+
+            // Sans internet : les bulles restent placées, sans fond de carte
+            tiles.on('tileerror', function () {
+                if (!warned) {
+                    warned = true;
+                    body.appendChild(el('p', { class: 'rg-help rg-viz-note' }, 'Fond de carte indisponible (pas de connexion internet ?) : les bulles restent placées.'));
+                }
+            });
+            tiles.addTo(map);
+
+            const max = Math.max.apply(null, g.deps.map(function (d) { return d.archers; }).concat([1]));
+            const points = [];
+
+            g.deps.forEach(function (d) {
+                // Surface de la bulle proportionnelle au nombre d'archers
+                const radius = 7 + 18 * Math.sqrt(d.archers / max);
+                const marker = window.L.circleMarker([d.lat, d.lon], { radius: radius, color: '#ffffff', weight: 2, fillColor: '#2a78d6', fillOpacity: 0.85 });
+                const tip = el('div', { class: 'rg-viz-map-tip' });
+
+                tip.appendChild(el('strong', {}, d.name + ' (' + d.code + ')'));
+                tip.appendChild(el('div', {}, plural(d.clubs.length, 'club', 'clubs') + ' · ' + plural(d.archers, 'archer', 'archers')));
+                d.clubs.slice(0, 8).forEach(function (c) {
+                    tip.appendChild(el('div', { class: 'rg-viz-map-club' }, c.name + ' · ' + nf0.format(c.archers)));
+                });
+
+                if (d.clubs.length > 8) {
+                    tip.appendChild(el('div', { class: 'rg-viz-map-club' }, '… et ' + (d.clubs.length - 8) + ' autre(s)'));
+                }
+
+                marker.bindTooltip(tip, { direction: 'top', offset: [0, -radius] });
+                marker.addTo(map);
+                points.push([d.lat, d.lon]);
+            });
+
+            if (points.length > 1) {
+                map.fitBounds(points, { padding: [40, 40], maxZoom: 8 });
+            } else if (points.length === 1) {
+                map.setView(points[0], 8);
+            } else {
+                map.setView([46.6, 2.4], 5);
+            }
+        }
+
+        if (g.unplaced.length) {
+            body.appendChild(el('p', { class: 'rg-help rg-viz-note' },
+                'Non placés (numéro de club sans département reconnu) : ' + g.unplaced.map(function (u) { return u.name; }).join(', ') + '.'));
+        }
+    }
+
 
     // -----------------------------------------------------------------------
     // Page Trésorier : l'argent du concours
@@ -1373,6 +1499,10 @@
             tip.hidden = true;
         }
 
+        if (currentMap && body.contains(currentMap.getContainer())) {
+            removeMap();
+        }
+
         body.textContent = '';
         def.render(card, body, A, state.views[def.id] === 'table');
     }
@@ -1381,6 +1511,7 @@
         const page = PAGES[state.page];
         const A = compute();
 
+        removeMap();
         pageEl.textContent = '';
         renderTiles(pageEl, page.tiles(A));
 

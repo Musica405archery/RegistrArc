@@ -41,6 +41,7 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 | `lib/registrarc_caisse.inc.php` | opérations de paiement journalisées, remises déposées, clôtures de caisse, concours clôturé |
 | `lib/registrarc_invoices.inc.php` | registre des factures émises |
 | `lib/registrarc_dashboard.inc.php` | données du tableau de bord (pages Greffe, Trésorier, Terrain) : un enregistrement par engagement, sans nom ni licence, et les opérations de caisse ; dessin par `assets/js/dashboard.js` |
+| `lib/registrarc_departements.inc.php` | nom et centre de chaque département (fichier généré à partir des contours IGN Admin Express, Licence Ouverte, via france-geojson) pour la carte des clubs |
 | `lib/registrarc_backup.inc.php` | sauvegarde et restauration |
 | `lib/registrarc_helloasso.inc.php` | lecture et rapprochement des exports HelloAsso |
 | `lib/registrarc_ui.inc.php` | habillage commun des pages d'administration |
@@ -48,6 +49,7 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 | `lib/registrarc_update.inc.php` | mise à jour depuis GitHub |
 | `lib/js/qrcode.js` | génération des QR codes (qrcode-generator, Kazuhiko Arase, licence MIT) |
 | `lib/js/marked.min.js` | mise en forme du README dans `aide.php` (marked 12.0.2, Christopher Jeffrey, licence MIT) |
+| `lib/js/leaflet/` | carte des clubs du tableau de bord (Leaflet 1.9.4, Vladimir Agafonkin, licence BSD-2-Clause, fichiers identiques au paquet npm). Le fond de carte est chargé en ligne depuis `tile.openstreetmap.org` : l'adresse IP de l'appareil qui affiche la carte est donc vue par OpenStreetMap |
 | `README.md`, `docs/images/` | mode d'emploi et ses captures, distribués pour être lus dans le module sans internet |
 | `assets/css/`, `assets/js/` | styles et scripts des pages (un fichier par page, `admin.css` pour l'habillage commun), chargés par `registrarc_asset_url()` qui ajoute la date du fichier pour forcer le rechargement après une mise à jour |
 | `module.json` | dépôt et branche d'origine des mises à jour (configuration locale, jamais écrasée) |

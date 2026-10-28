@@ -44,3 +44,24 @@ test('tableau de bord : données par engagement et opérations de caisse, sans n
         assert_same(false, strpos($json, $private), "« $private » ne doit pas être transmis");
     }
 });
+
+test('carte : département du club d\'après son numéro FFTA, départements utiles seulement', function () {
+    assert_same('69', registrarc_club_departement('1069012'));
+    assert_same('29', registrarc_club_departement('0829001'));
+    assert_same('', registrarc_club_departement('1099000'), '99 n\'est pas un département');
+    assert_same('', registrarc_club_departement('ESP'), 'club étranger');
+    assert_same('', registrarc_club_departement(''));
+
+    $deps = registrarc_departements();
+    assert_same('Rhône', $deps['69'][0]);
+    assert_true($deps['69'][1] > 45 && $deps['69'][1] < 46.5 && $deps['69'][2] > 4 && $deps['69'][2] < 5, 'centre du Rhône');
+
+    test_add_entry('A1', 'CLS1H', '1069012');
+    test_add_entry('B1', 'CLS1H', '1099000');
+    registrarc_load_engagements(1, true);  // vide le cache du test précédent
+    $d = registrarc_dashboard_data(1);
+
+    assert_same(['69', ''], $d['club_deps']);
+    assert_same('{"69":["Rhône",', substr(json_encode($d['departements'], JSON_UNESCAPED_UNICODE), 0, 16), 'objet JSON');
+    assert_same(['69'], array_map('strval', array_keys((array)$d['departements'])), 'seuls les départements des clubs présents');
+});

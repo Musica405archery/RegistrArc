@@ -63,6 +63,7 @@ include('Common/Templates/head.php');
 registrarc_page_open('Tableau de bord', $tournament['name'], 'dashboard');
 registrarc_render_flash($flash);
 ?>
+<link rel="stylesheet" href="<?php echo registrarc_asset_url('lib/js/leaflet/leaflet.css'); ?>">
 <link rel="stylesheet" href="<?php echo registrarc_asset_url('assets/css/dashboard.css'); ?>">
 
 <?php if ($isClosed): ?>
@@ -96,6 +97,8 @@ registrarc_render_flash($flash);
 </section>
 
 <script type="application/json" id="rgVizData"><?php echo json_encode($vizData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE); ?></script>
+<!-- Carte des clubs : Leaflet 1.9.4 (BSD-2-Clause), fond OpenStreetMap chargé en ligne -->
+<script src="<?php echo registrarc_asset_url('lib/js/leaflet/leaflet.js'); ?>"></script>
 <script src="<?php echo registrarc_asset_url('assets/js/dashboard.js'); ?>"></script>
 
 <div class="rg-card">

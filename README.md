@@ -435,19 +435,36 @@ Pour **clôturer la caisse** (en fin de matinée, de journée…) : comptez les 
 
 <br>
 
-<img src="docs/images/tableau-de-bord.png" alt="Tableau de bord" width="100%">
+<img src="docs/images/tableau-de-bord.png" alt="Tableau de bord, page Greffe" width="100%">
 
 En haut, choisissez la **page** qui correspond à votre rôle, et éventuellement un **départ** : tous les chiffres et graphiques de la page suivent. RegistrArc retient la dernière page ouverte sur l'appareil.
 
 | Page | Pour qui | Ce qu'elle montre |
 |---|---|---|
-| **Greffe** | le greffe, pendant les inscriptions | nombre d'archers (jeunes et adultes), d'engagements et de clubs ; archers sur plusieurs départs ; archers **sans cible** et **surclassés** à vérifier ; inscriptions tardives et tarifs spéciaux. Graphiques : engagements par départ, par catégorie, clubs les plus représentés, départs par archer. |
+| **Greffe** | le greffe, pendant les inscriptions | nombre d'archers (jeunes et adultes), d'engagements et de clubs ; archers sur plusieurs départs ; archers **sans cible** et **surclassés** à vérifier ; inscriptions tardives et tarifs spéciaux. Graphiques : engagements par départ, par catégorie, clubs les plus représentés, départs par archer, et la **carte des clubs**. |
 | **Trésorier** | le trésorier, pour les comptes | attendu, encaissé (avec jauge), reste dû, remboursé, montant moyen par archer, **chèques à déposer**, déposé en banque, **écart de caisse**. Graphiques : encaissé au fil du temps, par mode de paiement, par départ, **reste dû par club** (pour les relances), recette par tarif ; tableaux des remises de chèques et des clôtures de caisse. |
 | **Terrain** | les bénévoles au comptoir, le jour J | archers à encaisser, encaissé aujourd'hui, **dernière opération** (il y a combien de temps, par qui), opérateurs du jour, reçus demandés, archers sans cible. Graphiques : activité heure par heure, reste à encaisser par départ, encaissements par opérateur, par poste (ordinateur ou téléphone) et par origine (liste, mode Kiosk, HelloAsso). |
 
 - Les tuiles marquées **⚠** signalent un point à vérifier (archers sans cible ou surclassés, chèques pas encore déposés, écart de caisse).
 - Passez la souris (ou le doigt) sur une barre, une colonne ou la courbe pour voir le détail. Cliquer sur un départ dans un graphique le sélectionne pour toute la page.
 - Chaque graphique a un bouton **Tableau** qui montre les mêmes chiffres sous forme de tableau.
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <img src="docs/images/tableau-de-bord-tresorier.png" alt="Page Trésorier" width="100%"><br>
+      <strong>Page Trésorier</strong>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <img src="docs/images/tableau-de-bord-terrain.png" alt="Page Terrain" width="100%"><br>
+      <strong>Page Terrain</strong>
+    </td>
+  </tr>
+</table>
+
+- **La carte des clubs** place une bulle par département, d'après le numéro de club FFTA (3e et 4e chiffres) ; sa taille suit le nombre d'archers et le survol donne la liste des clubs. Le fond de carte vient d'OpenStreetMap et demande une connexion internet : sans internet, les bulles restent placées sur un fond vide. Les clubs dont le numéro ne correspond à aucun département (club étranger par exemple) sont listés sous la carte.
+
+<img src="docs/images/carte-clubs.jpg" alt="Carte des clubs par département" width="100%">
 
 </details>
 
@@ -508,6 +525,8 @@ Les chèques groupés se tiennent à jour tout seuls : si vous annulez le paieme
 ## L'aide dans le module
 
 Ce mode d'emploi est disponible dans RegistrArc, même sans internet : bouton **? Aide** en haut des pages (lien **Aide** dans le mode Kiosk).
+
+<img src="docs/images/aide.png" alt="L'aide dans le module, avec son sommaire" width="100%">
 
 - Le **sommaire**, à droite, suit votre lecture ; cliquez sur une partie pour y aller directement. Sur téléphone, il s'ouvre avec le bouton **Sommaire**.
 - **Tout déplier**, **Tout replier** et **Imprimer** sont en haut de la page.
