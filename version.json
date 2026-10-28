@@ -1,7 +1,7 @@
 {
-    "version": "1.2.1",
+    "version": "1.2.2",
     "date": "2026-10-28",
-    "notes": "Nouveautés depuis la version 1.1.0 :\n\n- Aide : le mode d'emploi est consultable dans le module (bouton « ? Aide »), même sans internet, avec un sommaire qui suit la lecture.\n- Tableau de bord en trois pages (Greffe, Trésorier, Terrain) : chiffres clés, points à vérifier signalés, graphiques interactifs, filtre par départ.\n- Carte des clubs : une bulle par club, placée sur sa ville (trouvée dans le nom du club, corrigeable dans la page « Villes des clubs »).\n- Mode Kiosk : blason de chaque archer (en rouge s'il n'est pas celui de sa catégorie) et archers surclassés signalés en rouge.\n- Mode Kiosk : un archer remboursé n'est plus compté dans « à encaisser » ni dans « restant dû ».\n- Mise à jour plus sûre : chaque fichier téléchargé est vérifié avant d'être installé.\n- Export tableur protégé contre les formules ; version installée affichée dans les paramètres ; pages plus rapides à charger.",
+    "notes": "Version 1.2.2 : vérification du système de mise à jour automatique (contenu identique à la 1.2.1).\n\nNouveautés depuis la version 1.1.0 :\n\n- Aide : le mode d'emploi est consultable dans le module (bouton « ? Aide »), même sans internet, avec un sommaire qui suit la lecture.\n- Tableau de bord en trois pages (Greffe, Trésorier, Terrain) : chiffres clés, points à vérifier signalés, graphiques interactifs, filtre par départ.\n- Carte des clubs : une bulle par club, placée sur sa ville (trouvée dans le nom du club, corrigeable dans la page « Villes des clubs »).\n- Mode Kiosk : blason de chaque archer (en rouge s'il n'est pas celui de sa catégorie) et archers surclassés signalés en rouge.\n- Mode Kiosk : un archer remboursé n'est plus compté dans « à encaisser » ni dans « restant dû ».\n- Mise à jour plus sûre : chaque fichier téléchargé est vérifié avant d'être installé.\n- Export tableur protégé contre les formules ; version installée affichée dans les paramètres ; pages plus rapides à charger.",
     "files": [
         "index.php",
         "kiosk.php",
@@ -71,7 +71,7 @@
         "version.json"
     ],
     "sha256": {
-        "README.md": "c6363cccaad9aef8a298eefab3cc7337903f03d28e0192dd651ac151b3a00612",
+        "README.md": "3179e7fcb7ed51805213e5f13948fcd72610724988d03409910c1f0663dc15b4",
         "aide.php": "82be1bbba8f74d5b90a06c25abcd0cc96b85123bb8c925401cd30d57ec08353c",
         "assets/css/admin.css": "de4321e2439354dff90a0ea41922a9cfe46cf464f04f842db74afdcb300238da",
         "assets/css/aide.css": "a1037ffaaeb7f25909015962aa35a365ddb95947555089ad077af425ccf853a2",
