@@ -48,68 +48,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ---------------------------------------------------------------------------
-// Données des graphiques : calculées ici, mises en forme par assets/js/dashboard.js
-// (filtres, graphiques et tableaux sont dessinés dans le navigateur, sans
-// bibliothèque externe). Aucun nom d'archer n'est transmis.
+// Données du tableau de bord : lib/registrarc_dashboard.inc.php. Les pages
+// Greffe, Trésorier et Terrain sont dessinées dans le navigateur par
+// assets/js/dashboard.js, sans bibliothèque externe. Aucun nom d'archer n'est transmis.
 // ---------------------------------------------------------------------------
 $tournament = registrarc_get_tournament_info($TourId);
-$paymentModes = registrarc_load_payment_modes($TourId);
-$engagements = registrarc_load_engagements($TourId);
-
-$clubs = [];
-$clubIndex = [];
-$sessions = [];
-$records = [];
-
-foreach ($engagements as $e) {
-    $club = $e['club'] !== '' ? $e['club'] : 'Sans club';
-
-    if (!isset($clubIndex[$club])) {
-        $clubIndex[$club] = count($clubs);
-        $clubs[] = $club;
-    }
-
-    $sessions[$e['session']] = true;
-
-    // [départ, club, statut, mode, encaissé, reste dû]
-    $records[] = [
-        (string)$e['session'],
-        $clubIndex[$club],
-        $e['state'],
-        $e['state'] === 'paid' ? $e['payment_method'] : '',
-        $e['state'] === 'paid' ? round((float)$e['amount'], 2) : 0,
-        $e['state'] === 'due' ? round((float)$e['amount_due'], 2) : 0,
-    ];
-}
-
-$sessions = array_keys($sessions);
-sort($sessions, SORT_NATURAL);
-
-// Opérations de caisse du journal : [date, type, montant, mode, départ]
-$timeline = [];
-
-foreach (registrarc_load_journal($TourId) as $entry) {
-    if (!isset($entry['type']) || !registrarc_journal_is_cash($entry['type'])) {
-        continue;
-    }
-
-    $id = isset($entry['engagement_id']) ? intval($entry['engagement_id']) : 0;
-    $timeline[] = [
-        isset($entry['at']) ? (string)$entry['at'] : '',
-        (string)$entry['type'],
-        round(isset($entry['amount']) ? (float)$entry['amount'] : 0, 2),
-        isset($entry['method']) ? (string)$entry['method'] : '',
-        isset($engagements[$id]) ? (string)$engagements[$id]['session'] : '',
-    ];
-}
-
-$vizData = [
-    'records' => $records,
-    'clubs' => $clubs,
-    'sessions' => array_map('strval', $sessions),
-    'modes' => $paymentModes,
-    'timeline' => $timeline,
-];
+$vizData = registrarc_dashboard_data($TourId);
 
 $invoices = registrarc_invoices_for_tour($TourId);
 $flash = registrarc_flash('dashboard');
@@ -119,6 +63,7 @@ include('Common/Templates/head.php');
 registrarc_page_open('Tableau de bord', $tournament['name'], 'dashboard');
 registrarc_render_flash($flash);
 ?>
+<link rel="stylesheet" href="<?php echo registrarc_asset_url('lib/js/leaflet/leaflet.css'); ?>">
 <link rel="stylesheet" href="<?php echo registrarc_asset_url('assets/css/dashboard.css'); ?>">
 
 <?php if ($isClosed): ?>
@@ -128,72 +73,32 @@ registrarc_render_flash($flash);
 <section class="rg-viz" id="rgViz" aria-label="Chiffres du concours">
     <div class="rg-viz-filters rg-noprint">
         <div class="rg-field">
+            <span class="rg-viz-label" id="rgVizPageLabel">Page</span>
+            <div class="rg-seg rg-viz-pages" role="tablist" aria-labelledby="rgVizPageLabel">
+                <button type="button" role="tab" data-page="greffe" aria-selected="true">Greffe</button>
+                <button type="button" role="tab" data-page="tresorier" aria-selected="false">Trésorier</button>
+                <button type="button" role="tab" data-page="terrain" aria-selected="false">Terrain</button>
+            </div>
+        </div>
+        <div class="rg-field">
             <label for="rgVizSession">Départ</label>
             <select id="rgVizSession">
                 <option value="*">Tous les départs</option>
-                <?php foreach ($sessions as $session): ?>
+                <?php foreach ($vizData['sessions'] as $session): ?>
                     <option value="<?php echo htmlspecialchars($session); ?>"><?php echo htmlspecialchars($session !== '' ? 'Départ ' . $session : 'Sans départ'); ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
-        <div class="rg-field">
-            <span class="rg-viz-label" id="rgVizMetricLabel">Afficher</span>
-            <div class="rg-seg" role="group" aria-labelledby="rgVizMetricLabel">
-                <button type="button" data-metric="amount" aria-pressed="true">Montants</button>
-                <button type="button" data-metric="count" aria-pressed="false">Engagements</button>
-            </div>
-        </div>
     </div>
 
-    <div class="rg-card" id="rgVizKpi">
-        <h2>Encaissement</h2>
-        <noscript><p class="rg-help">Les chiffres et graphiques ont besoin de JavaScript.</p></noscript>
-    </div>
-
-    <div class="rg-card rg-viz-card" data-chart="timeline">
-        <div class="rg-viz-head">
-            <div>
-                <h2>Au fil du temps</h2>
-                <p class="rg-help" data-role="subtitle"></p>
-            </div>
-        </div>
-        <div class="rg-viz-body"></div>
-    </div>
-
-    <div class="rg-grid">
-        <div class="rg-card rg-viz-card" data-chart="sessions">
-            <div class="rg-viz-head">
-                <div>
-                    <h2>Par départ</h2>
-                    <p class="rg-help" data-role="subtitle"></p>
-                </div>
-            </div>
-            <div class="rg-viz-body"></div>
-        </div>
-
-        <div class="rg-card rg-viz-card" data-chart="modes">
-            <div class="rg-viz-head">
-                <div>
-                    <h2>Par mode de paiement</h2>
-                    <p class="rg-help" data-role="subtitle"></p>
-                </div>
-            </div>
-            <div class="rg-viz-body"></div>
-        </div>
-    </div>
-
-    <div class="rg-card rg-viz-card" data-chart="clubs">
-        <div class="rg-viz-head">
-            <div>
-                <h2>Par club</h2>
-                <p class="rg-help" data-role="subtitle"></p>
-            </div>
-        </div>
-        <div class="rg-viz-body"></div>
+    <div id="rgVizPage" role="tabpanel">
+        <noscript><div class="rg-card"><p class="rg-help">Les chiffres et graphiques ont besoin de JavaScript.</p></div></noscript>
     </div>
 </section>
 
 <script type="application/json" id="rgVizData"><?php echo json_encode($vizData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE); ?></script>
+<!-- Carte des clubs : Leaflet 1.9.4 (BSD-2-Clause), fond OpenStreetMap chargé en ligne -->
+<script src="<?php echo registrarc_asset_url('lib/js/leaflet/leaflet.js'); ?>"></script>
 <script src="<?php echo registrarc_asset_url('assets/js/dashboard.js'); ?>"></script>
 
 <div class="rg-card">
