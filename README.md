@@ -4,6 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/module-I%40nseo-14336b" alt="Module I@nseo">
+  <img src="https://img.shields.io/badge/version-1.2.0-14336b" alt="Version 1.2.0">
   <img src="https://img.shields.io/badge/langue-fran%C3%A7ais-14336b" alt="En français">
   <img src="https://img.shields.io/badge/tir%20%C3%A0%20l'arc-greffe-e3242b" alt="Tir à l'arc, greffe">
 </p>
@@ -75,39 +76,56 @@
   </tr>
   <tr>
     <td valign="top">
+      <strong>Le mode Kiosk</strong><br>
+      Un écran pour encaisser debout sur téléphone, avec le blason de chaque archer et les cas à vérifier signalés en rouge.
+    </td>
+    <td valign="top">
       <strong>La caisse</strong><br>
       Chaque opération est notée (qui, quand, sur quel appareil). Clôture de caisse avec comptage des espèces.
     </td>
+  </tr>
+  <tr>
     <td valign="top">
       <strong>Les chèques</strong><br>
       Un seul chèque pour plusieurs archers, bordereau de remise, suivi des remises déjà déposées.
     </td>
-  </tr>
-  <tr>
     <td valign="top">
       <strong>Les tarifs du club</strong><br>
       Jeunes ou adultes, club organisateur ou non, départs supplémentaires, tarifs spéciaux, plafond, inscription tardive.
     </td>
+  </tr>
+  <tr>
     <td valign="top">
       <strong>Les factures</strong><br>
       Numérotées (2026-0001, 2026-0002…), prêtes à imprimer ou à envoyer en PDF, réimprimables à l'identique.
     </td>
+    <td valign="top">
+      <strong>Le tableau de bord</strong><br>
+      Trois pages (Greffe, Trésorier, Terrain) de chiffres clés et de graphiques interactifs. Fichiers pour le trésorier, sauvegarde.
+    </td>
   </tr>
   <tr>
     <td valign="top">
-      <strong>Le tableau de bord</strong><br>
-      Encaissé, reste dû, répartition par mode, départ et club. Fichiers pour le trésorier, sauvegarde.
-    </td>
-    <td valign="top">
       <strong>Les paiements en ligne</strong><br>
       Import des paiements HelloAsso, et QR codes pour retrouver un archer au kiosque.
+    </td>
+    <td valign="top">
+      <strong>L'aide intégrée</strong><br>
+      Ce mode d'emploi, consultable dans le module même sans internet : bouton <strong>? Aide</strong>.
     </td>
   </tr>
 </table>
 
 RegistrArc ne modifie jamais les inscriptions dans I@nseo : il les lit et garde ses propres informations à part.
 
-Ce mode d'emploi est aussi disponible dans le module, même sans internet : bouton **? Aide** en haut de chaque page.
+## Nouveautés de la version 1.2
+
+- **Aide intégrée** : ce mode d'emploi s'ouvre dans le module avec le bouton **? Aide**, même sans internet, avec un sommaire sur la droite qui suit la lecture.
+- **Tableau de bord en trois pages** : Greffe, Trésorier et Terrain, avec des chiffres clés, des graphiques interactifs, les points à vérifier signalés ⚠ et un filtre par départ.
+- **Blasons dans le kiosque** : chaque archer affiche son blason. Il est en rouge s'il diffère du blason par défaut de sa catégorie.
+- **Archers surclassés** signalés en rouge dans le kiosque.
+- **Mises à jour plus sûres** : chaque fichier téléchargé est vérifié avant d'être installé.
+- La **version installée** s'affiche en bas de la page des paramètres.
 
 ## Le greffe en 4 étapes
 
@@ -148,7 +166,7 @@ Une personne qui a seulement le droit de consulter voit toutes les pages, mais l
 
 ## Régler les tarifs et les paiements
 
-À faire avant chaque concours : dans la liste des engagements, cliquez sur **⚙ Paramétrer tarifs & paiements**. Les réglages sont propres à chaque concours.
+À faire avant chaque concours : dans la liste des engagements, cliquez sur **⚙ Paramètres**. Les réglages sont propres à chaque concours.
 
 > [!IMPORTANT]
 > Pensez à cliquer sur **Enregistrer les paramètres** en bas de la page.
@@ -270,7 +288,7 @@ Avant de remplacer vos réglages, RegistrArc vous prévient si le fichier vient 
 
 C'est l'écran principal (voir l'aperçu en haut de cette page). Chaque ligne est un départ d'un archer : licence, nom, club, catégorie, départ, cible, montant et état du paiement.
 
-- **Chercher un archer** : par club, catégorie, départ, état du paiement (payés, non payés, gratuits) ou en tapant un nom, une licence, un club. **Réinitialiser** remet tout à zéro.
+- **Chercher un archer** : par club, catégorie, départ, état du paiement (payés, non payés, gratuits, remboursés) ou en tapant un nom, une licence, un club. **Réinitialiser** remet tout à zéro.
 - **Trier** : cliquez sur le titre d'une colonne ; cliquez à nouveau pour inverser l'ordre.
 - **Repères** : « Archer non affecté » signale un archer sans cible ; une étiquette violette indique un prix spécial.
 
@@ -298,7 +316,6 @@ C'est l'écran principal (voir l'aperçu en haut de cette page). Chaque ligne es
 - **Rembourser** : sur la ligne d'un archer payé, **Rembourser**, puis choisissez comment il est remboursé (espèces, chèque, virement). Il passe en « Remboursé » et le remboursement apparaît dans la caisse.
 - **Annuler** sert à corriger une erreur de saisie. Un chèque déjà déposé à la banque ne peut plus être annulé, seulement remboursé.
 - **Le bouton ✎** ajoute une note visible par tout le greffe (« paiera dimanche », « chèque à l'ordre du club »…) et permet de marquer l'**inscription tardive**.
-- **Filtres** : « Remboursés » et « Gratuits » s'ajoutent à « Payés » et « Non payés ».
 
 </details>
 
@@ -334,15 +351,35 @@ Le bouton **Mode Kiosk** ouvre un écran fait pour encaisser debout, avec un té
   </tr>
 </table>
 
-1. **Trouvez l'archer** en tapant son nom, sa licence ou son club, ou en choisissant le départ. Seuls les archers qui doivent encore payer sont affichés ; cochez **Afficher payés et gratuits** pour voir tout le monde.
+1. **Trouvez l'archer** en tapant son nom, sa licence, son club ou son blason, ou en choisissant le départ. Seuls les archers qui doivent encore payer sont affichés ; cochez **Afficher payés et gratuits** pour voir tout le monde.
 2. **Touchez sa ligne**, ou plusieurs lignes. **Tout sélectionner** coche toutes les lignes affichées. Le total apparaît en bas.
 3. **Choisissez le mode de paiement**, cochez **Reçu demandé** si l'archer veut un reçu, puis **Encaisser**.
 
-En haut de l'écran : le nombre d'archers à encaisser, la somme qui reste à encaisser, le nombre de payés et le nombre de reçus demandés.
+En haut de l'écran : le nombre d'archers à encaisser, la somme qui reste à encaisser, le nombre de payés et le nombre de reçus demandés. Tapez votre prénom dans le champ **Opérateur** : il est retenu sur le téléphone.
 
-Chaque ligne indique aussi le **blason** de l'archer, tel qu'il est réglé dans I@nseo : son image, son nom et son diamètre (par exemple « Trispot · 40 cm »). On peut le taper dans la recherche pour retrouver tous les archers d'un même blason.
+Le « reçu demandé » se coche uniquement dans le mode Kiosk ; la liste des engagements l'affiche ensuite. Le lien **Aide** ouvre ce mode d'emploi, **Version complète** revient à la liste des engagements.
 
-Le « reçu demandé » se coche uniquement dans le mode Kiosk ; la liste des engagements l'affiche ensuite. Tapez votre prénom dans le champ **Opérateur** en haut de l'écran : il est retenu sur le téléphone.
+</details>
+
+<details>
+<summary><strong>Les repères de chaque ligne : blason, surclassement</strong></summary>
+
+<br>
+
+Chaque ligne montre, de gauche à droite : la cible, le nom de l'archer avec son départ, sa catégorie et son club, puis **son blason**, et enfin le montant.
+
+Le **blason** est celui réglé dans I@nseo : son image, son nom et son diamètre (par exemple « Trispot · 40 cm »). Si l'archer change de blason selon la distance, les deux s'affichent.
+
+Deux cas sont signalés **en rouge**, pour vérifier avant le début des tirs :
+
+| En rouge | Ce que cela veut dire |
+|---|---|
+| **Le blason** | L'archer n'a pas le blason prévu par défaut pour sa catégorie dans I@nseo. |
+| **La catégorie** | L'archer est **surclassé** : sa catégorie d'âge (d'après sa date de naissance) n'est pas sa catégorie de classement. |
+
+Gardez le doigt appuyé (ou passez la souris) sur l'élément en rouge pour voir le détail, par exemple « blason par défaut de la catégorie : Piquet Blanc » ou « catégorie d'âge U15F, tire en U18F ». Taper **surclassé** dans la recherche liste tous les archers surclassés.
+
+Ces repères sont seulement des informations : ils ne changent ni le prix ni l'inscription. Pour corriger un blason ou une catégorie, passez par I@nseo.
 
 </details>
 
@@ -394,16 +431,33 @@ Pour **clôturer la caisse** (en fin de matinée, de journée…) : comptez les 
 ### Le tableau de bord
 
 <details>
-<summary><strong>Chiffres, fichiers pour le trésorier, sauvegarde, fin du concours</strong></summary>
+<summary><strong>Les trois pages : Greffe, Trésorier, Terrain</strong></summary>
 
 <br>
 
 <img src="docs/images/tableau-de-bord.png" alt="Tableau de bord" width="100%">
 
-- **Les chiffres** : montant attendu, encaissé, reste dû, nombre de payés, gratuits et remboursés.
-- **Les graphiques** : l'encaissé au fil du temps, puis la répartition par départ, par mode de paiement et par club. Passez la souris (ou le doigt) sur une courbe ou une barre pour voir le détail. En haut, choisissez un **départ** et l'affichage en **montants** ou en nombre d'**engagements** : tous les chiffres et graphiques suivent. Cliquer sur un départ dans son graphique le sélectionne aussi. Le bouton **Tableau** de chaque graphique montre les mêmes chiffres en tableau.
+En haut, choisissez la **page** qui correspond à votre rôle, et éventuellement un **départ** : tous les chiffres et graphiques de la page suivent. RegistrArc retient la dernière page ouverte sur l'appareil.
+
+| Page | Pour qui | Ce qu'elle montre |
+|---|---|---|
+| **Greffe** | le greffe, pendant les inscriptions | nombre d'archers (jeunes et adultes), d'engagements et de clubs ; archers sur plusieurs départs ; archers **sans cible** et **surclassés** à vérifier ; inscriptions tardives et tarifs spéciaux. Graphiques : engagements par départ, par catégorie, clubs les plus représentés, départs par archer. |
+| **Trésorier** | le trésorier, pour les comptes | attendu, encaissé (avec jauge), reste dû, remboursé, montant moyen par archer, **chèques à déposer**, déposé en banque, **écart de caisse**. Graphiques : encaissé au fil du temps, par mode de paiement, par départ, **reste dû par club** (pour les relances), recette par tarif ; tableaux des remises de chèques et des clôtures de caisse. |
+| **Terrain** | les bénévoles au comptoir, le jour J | archers à encaisser, encaissé aujourd'hui, **dernière opération** (il y a combien de temps, par qui), opérateurs du jour, reçus demandés, archers sans cible. Graphiques : activité heure par heure, reste à encaisser par départ, encaissements par opérateur, par poste (ordinateur ou téléphone) et par origine (liste, mode Kiosk, HelloAsso). |
+
+- Les tuiles marquées **⚠** signalent un point à vérifier (archers sans cible ou surclassés, chèques pas encore déposés, écart de caisse).
+- Passez la souris (ou le doigt) sur une barre, une colonne ou la courbe pour voir le détail. Cliquer sur un départ dans un graphique le sélectionne pour toute la page.
+- Chaque graphique a un bouton **Tableau** qui montre les mêmes chiffres sous forme de tableau.
+
+</details>
+
+<details>
+<summary><strong>Factures, fichiers pour le trésorier, sauvegarde, fin du concours</strong></summary>
+
+<br>
+
 - **Les factures émises** du concours, à réimprimer.
-- **Pour le trésorier** : la liste des engagements et le journal des opérations en fichiers à ouvrir dans Excel ou LibreOffice.
+- **Pour le trésorier** : la liste des engagements et le journal des opérations en fichiers à ouvrir dans Excel ou LibreOffice, la remise de chèques et la caisse.
 - **Sauvegarde** : un seul fichier avec toutes les informations du concours, à garder en lieu sûr ; **Restaurer** le recharge si besoin.
 - **Fin du concours** : une fois les comptes faits, **Clôturer le concours** empêche toute nouvelle modification. Il peut être rouvert au même endroit.
 
@@ -451,6 +505,14 @@ Les chèques groupés se tiennent à jour tout seuls : si vous annulez le paieme
 
 ---
 
+## L'aide dans le module
+
+Ce mode d'emploi est disponible dans RegistrArc, même sans internet : bouton **? Aide** en haut des pages (lien **Aide** dans le mode Kiosk).
+
+- Le **sommaire**, à droite, suit votre lecture ; cliquez sur une partie pour y aller directement. Sur téléphone, il s'ouvre avec le bouton **Sommaire**.
+- **Tout déplier**, **Tout replier** et **Imprimer** sont en haut de la page.
+- Depuis les paramètres ou le mode Kiosk, l'aide s'ouvre directement sur la partie qui les concerne.
+
 ## Mettre à jour le module
 
 Quand une nouvelle version de RegistrArc existe, un bouton vert **⬆ Mise à jour** apparaît en haut de la liste. Seul l'administrateur d'I@nseo le voit.
@@ -467,7 +529,7 @@ Le bouton ouvre une page qui montre la version installée, la nouvelle version e
 <img src="docs/images/mise-a-jour.png" alt="Page de mise à jour" width="100%">
 
 - Vos paiements et vos réglages ne sont pas touchés.
-- Si l'installation échoue en route, rien n'est changé.
+- Chaque fichier téléchargé est vérifié avant d'être installé ; si un seul ne correspond pas, ou si l'installation échoue en route, rien n'est changé.
 - Sans internet, RegistrArc fonctionne normalement : le bouton n'apparaît simplement pas.
 
 </details>
@@ -477,6 +539,7 @@ Le bouton ouvre une page qui montre la version installée, la nouvelle version e
 - **Chaque concours a ses propres paiements et réglages**, sans mélange.
 - **Plusieurs personnes peuvent encaisser en même temps** (l'ordinateur du greffe et des téléphones) sans s'effacer mutuellement.
 - **Chaque opération est notée** dans le journal de la caisse : rien ne s'efface.
+- **Les fichiers pour le tableur sont protégés** : un nom ou une note qui ressemblerait à une formule n'est pas exécuté à l'ouverture dans Excel ou LibreOffice.
 - **Pour faire une sauvegarde**, utilisez **Télécharger une sauvegarde** dans le tableau de bord.
 
 > [!WARNING]
@@ -503,6 +566,20 @@ Dans les réglages, vérifiez :
 1. que sa catégorie est dans la bonne colonne (Jeunes ou Adultes) ;
 2. que son club est bien le club organisateur, s'il doit avoir ce tarif ;
 3. qu'aucune règle active ne le concerne par erreur.
+
+</details>
+
+<details>
+<summary>Un blason ou une catégorie est en rouge dans le mode Kiosk</summary>
+
+<br>
+
+Ce n'est pas une erreur de RegistrArc, mais un point à vérifier :
+
+- **blason en rouge** : l'archer n'a pas le blason par défaut de sa catégorie dans I@nseo ;
+- **catégorie en rouge** : l'archer est surclassé (sa catégorie d'âge n'est pas sa catégorie de classement).
+
+Le détail s'affiche en gardant le doigt appuyé sur l'élément. Si c'est voulu, il n'y a rien à faire ; sinon, corrigez l'archer dans I@nseo. Voir [les repères de chaque ligne](#encaisser-sur-un-téléphone).
 
 </details>
 
@@ -539,6 +616,15 @@ Un autre concours a été ouvert dans I@nseo entre-temps. Rechargez la page : el
 <br>
 
 Le concours a été clôturé depuis le tableau de bord. Rouvrez-le au même endroit (partie « Fin du concours ») si des modifications sont encore nécessaires.
+
+</details>
+
+<details>
+<summary>Quelle version de RegistrArc est installée ?</summary>
+
+<br>
+
+Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.0 »), et dans le sous-titre de la page d'aide.
 
 </details>
 

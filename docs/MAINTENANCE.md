@@ -40,6 +40,7 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 | `lib/registrarc_engagements.inc.php` | **calcul unique des montants** utilisé par toutes les pages (tarif, règles, plafond, majoration, statut) |
 | `lib/registrarc_caisse.inc.php` | opérations de paiement journalisées, remises déposées, clôtures de caisse, concours clôturé |
 | `lib/registrarc_invoices.inc.php` | registre des factures émises |
+| `lib/registrarc_dashboard.inc.php` | données du tableau de bord (pages Greffe, Trésorier, Terrain) : un enregistrement par engagement, sans nom ni licence, et les opérations de caisse ; dessin par `assets/js/dashboard.js` |
 | `lib/registrarc_backup.inc.php` | sauvegarde et restauration |
 | `lib/registrarc_helloasso.inc.php` | lecture et rapprochement des exports HelloAsso |
 | `lib/registrarc_ui.inc.php` | habillage commun des pages d'administration |

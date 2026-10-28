@@ -5,6 +5,7 @@
 .rg-viz {
     --viz-series-1: #2a78d6;   /* encaissé / payés */
     --viz-series-2: #eb6834;   /* reste dû / à payer */
+    --viz-other: #918f87;      /* gratuits ou remboursés : gris neutre, contraste > 3:1 */
     --viz-series-1-track: #cde2fb;
     --viz-text-secondary: #52514e;
     --viz-muted: #898781;
@@ -46,7 +47,8 @@
 
 .rg-seg button:first-child { border-left: none; }
 .rg-seg button:hover { background: var(--rg-accent-soft); }
-.rg-seg button[aria-pressed="true"] { background: var(--rg-accent); color: #fff; }
+.rg-seg button[aria-pressed="true"],
+.rg-seg button[aria-selected="true"] { background: var(--rg-accent); color: #fff; }
 .rg-seg-small button { min-height: 28px; padding: 0 10px; font-size: 12px; }
 
 /* --- Chiffres clés ------------------------------------------------------- */
@@ -151,6 +153,65 @@
 .rg-viz-note { color: var(--rg-muted); margin: 8px 0 0; }
 
 .rg-viz-table { max-height: 380px; overflow-y: auto; }
+
+/* --- Tuiles de chiffres clés ---------------------------------------------- */
+.rg-viz-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.rg-viz-tile {
+    background: var(--rg-surface);
+    border-radius: var(--rg-radius);
+    box-shadow: 0 1px 2px rgba(20, 51, 107, 0.12);
+    border-left: 3px solid transparent;
+    padding: 12px 14px;
+    min-width: 0;
+}
+
+.rg-viz-tile.is-warn { border-left-color: var(--rg-warn); }
+.rg-viz-tile-label { color: var(--viz-text-secondary); font-size: 12px; }
+
+.rg-viz-tile-value {
+    margin-top: 4px;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--rg-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rg-viz-warn-icon { color: var(--rg-warn); font-size: 16px; margin-right: 6px; vertical-align: 2px; }
+.rg-viz-tile-sub { margin-top: 4px; color: var(--viz-muted); font-size: 12px; }
+.rg-viz-tile .rg-viz-meter { margin-top: 8px; }
+
+/* --- Cartes : deux colonnes, une seule sur écran étroit -------------------- */
+.rg-viz-cards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: start;
+}
+
+.rg-viz-cards > .rg-card { margin-bottom: 0; }
+.rg-viz-cards > .is-wide { grid-column: 1 / -1; }
+
+.rg-viz-split {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 18px;
+}
+
+.rg-viz-split h3 { font-size: 13px; margin: 4px 0 6px; color: var(--viz-text-secondary); }
+
+@media (max-width: 900px) {
+    .rg-viz-cards { grid-template-columns: minmax(0, 1fr); }
+}
+
+#rgVizPage { margin-bottom: 14px; }
 
 /* --- Infobulle : la valeur en premier, le libellé ensuite ------------------ */
 .rg-viz-tip {
