@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/module-I%40nseo-14336b" alt="Module I@nseo">
-  <img src="https://img.shields.io/badge/version-1.2.3-14336b" alt="Version 1.2.3">
+  <img src="https://img.shields.io/badge/version-1.2.4-14336b" alt="Version 1.2.4">
   <img src="https://img.shields.io/badge/langue-fran%C3%A7ais-14336b" alt="En français">
   <img src="https://img.shields.io/badge/tir%20%C3%A0%20l'arc-greffe-e3242b" alt="Tir à l'arc, greffe">
 </p>
@@ -67,7 +67,7 @@
   <tr>
     <td width="50%" valign="top">
       <strong>La liste des inscrits</strong><br>
-      Tous les archers du concours, avec ce que chacun doit payer pour chacun de ses départs.
+      Tous les archers du concours, avec ce que chacun doit payer pour chacun de ses départs, et leur passage au greffe pointé départ par départ.
     </td>
     <td width="50%" valign="top">
       <strong>L'encaissement</strong><br>
@@ -120,6 +120,16 @@ RegistrArc ne modifie jamais les inscriptions dans I@nseo : il les lit et garde 
 
 ## Nouveautés de la version 1.2
 
+Version 1.2.4 :
+
+- **Passage au greffe** : la liste a une vue **par archer** pour pointer les archers qui se présentent, départ par départ, avec leur cible, leur blason et le nombre d'archers restant à passer. Voir [le passage au greffe](#le-passage-au-greffe).
+- **Recherche en direct** dans la liste, **croix rouge** pour tout réinitialiser, et « ; » pour afficher plusieurs archers à la fois.
+- **Fond de caisse**, détaillé par pièces et billets ou en un seul montant. La **caisse** est maintenant dans le tableau de bord, page **Trésorier**.
+- **Tarif dégressif** : un supplément différent pour chaque départ, ajouté avec le bouton **+**. Le club organisateur est gratuit par défaut, et la majoration pour inscription tardive est supprimée.
+- **Archers surclassés** aussi signalés en rouge dans la liste.
+
+Depuis la version 1.2.0 :
+
 - **Aide intégrée** : ce mode d'emploi s'ouvre dans le module avec le bouton **? Aide**, même sans internet, avec un sommaire sur la droite qui suit la lecture.
 - **Tableau de bord en trois pages** : Greffe, Trésorier et Terrain, avec des chiffres clés, des graphiques interactifs, les points à vérifier signalés ⚠ et un filtre par départ.
 - **Carte des clubs** : une bulle par club, placée sur sa ville, avec la page **Villes des clubs** pour corriger.
@@ -134,7 +144,7 @@ RegistrArc ne modifie jamais les inscriptions dans I@nseo : il les lit et garde 
 |:-:|---|---|
 | **1** | Une fois pour toutes | [Installer le module](#installer-le-module) |
 | **2** | Avant le concours | [Régler les tarifs et les modes de paiement](#régler-les-tarifs-et-les-paiements) |
-| **3** | Pendant le concours | Encaisser [à l'ordinateur](#encaisser-à-lordinateur) ou [sur un téléphone](#encaisser-sur-un-téléphone) |
+| **3** | Pendant le concours | [Pointer les archers au greffe](#le-passage-au-greffe), encaisser [à l'ordinateur](#encaisser-à-lordinateur) ou [sur un téléphone](#encaisser-sur-un-téléphone) |
 | **4** | Après le concours | [Clôturer la caisse](#la-caisse), [faire les factures](#faire-une-facture), [déposer les chèques](#préparer-la-remise-de-chèques), puis [clôturer le concours](#le-tableau-de-bord) |
 
 > [!TIP]
@@ -197,7 +207,7 @@ Pour les archers du club organisateur et pour ceux des autres clubs, jeunes et a
 - le prix du **1er départ** ;
 - le **supplément** à payer pour le **2e départ**, et si besoin pour le 3e, le 4e… (tarif dégressif).
 
-Le petit bouton **+** ajoute une colonne pour le départ suivant, avec son propre supplément. On peut en ajouter jusqu'au nombre de départs du concours déclaré dans I@nseo. Le bouton **−** retire la dernière colonne. Au-delà du dernier départ du tableau, chaque départ coûte le dernier supplément. La colonne **Total** se met à jour pendant la saisie.
+Le bouton bleu **+** ajoute une colonne pour le départ suivant, avec son propre supplément. On peut en ajouter jusqu'au nombre de départs du concours dans I@nseo (rappelé au-dessus du tableau) ; une fois ce nombre atteint, le **+** devient gris. Le bouton **−** retire la dernière colonne. Au-delà du dernier départ du tableau, chaque départ coûte le dernier supplément. La colonne **Total** se met à jour pendant la saisie.
 
 Exemple avec les prix proposés au départ (un seul supplément, répété à chaque départ). Le club organisateur est **gratuit** par défaut, jeunes et adultes :
 
@@ -294,13 +304,29 @@ C'est l'écran principal (voir l'aperçu en haut de cette page). Chaque ligne es
 
 - **Chercher un archer** : par club, catégorie, départ, état du paiement (payés, non payés, gratuits, remboursés) ou en tapant un nom, une licence, un club. La liste se met à jour au fil de la frappe, sans bouton à cliquer. Pour afficher **plusieurs archers à la fois**, séparez les recherches par un point-virgule : `terrieur ; 812137B ; dupont` affiche ces trois archers. Il suffit ensuite de les cocher pour les encaisser ou les facturer ensemble. La **croix rouge** ✕ remet tous les filtres à zéro.
 - **Trier** : cliquez sur le titre d'une colonne ; cliquez à nouveau pour inverser l'ordre.
-- **Vue par engagement ou par archer** : l'interrupteur au-dessus du champ **Opérateur** change la présentation de la liste. La vue **par engagement** montre une ligne par départ, avec le paiement. La vue **par archer** montre une ligne par archer (licence, nom, prénom, club, catégorie) et une colonne par départ :
-  - **-** : l'archer ne tire pas ce départ ;
-  - **✕ rouge** : il n'est pas encore passé au greffe. Un clic sur la croix le pointe ;
-  - **✓ vert** : il est passé au greffe. Son numéro de cible et son blason s'affichent dessous (blason en rouge s'il n'est pas celui de sa catégorie). Un clic sur la coche annule le pointage.
+- **Vue par engagement ou par archer** : l'interrupteur au-dessus du champ **Opérateur** change la présentation de la liste. La vue **par engagement** (une ligne par départ, avec le paiement) sert à encaisser ; la vue **par archer** sert à suivre le [passage au greffe](#le-passage-au-greffe).
+- **Repères** : « Archer non affecté » signale un archer sans cible ; une étiquette violette indique un prix spécial ; une catégorie en rouge signale un archer **surclassé** (au survol : « Surclassé : U15F > U18F »).
 
-  Pour savoir où en est l'accueil de chaque départ : sous le titre du départ, une pastille indique les **archers encore à passer au greffe** sur ceux attendus (par exemple **8/25**, en rouge), puis **✓ 25** en vert quand tout le monde est passé. Ces chiffres tiennent compte des filtres : avec le filtre **Départ**, on suit un seul départ. Les filtres et la recherche marchent dans les deux vues. Pour encaisser, revenez à la vue par engagement.
-- **Repères** : « Archer non affecté » signale un archer sans cible ; une étiquette violette indique un prix spécial.
+</details>
+
+### Le passage au greffe
+
+<details>
+<summary><strong>Pointer les archers qui se présentent</strong></summary>
+
+<br>
+
+<img src="docs/images/liste-par-archer.png" alt="Vue par archer : passage au greffe" width="100%">
+
+Choisissez **Par archer** avec l'interrupteur au-dessus du champ **Opérateur**. La liste montre une ligne par archer (licence, nom, prénom, club, catégorie) et une colonne par départ :
+
+- **-** : l'archer ne tire pas ce départ ;
+- **✕ rouge** : il n'est pas encore passé au greffe. Un clic sur la croix le pointe ;
+- **✓ vert** : il est passé au greffe. Son numéro de cible et son blason s'affichent dessous (blason en rouge s'il n'est pas celui de sa catégorie). Un clic sur la coche annule le pointage.
+
+Sous le titre de chaque départ, une pastille indique les **archers encore à passer au greffe** sur ceux attendus (par exemple **8/23**, en rouge), puis **✓ 23** en vert quand tout le monde est passé. Ces chiffres tiennent compte des filtres : avec le filtre **Départ**, on suit un seul départ. La recherche marche aussi (avec « ; » pour plusieurs archers).
+
+Pour encaisser, revenez à la vue **Par engagement**.
 
 </details>
 
@@ -669,7 +695,7 @@ Le concours a été clôturé depuis le tableau de bord. Rouvrez-le au même end
 
 <br>
 
-Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.3 »), et dans le sous-titre de la page d'aide.
+Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.4 »), et dans le sous-titre de la page d'aide.
 
 </details>
 

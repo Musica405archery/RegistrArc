@@ -794,9 +794,8 @@ include('Common/Templates/head.php');
             <div class="card-help">
                 Montants en euros. Chaque départ suivant est calculé comme :
                 <span class="chip">départs précédents + supplément</span>.
-                <?php if ($tarifMaxTiers > 2): ?>
-                    Le bouton <strong>+</strong> ajoute un départ avec son propre supplément, jusqu'aux <?php echo intval($tarifMaxTiers); ?> départs du concours.
-                <?php endif; ?>
+                Le bouton <strong>+</strong> ajoute un départ avec son propre supplément, jusqu'au nombre de départs du concours dans I@nseo
+                (<?php echo intval($tarifMaxTiers); ?> ici) ; le bouton <strong>−</strong> retire le dernier.
                 Au-delà du dernier départ du tableau, chaque départ coûte le dernier supplément.
             </div>
 
@@ -815,12 +814,10 @@ include('Common/Templates/head.php');
                                             <?php echo $i === 1 ? '1er départ' : ($i === 2 && $tarifMaxTiers === 2 ? 'Supplément' : 'Suppl. ' . $i . 'e départ'); ?>
                                         </th>
                                     <?php endfor; ?>
-                                    <?php if ($tarifMaxTiers > 2): ?>
-                                        <th class="tarif-tier-buttons">
-                                            <button type="button" class="tarif-tier-btn" data-tier-add title="Ajouter un départ" aria-label="Ajouter un départ">+</button>
-                                            <button type="button" class="tarif-tier-btn" data-tier-remove title="Retirer le dernier départ" aria-label="Retirer le dernier départ">−</button>
-                                        </th>
-                                    <?php endif; ?>
+                                    <th class="tarif-tier-buttons">
+                                        <button type="button" class="tarif-tier-btn" data-tier-add title="Ajouter un départ" aria-label="Ajouter un départ">+</button>
+                                        <button type="button" class="tarif-tier-btn" data-tier-remove title="Retirer le dernier départ" aria-label="Retirer le dernier départ">−</button>
+                                    </th>
                                     <th>Total <span data-tier-count><?php echo intval($tarifTiers); ?></span> départs</th>
                                 </tr>
                             </thead>
@@ -847,9 +844,7 @@ include('Common/Templates/head.php');
                                                 <input type="number" name="tarif[<?php echo $group; ?>][<?php echo $age; ?>][<?php echo $i; ?>]" value="<?php echo $steps[$i]; ?>" min="0" step="1" class="tarif-input" aria-label="<?php echo htmlspecialchars($groupLabel . ', ' . mb_strtolower($ageLabel) . ', ' . ($i === 1 ? '1er départ' : 'supplément du ' . $i . 'e départ')); ?>">
                                             </td>
                                         <?php endfor; ?>
-                                        <?php if ($tarifMaxTiers > 2): ?>
-                                            <td></td>
-                                        <?php endif; ?>
+                                        <td></td>
                                         <td class="tarif-row-total"><span data-tarif-total><?php echo $total; ?></span> €</td>
                                     </tr>
                                 <?php endforeach; ?>

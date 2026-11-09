@@ -62,6 +62,16 @@ test('tarifs : paliers alignés, palier manquant = supplément précédent', fun
     assert_same(registrarc_default_tarifs(), registrarc_normalize_tarifs(null));
 });
 
+test('nombre de départs du concours : le plus grand des sources I@nseo', function () {
+    assert_same(3, registrarc_get_tournament_info(1)['sessions'], 'ToNumSession');
+
+    // ToNumSession pas à jour : les sessions de qualification ou les départs des archers comptent
+    $GLOBALS['test_db']['tournament']->ToNumSession = 0;
+    $GLOBALS['test_db']['tournament']->SesMax = 4;
+    $GLOBALS['test_db']['tournament']->QuMax = 2;
+    assert_same(4, registrarc_get_tournament_info(1)['sessions']);
+});
+
 test('règle catégorie à prix fixe', function () {
     $rules = [['active' => true, 'scope' => 'categorie', 'match' => ['BB'], 'label' => 'Bare bow', 'action' => ['type' => 'fixed_price', 'value' => 6]]];
 
