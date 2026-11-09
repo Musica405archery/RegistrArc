@@ -503,7 +503,67 @@ function deleteRuleRow(btn) {
     }
 }
 
+// Tarif dégressif : + ajoute un départ avec son supplément, − retire le dernier
+// (de 2 départs au nombre de départs du concours). Le total suit la saisie.
+function initTarifTiers() {
+    const field = document.getElementById('tarif_tiers');
+    const tables = document.getElementById('tarifTables');
+
+    if (!field || !tables) {
+        return;
+    }
+
+    const max = parseInt(field.dataset.max, 10) || 2;
+
+    function update() {
+        const tiers = parseInt(field.value, 10) || 2;
+
+        tables.querySelectorAll('[data-tier]').forEach(function(cell) {
+            cell.hidden = parseInt(cell.dataset.tier, 10) > tiers;
+        });
+
+        tables.querySelectorAll('[data-tier-count]').forEach(function(span) {
+            span.textContent = tiers;
+        });
+
+        tables.querySelectorAll('[data-tier-add]').forEach(function(btn) {
+            btn.disabled = tiers >= max;
+        });
+
+        tables.querySelectorAll('[data-tier-remove]').forEach(function(btn) {
+            btn.disabled = tiers <= 2;
+        });
+
+        tables.querySelectorAll('[data-tarif-row]').forEach(function(row) {
+            let sum = 0;
+
+            row.querySelectorAll('td[data-tier]:not([hidden]) input').forEach(function(input) {
+                sum += Math.max(0, parseInt(input.value, 10) || 0);
+            });
+
+            row.querySelector('[data-tarif-total]').textContent = sum;
+        });
+    }
+
+    tables.addEventListener('click', function(e) {
+        const tiers = parseInt(field.value, 10) || 2;
+
+        if (e.target.closest('[data-tier-add]') && tiers < max) {
+            field.value = tiers + 1;
+            update();
+        } else if (e.target.closest('[data-tier-remove]') && tiers > 2) {
+            field.value = tiers - 1;
+            update();
+        }
+    });
+
+    tables.addEventListener('input', update);
+    update();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    initTarifTiers();
+
     const importForm = document.getElementById('importSettingsForm');
 
     if (importForm) {

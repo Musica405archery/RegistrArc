@@ -605,7 +605,132 @@ document.addEventListener('DOMContentLoaded', function() {
     updateBulkInvoiceButton();
     checkModuleUpdate();
     initOperator();
+    initLiveFilters();
 });
+
+// Filtres en direct : la liste est redemandée au serveur à chaque changement,
+// sans recharger la page (même filtrage, mêmes totaux, filtres gardés en session).
+// Sans JavaScript, Entrée dans la recherche envoie le formulaire.
+function initLiveFilters() {
+    const form = document.getElementById('filterForm');
+    const reset = document.getElementById('filterReset');
+
+    if (!form || !window.fetch || !window.DOMParser) {
+        return;
+    }
+
+    let timer = null;
+    let controller = null;
+
+    function refresh() {
+        const params = new URLSearchParams(new FormData(form));
+        const current = new URLSearchParams(window.location.search);
+
+        ['sort', 'dir'].forEach(key => {
+            if (current.has(key)) {
+                params.set(key, current.get(key));
+            }
+        });
+
+        const url = window.location.pathname + '?' + params.toString();
+
+        if (controller) {
+            controller.abort();
+        }
+
+        controller = window.AbortController ? new AbortController() : null;
+
+        fetch(url, { credentials: 'same-origin', signal: controller ? controller.signal : undefined })
+            .then(response => response.ok ? response.text() : Promise.reject(response.status))
+            .then(html => {
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const list = doc.getElementById('engagementsList');
+                const target = document.getElementById('engagementsList');
+
+                if (!list || !target) {
+                    return;
+                }
+
+                // Les engagements cochés et encore affichés restent cochés
+                const checked = new Set(Array.from(document.querySelectorAll('.engagement-checkbox:checked'), cb => cb.value));
+
+                target.innerHTML = list.innerHTML;
+                target.querySelectorAll('.engagement-checkbox').forEach(cb => {
+                    cb.checked = checked.has(cb.value);
+                });
+
+                const exportLink = doc.getElementById('exportLink');
+                const currentExport = document.getElementById('exportLink');
+
+                if (exportLink && currentExport) {
+                    currentExport.href = exportLink.getAttribute('href');
+                }
+
+                history.replaceState(null, '', url);
+                updateBulkInvoiceButton();
+            })
+            .catch(() => {});
+    }
+
+    function schedule(delay) {
+        clearTimeout(timer);
+        timer = setTimeout(refresh, delay);
+    }
+
+    form.addEventListener('input', event => {
+        if (event.target.id === 'search') {
+            schedule(250);
+        }
+    });
+
+    form.addEventListener('change', event => {
+        if (event.target.tagName === 'SELECT') {
+            schedule(0);
+        }
+    });
+
+    form.addEventListener('submit', event => {
+        event.preventDefault();
+        schedule(0);
+    });
+
+    if (reset) {
+        reset.addEventListener('click', event => {
+            event.preventDefault();
+            form.querySelectorAll('select').forEach(select => { select.value = 'all'; });
+            form.querySelector('#search').value = '';
+            schedule(0);
+        });
+    }
+
+    // Vue par engagement / par archer : boutons rattachés au formulaire des filtres
+    document.querySelectorAll('input[name="view"][form="filterForm"]').forEach(radio => {
+        radio.addEventListener('change', () => schedule(0));
+    });
+
+    // Pointage au greffe (vue par archer) : enregistré sans recharger la page
+    const checkinForm = document.getElementById('checkinForm');
+
+    if (checkinForm) {
+        checkinForm.addEventListener('submit', event => {
+            const button = event.submitter;
+
+            if (!button || button.name !== 'toggle_checkin') {
+                return;
+            }
+
+            event.preventDefault();
+            button.disabled = true;
+
+            const data = new FormData(checkinForm);
+            data.append(button.name, button.value);
+
+            fetch(window.location.pathname + window.location.search, { method: 'POST', body: data, credentials: 'same-origin' })
+                .then(() => refresh())
+                .catch(() => { button.disabled = false; });
+        });
+    }
+}
 
 // Bouton "Mise à jour" affiché seulement si une version plus récente existe
 function checkModuleUpdate() {

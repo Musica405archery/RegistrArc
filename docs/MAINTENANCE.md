@@ -22,13 +22,13 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 
 | Fichier | Rôle |
 |---|---|
-| `index.php` | liste des engagements : encaissement, annulation, remboursement, note, import / export des inscriptions |
+| `index.php` | liste des engagements : encaissement, annulation, remboursement, note, import / export des inscriptions ; vue par archer avec le passage au greffe (`?view=archer`) |
 | `kiosk.php` | mode Kiosk (`kiosk.php?q=licence` ouvre directement un archer) |
 | `config_tarifs.php` | paramètres du tournoi |
 | `invoice.php` | factures : aperçu, émission numérotée (`?num=2026-0001`) |
 | `bankchequedeposite.php` | bordereau de remise de chèques, remises déposées (`?remise=R1`) |
-| `caisse.php` | caisse en cours, clôtures (`?cloture=C1`) |
-| `dashboard.php` | tableau de bord, sauvegarde / restauration, clôture du concours |
+| `caisse.php` | reçoit les formulaires de la caisse (fond, clôture) et affiche les rapports imprimables : clôture (`?cloture=C1`), caisse en cours (`?imprimer=1`). Sans paramètre, renvoie vers le tableau de bord |
+| `dashboard.php` | tableau de bord (`?page=tresorier` ouvre la page Trésorier, avec la caisse), sauvegarde / restauration, clôture du concours |
 | `export.php` | téléchargements : `?type=engagements`, `journal` (CSV), `backup` (JSON) |
 | `helloasso.php` | import des paiements HelloAsso |
 | `qrcodes.php` | étiquettes QR codes à imprimer |
@@ -38,8 +38,9 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 | `menu.php` | entrée du menu I@nseo |
 | `lib/registrarc_page.inc.php` | début commun des pages : environnement I@nseo, bibliothèques, `registrarc_page_tour_id()` (tournoi ouvert et droit demandé) |
 | `lib/registrarc.inc.php` | fonctions communes : paramètres, tarifs de base, chèques groupés, sécurité des formulaires ; charge les autres fichiers de `lib/` |
-| `lib/registrarc_engagements.inc.php` | **calcul unique des montants** utilisé par toutes les pages (tarif, règles, plafond, majoration, statut) |
-| `lib/registrarc_caisse.inc.php` | opérations de paiement journalisées, remises déposées, clôtures de caisse, concours clôturé |
+| `lib/registrarc_engagements.inc.php` | **calcul unique des montants** utilisé par toutes les pages (tarif, règles, plafond, statut) |
+| `lib/registrarc_caisse.inc.php` | opérations de paiement journalisées, remises déposées, fond de caisse, clôtures de caisse, concours clôturé |
+| `lib/registrarc_caisse_view.inc.php` | affichage de la caisse, partagé par la page Trésorier du tableau de bord et les rapports de `caisse.php` |
 | `lib/registrarc_invoices.inc.php` | registre des factures émises |
 | `lib/registrarc_dashboard.inc.php` | données du tableau de bord (pages Greffe, Trésorier, Terrain) : un enregistrement par engagement, sans nom ni licence, et les opérations de caisse ; dessin par `assets/js/dashboard.js` |
 | `lib/registrarc_clubs.inc.php` | ville des clubs : détection dans le nom du club parmi les communes de son département, corrections (`data/club_cities.json`), repli au centre du département |
@@ -71,12 +72,13 @@ Tout est dans `Modules/Custom/RegistrArc/data/`. Par tournoi :
 | Fichier | Contenu |
 |---|---|
 | `payments_<n°>.json` | paiements : statut (`PAYE`, `NON_PAYE`, `REMBOURSE`), mode, montant, date, opérateur, remise |
-| `settings_<n°>.json` | classes d'âge, tarifs, règles, modes de paiement, plafond et majoration |
+| `settings_<n°>.json` | classes d'âge, tarifs, règles, modes de paiement, plafond. Les tarifs sont des totaux cumulés par nombre de départs (`{"1": 10, "2": 17, "3": 21}`), de 2 paliers au nombre de départs du concours (`ToNumSession`) ; au-delà du dernier, le dernier supplément se répète (`registrarc_tarif_step()`) |
 | `cheque_groups_<n°>.json` | chèques groupés |
-| `archers_<n°>.json` | note et inscription tardive, par engagement |
+| `archers_<n°>.json` | par engagement : note, inscription tardive (information, sans effet sur le prix) et passage au greffe (`checked_in` : date, `checked_in_by` : opérateur), pointé dans la vue par archer de la liste |
 | `journal_<n°>.json` | journal des opérations, uniquement en ajout |
 | `deposits_<n°>.json` | remises de chèques déposées |
-| `closures_<n°>.json` | clôtures de caisse ; chaque clôture retient sa position dans le journal (`journal_from` / `journal_to`) |
+| `cash_float_<n°>.json` | fond de caisse : `mode` `detail` avec la quantité par valeur en centimes dans `detail` (`{"1000": 2, "50": 4}` = 2 billets de 10 € et 4 pièces de 0,50 €), ou `simple` avec un seul montant dans `amount`. Le comptage de clôture suit le même mode |
+| `closures_<n°>.json` | clôtures de caisse ; chaque clôture retient sa position dans le journal (`journal_from` / `journal_to`), le fond de caisse du moment (`cash_float_mode`, `cash_float`, `cash_float_detail`), les encaissements en espèces (`cash_takings`), les espèces attendues (fond compris) et le comptage (`cash_counted`, `cash_counted_detail`) |
 | `state_<n°>.json` | concours clôturé ou non |
 
 Commun à tous les tournois : `invoices.json`, registre des factures émises (compteur par année et copie figée de chaque facture), et `club_cities.json`, villes des clubs corrigées dans la page « Villes des clubs » (par numéro de club).

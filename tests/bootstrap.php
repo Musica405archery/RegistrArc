@@ -44,6 +44,7 @@ function test_set_tournament($organizerCode, $organizerName = 'Club organisateur
         'ToWhere' => 'Salle',
         'ToWhenFrom' => '2026-10-17',
         'ToWhenTo' => '2026-10-18',
+        'ToNumSession' => 3,
     ];
 }
 

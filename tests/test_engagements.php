@@ -16,8 +16,9 @@ test('montants par départ : organisateur et autre club', function () {
 
     assert_same(1, $e[$a1]['numero']);
     assert_same(2, $e[$a2]['numero']);
-    assert_same(5.0, $e[$a1]['amount_due'], 'organisateur adulte, 1er départ');
-    assert_same(5.0, $e[$a2]['amount_due'], 'organisateur adulte, supplément');
+    assert_same(0.0, $e[$a1]['amount_due'], 'organisateur adulte, 1er départ : gratuit par défaut');
+    assert_same(0.0, $e[$a2]['amount_due'], 'organisateur adulte, supplément : gratuit par défaut');
+    assert_same('free', $e[$a1]['state']);
     assert_same(8.0, $e[$b1]['amount_due'], 'autre club jeune');
     assert_same('due', $e[$b1]['state']);
     assert_same('Standard', registrarc_engagement_tarif_label($e[$b1]));
@@ -75,7 +76,8 @@ test('plafond par archer : excédent retiré en partant du dernier départ', fun
     assert_same([['label' => 'Plafond par archer', 'amount' => -8.0]], $e[$d3]['adjustments']);
 });
 
-test('majoration pour inscription tardive, ajoutée après le plafond', function () {
+test('inscription tardive : simple information, sans majoration', function () {
+    // Une ancienne majoration encore présente dans les paramètres n'est plus appliquée
     test_settings(['options' => ['cap_per_archer' => 10, 'late_fee' => 3]]);
     $d1 = test_add_entry('A1', 'CLS1H', '1099000', 1);
     $d2 = test_add_entry('A1', 'CLS1H', '1099000', 2);
@@ -83,9 +85,35 @@ test('majoration pour inscription tardive, ajoutée après le plafond', function
 
     $e = registrarc_load_engagements(1, true);
     assert_same(10.0, $e[$d1]['amount_due']);
-    assert_same(3.0, $e[$d2]['amount_due'], 'plafonné à 0 puis majoré de 3');
+    assert_same(0.0, $e[$d2]['amount_due'], 'plafonné à 0, pas de majoration');
+    assert_true($e[$d2]['late']);
     assert_same('arrivé hier', $e[$d2]['note']);
-    assert_same('Standard · Plafond par archer · Inscription tardive', registrarc_engagement_tarif_label($e[$d2]));
+    assert_same('Standard · Plafond par archer', registrarc_engagement_tarif_label($e[$d2]));
+    assert_same(['cap_per_archer' => 10.0], registrarc_load_pricing_options(1));
+});
+
+test('passage au greffe : pointé, conservé avec la note, puis annulé', function () {
+    $d1 = test_add_entry('A1', 'CLS1H', '1099000', 1);
+    $d2 = test_add_entry('A1', 'CLS1H', '1099000', 2);
+
+    assert_same('', registrarc_load_engagements(1, true)[$d1]['checked_in'], 'pas encore passé');
+
+    assert_true(registrarc_toggle_checkin(1, $d1));
+    $e = registrarc_load_engagements(1, true);
+    assert_true($e[$d1]['checked_in'] !== '', 'pointé');
+    assert_same('', $e[$d2]['checked_in'], 'seulement ce départ');
+
+    // Une note enregistrée ensuite ne retire pas le pointage
+    assert_true(registrarc_set_archer_note(1, $d1, 'cible changée', false));
+    $e = registrarc_load_engagements(1, true);
+    assert_true($e[$d1]['checked_in'] !== '');
+    assert_same('cible changée', $e[$d1]['note']);
+
+    // Annulé, puis note vidée : plus rien n'est gardé pour cet engagement
+    assert_true(registrarc_toggle_checkin(1, $d1));
+    assert_true(registrarc_set_archer_note(1, $d1, '', false));
+    assert_same([], registrarc_load_archer_info(1));
+    assert_same(false, registrarc_toggle_checkin(1, 0));
 });
 
 test('paramètres illisibles : tarifs par défaut', function () {

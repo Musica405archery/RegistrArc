@@ -29,9 +29,37 @@ test('tarif de base : 1er départ puis supplément', function () {
     assert_same(8.0, registrarc_prix_engagement('1099000', 'CLS1H', 2, $tarifs, '1034000'));
     assert_same(8.0, registrarc_prix_engagement('1099000', 'CLS1H', 3, $tarifs, '1034000'));
 
-    // Club organisateur, jeune : 4 € puis 4 €
-    assert_same(4.0, registrarc_prix_engagement('1034000', 'CLU15H', 1, $tarifs, '1034000'));
-    assert_same(4.0, registrarc_prix_engagement('1034000', 'CLU15H', 2, $tarifs, '1034000'));
+    // Club organisateur : gratuit par défaut, jeunes et adultes
+    assert_same(0.0, registrarc_prix_engagement('1034000', 'CLU15H', 1, $tarifs, '1034000'));
+    assert_same(0.0, registrarc_prix_engagement('1034000', 'CLS1H', 2, $tarifs, '1034000'));
+});
+
+test('tarif dégressif sur plusieurs départs', function () {
+    // 10 € le 1er départ, 17 € les deux, 21 € les trois
+    $tarifs = registrarc_default_tarifs();
+    $tarifs['clubs_autres']['adultes'] = [1 => 10, 2 => 17, 3 => 21];
+
+    assert_same(10.0, registrarc_prix_engagement('1099000', 'CLS1H', 1, $tarifs, '1034000'));
+    assert_same(7.0, registrarc_prix_engagement('1099000', 'CLS1H', 2, $tarifs, '1034000'));
+    assert_same(4.0, registrarc_prix_engagement('1099000', 'CLS1H', 3, $tarifs, '1034000'));
+    assert_same(4.0, registrarc_prix_engagement('1099000', 'CLS1H', 7, $tarifs, '1034000'), 'au-delà : dernier supplément');
+
+    assert_same(0.0, registrarc_tarif_step([1 => 10], 2), 'ancien tarif sans 2e départ');
+    assert_same(3, registrarc_tarif_tiers_count($tarifs));
+    assert_same(2, registrarc_tarif_tiers_count(registrarc_default_tarifs()));
+});
+
+test('tarifs : paliers alignés, palier manquant = supplément précédent', function () {
+    $tarifs = registrarc_normalize_tarifs([
+        'clubs_autres' => ['jeunes' => ['1' => 8, '2' => 14], 'adultes' => [1 => 10, 2 => 17, 3 => 21]],
+        'organizer' => ['jeunes' => [1 => 4, 2 => 8], 'adultes' => [1 => 5, 2 => 10]],
+    ]);
+
+    assert_same([1 => 10, 2 => 17, 3 => 21], $tarifs['clubs_autres']['adultes']);
+    assert_same([1 => 8, 2 => 14, 3 => 20], $tarifs['clubs_autres']['jeunes'], 'le supplément de 6 € continue');
+    assert_same([1 => 4, 2 => 8, 3 => 12], $tarifs['organizer']['jeunes']);
+    assert_same([1 => 0, 2 => 0], registrarc_normalize_tarifs(null)['organizer']['adultes'], 'organisateur gratuit par défaut');
+    assert_same(registrarc_default_tarifs(), registrarc_normalize_tarifs(null));
 });
 
 test('règle catégorie à prix fixe', function () {

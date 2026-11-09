@@ -24,7 +24,6 @@ function registrarc_page_open($title, $subtitle, $active) {
     $links = [
         'index' => ['index.php', 'Liste'],
         'dashboard' => ['dashboard.php', 'Tableau de bord'],
-        'caisse' => ['caisse.php', 'Caisse'],
         'kiosk' => ['kiosk.php', 'Mode Kiosk'],
         'settings' => ['config_tarifs.php', '⚙ Paramètres'],
         'aide' => ['aide.php', '? Aide'],
