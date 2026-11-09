@@ -15,6 +15,11 @@
 }
 
 /* --- Filtres : une ligne au-dessus de tout ce qu'ils filtrent ------------- */
+/* Caisse, sous les graphiques de la page Trésorier */
+.rg-caisse-panel[hidden] { display: none; }
+.rg-caisse-panel { margin-top: 18px; scroll-margin-top: 12px; }
+.rg-caisse-panel .rg-section-title { margin: 0 0 10px; font-size: 18px; }
+
 .rg-viz-filters {
     display: flex;
     flex-wrap: wrap;

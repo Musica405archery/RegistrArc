@@ -2,10 +2,13 @@
 // ============================================================================
 // RegistrArc - dashboard.php
 // Tableau de bord du concours : chiffres, répartition par mode / départ / club,
-// factures émises, exports, sauvegarde, clôture du concours.
+// caisse (page Trésorier), factures émises, exports, sauvegarde, clôture du concours.
+//
+// dashboard.php?page=tresorier : ouvre directement la page Trésorier
 // ============================================================================
 
 require_once(dirname(__FILE__) . '/lib/registrarc_page.inc.php');
+require_once(dirname(__FILE__) . '/lib/registrarc_caisse_view.inc.php');
 
 $TourId = registrarc_page_tour_id();
 
@@ -96,6 +99,13 @@ registrarc_render_flash($flash);
     </div>
 </section>
 
+<!-- Caisse : affichée avec la page Trésorier (assets/js/dashboard.js) -->
+<section class="rg-caisse-panel" id="caisse" data-dashboard-page="tresorier" aria-label="Caisse">
+    <h2 class="rg-section-title">Caisse</h2>
+    <?php registrarc_render_flash(registrarc_flash('caisse')); ?>
+    <?php registrarc_render_caisse($TourId, null, 'panel'); ?>
+</section>
+
 <script type="application/json" id="rgVizData"><?php echo json_encode($vizData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE); ?></script>
 <!-- Carte des clubs : Leaflet 1.9.4 (BSD-2-Clause), fond OpenStreetMap chargé en ligne -->
 <script src="<?php echo registrarc_asset_url('lib/js/leaflet/leaflet.js'); ?>"></script>
@@ -141,7 +151,6 @@ registrarc_render_flash($flash);
             <a class="rg-btn" href="export.php?type=engagements">Liste des engagements</a>
             <a class="rg-btn" href="export.php?type=journal">Journal des opérations</a>
             <a class="rg-btn" href="bankchequedeposite.php" target="_blank">Remises de chèques</a>
-            <a class="rg-btn" href="caisse.php">Caisse</a>
         </div>
     </div>
 

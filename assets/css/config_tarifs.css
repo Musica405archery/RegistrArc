@@ -212,6 +212,32 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+/* Tarif dégressif par départ */
+.tarif-scroll { overflow-x: auto; }
+.tarif-table th[hidden], .tarif-table td[hidden] { display: none; }
+.tarif-table .tarif-input { width: 72px; }
+.tarif-row-total { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tarif-tier-buttons { width: 1%; white-space: nowrap; }
+
+.tarif-tier-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 18px !important;
+    padding: 0;
+    border: 1px solid var(--line-strong, #cbd5e1);
+    border-radius: 999px;
+    background: #fff;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.tarif-tier-btn[data-tier-add]:not(:disabled) { background: #14336b; border-color: #14336b; color: #fff; }
+.tarif-tier-btn:hover:not(:disabled) { filter: brightness(1.15); }
+.tarif-tier-btn:disabled { opacity: .5; cursor: not-allowed; }
+
 .delete-btn {
     border: none;
     background: none;

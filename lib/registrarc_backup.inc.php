@@ -15,6 +15,7 @@ function registrarc_backup_files($TourId) {
         'journal' => registrarc_journal_file_path($TourId),
         'deposits' => registrarc_deposits_file_path($TourId),
         'closures' => registrarc_closures_file_path($TourId),
+        'cash_float' => registrarc_cash_float_file_path($TourId),
         'state' => registrarc_state_file_path($TourId),
     ];
 }

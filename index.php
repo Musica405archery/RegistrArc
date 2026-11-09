@@ -41,7 +41,11 @@ $filters = [
     'payment'  => isset($_GET['payment_filter'])  ? $_GET['payment_filter']  : (isset($_SESSION[$filtersKey]['payment'])  ? $_SESSION[$filtersKey]['payment']  : 'all'),
     'session'  => isset($_GET['session_filter'])  ? $_GET['session_filter']  : (isset($_SESSION[$filtersKey]['session'])  ? $_SESSION[$filtersKey]['session']  : 'all'),
     'search'   => isset($_GET['search'])          ? trim($_GET['search'])    : (isset($_SESSION[$filtersKey]['search'])   ? $_SESSION[$filtersKey]['search']   : ''),
+    // Vue : 'engagement' (une ligne par départ) ou 'archer' (une ligne par archer)
+    'view'     => isset($_GET['view'])            ? $_GET['view']            : (isset($_SESSION[$filtersKey]['view'])     ? $_SESSION[$filtersKey]['view']     : 'engagement'),
 ];
+
+$filters['view'] = $filters['view'] === 'archer' ? 'archer' : 'engagement';
 
 $_SESSION[$filtersKey] = $filters;
 
@@ -103,12 +107,12 @@ function registrarc_redirect_params($filters, $sortColumn, $sortDirection) {
     foreach ($filters as $key => $value) {
         $value = trim((string)$value);
 
-        if ($value === '' || $value === 'all') {
+        if ($value === '' || $value === 'all' || ($key === 'view' && $value === 'engagement')) {
             continue;
         }
 
-        if ($key === 'search') {
-            $params['search'] = $value;
+        if ($key === 'search' || $key === 'view') {
+            $params[$key] = $value;
         } elseif ($key === 'session') {
             $params['session_filter'] = $value;
         } else {
@@ -411,19 +415,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (isset($_POST['save_archer_info']) && isset($_POST['engagement_id'])) {
-        $engagementId = intval($_POST['engagement_id']);
-        $note = isset($_POST['note']) ? mb_substr(trim((string)$_POST['note']), 0, 200) : '';
-        $late = !empty($_POST['late']);
-
-        $saved = $engagementId > 0 && registrarc_update_archer_info($TourId, function (array &$info) use ($engagementId, $note, $late) {
-            if ($note === '' && !$late) {
-                unset($info[(string)$engagementId]);
-            } else {
-                $info[(string)$engagementId] = ['note' => $note, 'late' => $late, 'updated_at' => date('Y-m-d H:i:s')];
-            }
-        });
+        $saved = registrarc_set_archer_note($TourId, $_POST['engagement_id'], isset($_POST['note']) ? $_POST['note'] : '', !empty($_POST['late']));
 
         $setMessage($saved ? 'Note enregistrée.' : "Erreur : impossible d'enregistrer la note." . registrarc_storage_error_suffix(), $saved ? 'success' : 'error');
+        $redirect();
+    }
+
+    // Vue par archer : présenté au greffe pour un départ (croix rouge / coche verte)
+    if (isset($_POST['toggle_checkin'])) {
+        if (!registrarc_toggle_checkin($TourId, $_POST['toggle_checkin'])) {
+            $setMessage("Erreur : impossible d'enregistrer le passage au greffe." . registrarc_storage_error_suffix(), 'error');
+        }
+
         $redirect();
     }
 }
@@ -447,6 +450,9 @@ foreach (registrarc_load_engagements($TourId) as $engagement) {
         'nom'                  => $engagement['nom'],
         'prenom'               => $engagement['prenom'],
         'categorie'            => $engagement['categorie'],
+        'age_class'            => $engagement['age_class'],
+        'class_code'           => $engagement['class_code'],
+        'is_upgraded'          => $engagement['is_upgraded'],
         'club'                 => $engagement['club'],
         'country_code'         => $engagement['country_code'],
         'session'              => $engagement['session'],
@@ -466,6 +472,8 @@ foreach (registrarc_load_engagements($TourId) as $engagement) {
         'is_free'              => registrarc_nothing_due($engagement['amount_due']),
         'note'                 => $engagement['note'],
         'late'                 => $engagement['late'],
+        'checked_in'           => $engagement['checked_in'],
+        'checked_in_by'        => $engagement['checked_in_by'],
         'deposit_id'           => $engagement['deposit_id'],
         'refund_method'        => isset($engagement['payment']['refund_method']) ? (string)$engagement['payment']['refund_method'] : '',
         // Ordre du tri par statut : non payé, gratuit ou remboursé, payé
@@ -507,7 +515,8 @@ sort($sessions, SORT_NUMERIC);
 // Filtrage affiché
 // ---------------------------------------------------------------------------
 $displayEngagements = [];
-$searchFilter = mb_strtolower($filters['search']);
+// « ; » sépare plusieurs recherches : un engagement est affiché s'il correspond à l'une d'elles
+$searchTerms = array_values(array_filter(array_map('trim', explode(';', mb_strtolower($filters['search']))), 'strlen'));
 
 foreach ($engagementsData as $e) {
     if ($filters['club'] !== 'all' && $filters['club'] !== '' && stripos((string)$e['club'], $filters['club']) === false) {
@@ -528,7 +537,7 @@ foreach ($engagementsData as $e) {
         continue;
     }
 
-    if ($searchFilter !== '') {
+    if (!empty($searchTerms)) {
         $haystack = mb_strtolower(
             $e['licence'] . ' ' .
             $e['nom'] . ' ' .
@@ -537,8 +546,16 @@ foreach ($engagementsData as $e) {
             $e['country_code'] . ' ' .
             $e['categorie']
         );
+        $found = false;
 
-        if (strpos($haystack, $searchFilter) === false) {
+        foreach ($searchTerms as $term) {
+            if (strpos($haystack, $term) !== false) {
+                $found = true;
+                break;
+            }
+        }
+
+        if (!$found) {
             continue;
         }
     }
@@ -590,6 +607,54 @@ usort($displayEngagements, function($a, $b) use ($sortColumn, $sortDirection) {
             return $dir * strcmp(mb_strtolower($a['nom']), mb_strtolower($b['nom']));
     }
 });
+
+// ---------------------------------------------------------------------------
+// Vue par archer : une ligne par licence, une colonne par départ. Un archer est
+// affiché si l'un de ses engagements passe les filtres ; ses colonnes montrent
+// tous ses départs.
+// ---------------------------------------------------------------------------
+$displayArchers = [];
+
+if ($filters['view'] === 'archer') {
+    $archerKey = function (array $e) {
+        return $e['licence'] !== '' ? 'L' . strtoupper($e['licence']) : 'E' . $e['engagement_id'];
+    };
+
+    $allByArcher = [];
+
+    foreach ($engagementsData as $e) {
+        $allByArcher[$archerKey($e)][] = $e;
+    }
+
+    // Ordre du tri choisi : celui du premier engagement affiché de l'archer
+    foreach ($displayEngagements as $e) {
+        $key = $archerKey($e);
+
+        if (isset($displayArchers[$key])) {
+            continue;
+        }
+
+        $bySession = [];
+        $categoriesOfArcher = [];
+
+        // Une catégorie par valeur distincte, gardée avec un engagement surclassé s'il y en a un
+        foreach ($allByArcher[$key] as $item) {
+            $bySession[(string)$item['session']][] = $item;
+
+            if (!isset($categoriesOfArcher[$item['categorie']]) || (!empty($item['is_upgraded']) && empty($categoriesOfArcher[$item['categorie']]['is_upgraded']))) {
+                $categoriesOfArcher[$item['categorie']] = $item;
+            }
+        }
+
+        $displayArchers[$key] = [
+            'archer' => $e,
+            'categories' => array_values($categoriesOfArcher),
+            'sessions' => $bySession,
+        ];
+    }
+
+    $archerTargetFaces = registrarc_load_target_faces($TourId);
+}
 
 // ---------------------------------------------------------------------------
 // Export inscriptions affichées
@@ -663,6 +728,17 @@ $sortLink = function ($key, $label) use ($sortColumn, $sortDirection) {
 
     return '<a href="?' . htmlspecialchars(http_build_query(array_merge($_GET, ['sort' => $key, 'dir' => $dir]))) . '">' . htmlspecialchars($label) . $arrow . '</a>';
 };
+
+// Catégorie, en rouge si l'archer est surclassé (EnAgeClass différente de EnClass), comme dans le kiosque
+$categoryHtml = function (array $e) {
+    $html = htmlspecialchars($e['categorie']);
+
+    if (empty($e['is_upgraded'])) {
+        return $html;
+    }
+
+    return '<span class="is-upgraded" title="' . htmlspecialchars('Surclassé : ' . $e['age_class'] . ' > ' . $e['class_code']) . '">' . $html . '</span>';
+};
 ?>
 
 <div class="registrarc-container">
@@ -675,7 +751,6 @@ $sortLink = function ($key, $label) use ($sortColumn, $sortDirection) {
         <div class="header-actions">
             <a href="update.php" id="registrarcUpdateBtn" class="btn-update" hidden>⬆ Mise à jour</a>
             <a href="dashboard.php">Tableau de bord</a>
-            <a href="caisse.php">Caisse</a>
             <a href="kiosk.php">Mode Kiosk</a>
             <a href="config_tarifs.php">⚙ Paramètres</a>
             <a href="aide.php">? Aide</a>
@@ -765,12 +840,11 @@ $sortLink = function ($key, $label) use ($sortColumn, $sortDirection) {
 
                 <div class="filter-group">
                     <label for="search">Recherche</label>
-                    <input type="text" name="search" id="search" value="<?php echo htmlspecialchars($filters['search']); ?>" placeholder="Licence, nom, prénom, club...">
+                    <input type="text" name="search" id="search" value="<?php echo htmlspecialchars($filters['search']); ?>" placeholder="Licence, nom, prénom, club..." autocomplete="off">
                 </div>
 
                 <div class="filter-actions">
-                    <button type="submit" name="go" value="1" class="btn-primary">Appliquer</button>
-                    <button type="submit" name="reset" value="1" class="btn-ghost">Réinitialiser</button>
+                    <a href="?reset=1" id="filterReset" class="btn-reset" title="Réinitialiser les filtres" aria-label="Réinitialiser les filtres">✕</a>
                 </div>
             </div>
         </form>
@@ -806,7 +880,7 @@ $sortLink = function ($key, $label) use ($sortColumn, $sortDirection) {
                 </div>
 
                 <div class="filter-actions">
-                    <a href="?<?php echo htmlspecialchars(http_build_query(array_merge($_GET, ['action' => 'export_registrations']))); ?>" class="btn-export" title="Exporter les inscriptions affichées et leurs paiements">Exporter</a>
+                    <a href="?<?php echo htmlspecialchars(http_build_query(array_merge($_GET, ['action' => 'export_registrations']))); ?>" id="exportLink" class="btn-export" title="Exporter les inscriptions affichées et leurs paiements">Exporter</a>
 
                     <?php if ($canWrite): ?>
                         <button type="button" class="btn-import" title="Importer les paiements d'un autre poste RegistrArc" onclick="toggleImportRegistrations();">Importer</button>
@@ -818,17 +892,30 @@ $sortLink = function ($key, $label) use ($sortColumn, $sortDirection) {
 
                 <div class="actions-spacer"></div>
 
-                <?php if ($canWrite): ?>
-                    <div class="filter-group operator-field">
-                        <label for="operatorName">Opérateur</label>
-                        <input type="text" id="operatorName" placeholder="Votre prénom" maxlength="40" autocomplete="off">
+                <div class="view-operator">
+                    <!-- Vue de la liste : rattachée au formulaire des filtres (recherche en direct) -->
+                    <div class="view-switch" role="radiogroup" aria-label="Vue de la liste">
+                        <label><input type="radio" name="view" value="engagement" form="filterForm" <?php echo $filters['view'] === 'engagement' ? 'checked' : ''; ?>><span>Par engagement</span></label>
+                        <label><input type="radio" name="view" value="archer" form="filterForm" <?php echo $filters['view'] === 'archer' ? 'checked' : ''; ?>><span>Par archer</span></label>
                     </div>
-                <?php endif; ?>
+
+                    <?php if ($canWrite): ?>
+                        <div class="filter-group operator-field">
+                            <label for="operatorName">Opérateur</label>
+                            <input type="text" id="operatorName" placeholder="Votre prénom" maxlength="40" autocomplete="off">
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
 
         </form>
 
         <?php if ($canWrite): ?>
+        <!-- Pointage au greffe (vue par archer) : les boutons ✕ / ✓ de la liste envoient ce formulaire -->
+        <form method="POST" id="checkinForm" hidden>
+            <?php echo registrarc_form_fields($TourId); ?>
+        </form>
+
         <form method="POST" enctype="multipart/form-data" id="importRegistrationsForm" style="display:none;margin-top:12px;">
             <?php echo registrarc_form_fields($TourId); ?>
             <div class="filters-row">
@@ -857,6 +944,142 @@ $sortLink = function ($key, $label) use ($sortColumn, $sortDirection) {
     $statusClasses = ['paid' => 'status-paid', 'due' => 'status-unpaid', 'free' => 'status-free', 'refunded' => 'status-refunded'];
     ?>
 
+    <!-- Remplacé pendant la recherche en direct (assets/js/index.js) -->
+    <div id="engagementsList">
+    <?php if ($filters['view'] === 'archer'): ?>
+        <?php
+        // Colonnes : les départs du concours (et « Sans départ » s'il y en a)
+        $archerSessions = $sessions;
+
+        foreach ($engagementsData as $e) {
+            if ($e['session'] === '') {
+                $archerSessions[] = '';
+                break;
+            }
+        }
+
+        // Reste à passer au greffe, par départ, parmi les archers affichés :
+        // archers attendus sur le départ / archers pas encore pointés
+        $sessionExpected = array_fill_keys(array_map('strval', $archerSessions), 0);
+        $sessionRemaining = $sessionExpected;
+
+        foreach ($displayArchers as $row) {
+            foreach ($row['sessions'] as $sess => $items) {
+                if (!isset($sessionExpected[(string)$sess])) {
+                    continue;
+                }
+
+                $sessionExpected[(string)$sess]++;
+
+                foreach ($items as $item) {
+                    if ($item['checked_in'] === '') {
+                        $sessionRemaining[(string)$sess]++;
+                        break;
+                    }
+                }
+            }
+        }
+        ?>
+
+        <div class="table-wrapper">
+            <div class="table-responsive">
+                <table class="archer-view">
+                    <thead>
+                        <tr>
+                            <th><?php echo $sortLink('licence', 'Licence'); ?></th>
+                            <th><?php echo $sortLink('nom', 'Nom'); ?></th>
+                            <th><?php echo $sortLink('prenom', 'Prénom'); ?></th>
+                            <th><?php echo $sortLink('club', 'Club'); ?></th>
+                            <th><?php echo $sortLink('categorie', 'Catégorie'); ?></th>
+                            <?php foreach ($archerSessions as $sess): ?>
+                                <?php
+                                $expected = $sessionExpected[(string)$sess];
+                                $remaining = $sessionRemaining[(string)$sess];
+                                ?>
+                                <th class="col-session">
+                                    <?php echo $sess !== '' ? 'Départ ' . htmlspecialchars($sess) : 'Sans départ'; ?>
+                                    <?php if ($expected > 0): ?>
+                                        <?php if ($remaining > 0): ?>
+                                            <span class="session-left num" title="<?php echo intval($remaining); ?> archer(s) à passer au greffe sur <?php echo intval($expected); ?> attendu(s)"><?php echo intval($remaining); ?>/<?php echo intval($expected); ?></span>
+                                        <?php else: ?>
+                                            <span class="session-left is-complete num" title="Les <?php echo intval($expected); ?> archer(s) attendu(s) sont passés au greffe">✓ <?php echo intval($expected); ?></span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                </th>
+                            <?php endforeach; ?>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($displayArchers as $row): ?>
+                            <?php $a = $row['archer']; ?>
+                            <tr>
+                                <td class="num"><?php echo htmlspecialchars($a['licence']); ?></td>
+                                <td><strong><?php echo htmlspecialchars($a['nom']); ?></strong></td>
+                                <td><?php echo htmlspecialchars($a['prenom']); ?></td>
+                                <td><?php echo htmlspecialchars($a['club']); ?></td>
+                                <td><?php echo implode(', ', array_map($categoryHtml, $row['categories'])); ?></td>
+                                <?php foreach ($archerSessions as $sess): ?>
+                                    <td class="col-session">
+                                        <?php if (empty($row['sessions'][(string)$sess])): ?>
+                                            <span class="checkin-none" title="Pas inscrit sur ce départ">-</span>
+                                        <?php else: ?>
+                                            <?php foreach ($row['sessions'][(string)$sess] as $item): ?>
+                                                <?php
+                                                $done = $item['checked_in'] !== '';
+                                                $face = isset($archerTargetFaces[$item['engagement_id']]) ? $archerTargetFaces[$item['engagement_id']] : null;
+                                                $faceLabel = registrarc_target_face_label($face);
+                                                $faceNotDefault = $faceLabel !== '' && empty($face['is_default']);
+                                                $checkinTitle = $done
+                                                    ? 'Passé au greffe le ' . date('d/m à H:i', strtotime($item['checked_in'])) . ($item['checked_in_by'] !== '' ? ' (' . $item['checked_in_by'] . ')' : '')
+                                                    : 'Pas encore passé au greffe';
+                                                ?>
+                                                <div class="checkin">
+                                                    <?php if ($canWrite): ?>
+                                                        <button type="submit" form="checkinForm" name="toggle_checkin" value="<?php echo intval($item['engagement_id']); ?>" class="checkin-btn <?php echo $done ? 'is-done' : 'is-todo'; ?>" title="<?php echo htmlspecialchars($checkinTitle . ($done ? ' : cliquer pour annuler' : ' : cliquer pour le pointer')); ?>" aria-label="<?php echo htmlspecialchars($checkinTitle); ?>"><?php echo $done ? '✓' : '✕'; ?></button>
+                                                    <?php else: ?>
+                                                        <span class="checkin-btn <?php echo $done ? 'is-done' : 'is-todo'; ?>" title="<?php echo htmlspecialchars($checkinTitle); ?>"><?php echo $done ? '✓' : '✕'; ?></span>
+                                                    <?php endif; ?>
+
+                                                    <?php if ($done): ?>
+                                                        <div class="checkin-info">
+                                                            <div class="checkin-target<?php echo !empty($item['target_is_unassigned']) ? ' target-unassigned' : ''; ?>">
+                                                                <?php echo !empty($item['target_is_unassigned']) ? htmlspecialchars($item['target_label']) : 'Cible ' . htmlspecialchars($item['target_label']); ?>
+                                                            </div>
+                                                            <?php if ($faceLabel !== ''): ?>
+                                                                <!-- Blason, comme dans le kiosque : en rouge s'il n'est pas celui de la catégorie -->
+                                                                <div class="checkin-face<?php echo $faceNotDefault ? ' is-not-default' : ''; ?>" title="<?php echo htmlspecialchars('Blason : ' . $faceLabel . ($faceNotDefault ? ' (blason par défaut de la catégorie : ' . $face['default_name'] . ')' : '')); ?>">
+                                                                    <?php foreach ($face['faces'] as $faceImage): ?>
+                                                                        <?php if ($faceImage['image'] !== ''): ?>
+                                                                            <img src="<?php echo htmlspecialchars($faceImage['image']); ?>" alt="" width="20" height="20" loading="lazy">
+                                                                        <?php endif; ?>
+                                                                    <?php endforeach; ?>
+                                                                    <span><?php echo htmlspecialchars($face['name'] !== '' ? $face['name'] . ' · ' . registrarc_target_face_sizes($face) : registrarc_target_face_sizes($face)); ?></span>
+                                                                </div>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </td>
+                                <?php endforeach; ?>
+                            </tr>
+                        <?php endforeach; ?>
+
+                        <?php if (empty($displayArchers)): ?>
+                            <tr>
+                                <td colspan="<?php echo 5 + count($archerSessions); ?>" style="text-align:center;padding:20px;color:var(--muted);">Aucun archer trouvé.</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="summary-footer num">
+            <div>Archers affichés : <strong><?php echo count($displayArchers); ?></strong></div>
+        </div>
+    <?php else: ?>
     <div class="table-wrapper">
         <div class="table-responsive">
             <table>
@@ -916,7 +1139,7 @@ $sortLink = function ($key, $label) use ($sortColumn, $sortDirection) {
                             <td><?php echo htmlspecialchars($e['prenom']); ?></td>
                             <td><?php echo htmlspecialchars(trim($e['country_code'] . ' - ' . $e['club'])); ?></td>
                             <td>
-                                <?php echo htmlspecialchars($e['categorie']); ?>
+                                <?php echo $categoryHtml($e); ?>
                                 <?php if (!empty($e['tarif_rule_label'])): ?>
                                     <span class="chip chip-rule" title="Prix spécial appliqué"><?php echo htmlspecialchars($e['tarif_rule_label']); ?></span>
                                 <?php endif; ?>
@@ -1018,6 +1241,8 @@ $sortLink = function ($key, $label) use ($sortColumn, $sortDirection) {
         <div>Engagements affichés : <strong><?php echo intval($displayCount); ?></strong></div>
         <div>Montant total affiché : <strong><?php echo registrarc_format_montant($total); ?> €</strong></div>
     </div>
+    <?php endif; ?>
+    </div>
 </div>
 
 <?php if ($canWrite): ?>
@@ -1034,7 +1259,7 @@ $sortLink = function ($key, $label) use ($sortColumn, $sortDirection) {
         </label>
         <label class="check-line">
             <input type="checkbox" name="late" id="noteLate" value="1">
-            Inscription tardive (majoration prévue dans les paramètres)
+            Inscription tardive
         </label>
         <div class="dialog-actions">
             <button type="button" class="btn-ghost" onclick="this.closest('dialog').close();">Annuler</button>

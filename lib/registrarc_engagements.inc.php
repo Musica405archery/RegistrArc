@@ -9,10 +9,9 @@
 // 1. prix de base : règle avancée si elle s'applique, sinon tarif selon le club,
 //    l'âge et le numéro du départ (1er départ / supplément)
 // 2. plafond par archer : le total d'un archer ne dépasse pas le plafond
-// 3. majoration pour inscription tardive, ajoutée après le plafond
 //
 // Fichiers JSON propres au tournoi :
-// - archers_<TourId>.json  : note et inscription tardive, par engagement
+// - archers_<TourId>.json  : note et inscription tardive (simple information), par engagement
 // ============================================================================
 
 // ---------------------------------------------------------------------------
@@ -21,7 +20,6 @@
 function registrarc_default_pricing_options() {
     return [
         'cap_per_archer' => 0,
-        'late_fee' => 0,
     ];
 }
 
@@ -60,6 +58,49 @@ function registrarc_load_archer_info($TourId) {
 
 function registrarc_update_archer_info($TourId, callable $mutator) {
     return registrarc_update_json_file(registrarc_archers_file_path($TourId), $mutator);
+}
+
+// Note et inscription tardive d'un engagement ; le pointage au greffe est conservé
+function registrarc_set_archer_note($TourId, $engagementId, $note, $late) {
+    $key = (string)intval($engagementId);
+    $note = mb_substr(trim((string)$note), 0, 200);
+
+    return intval($engagementId) > 0 && registrarc_update_archer_info($TourId, function (array &$info) use ($key, $note, $late) {
+        $entry = isset($info[$key]) && is_array($info[$key]) ? $info[$key] : [];
+        $entry['note'] = $note;
+        $entry['late'] = (bool)$late;
+        $entry['updated_at'] = date('Y-m-d H:i:s');
+        $info[$key] = $entry;
+        registrarc_archer_info_cleanup($info, $key);
+    });
+}
+
+// Archer présenté au greffe pour ce départ, ou non. Retourne false en cas d'erreur d'écriture.
+function registrarc_toggle_checkin($TourId, $engagementId) {
+    $key = (string)intval($engagementId);
+
+    return intval($engagementId) > 0 && registrarc_update_archer_info($TourId, function (array &$info) use ($key) {
+        $entry = isset($info[$key]) && is_array($info[$key]) ? $info[$key] : [];
+
+        if (!empty($entry['checked_in'])) {
+            unset($entry['checked_in'], $entry['checked_in_by']);
+        } else {
+            $entry['checked_in'] = date('Y-m-d H:i:s');
+            $entry['checked_in_by'] = registrarc_operator_name();
+        }
+
+        $info[$key] = $entry;
+        registrarc_archer_info_cleanup($info, $key);
+    });
+}
+
+// Retire un engagement sans note, ni inscription tardive, ni pointage
+function registrarc_archer_info_cleanup(array &$info, $key) {
+    $entry = $info[$key];
+
+    if ((!isset($entry['note']) || $entry['note'] === '') && empty($entry['late']) && empty($entry['checked_in'])) {
+        unset($info[$key]);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +250,9 @@ function registrarc_load_engagements($TourId, $refresh = false) {
         $info = isset($archerInfo[(string)$id]) && is_array($archerInfo[(string)$id]) ? $archerInfo[(string)$id] : [];
         $entry['note'] = isset($info['note']) ? trim((string)$info['note']) : '';
         $entry['late'] = !empty($info['late']);
+        // Présenté au greffe : date du pointage, '' sinon
+        $entry['checked_in'] = isset($info['checked_in']) ? (string)$info['checked_in'] : '';
+        $entry['checked_in_by'] = isset($info['checked_in_by']) ? (string)$info['checked_in_by'] : '';
 
         $entry['adjustments'] = [];
         $entry['amount_due'] = $entry['base_amount'];
@@ -234,15 +278,6 @@ function registrarc_load_engagements($TourId, $refresh = false) {
                     registrarc_engagement_adjust($engagements[$ids[$i]], 'Plafond par archer', -$reduce);
                     $excess = round($excess - $reduce, 2);
                 }
-            }
-        }
-    }
-
-    // 3. Majoration pour inscription tardive
-    if ($options['late_fee'] > 0) {
-        foreach ($engagements as $id => $entry) {
-            if ($entry['late']) {
-                registrarc_engagement_adjust($engagements[$id], 'Inscription tardive', $options['late_fee']);
             }
         }
     }

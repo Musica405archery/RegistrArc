@@ -436,15 +436,124 @@ function registrarc_current_cash_period($TourId) {
     return ['index' => intval($last['journal_to']), 'since' => (string)$last['to']];
 }
 
-// $countedCash : espèces comptées dans la caisse (null si non compté)
-function registrarc_close_cash($TourId, $countedCash, $comment) {
+// ---------------------------------------------------------------------------
+// Fond de caisse et comptage par pièces et billets
+// Un détail est une liste [valeur en centimes => quantité] : les centimes
+// évitent les arrondis des nombres à virgule.
+// ---------------------------------------------------------------------------
+function registrarc_cash_denominations() {
+    return [
+        'coins' => [1, 2, 5, 10, 20, 50, 100, 200],
+        'notes' => [500, 1000, 2000, 5000, 10000, 20000],
+    ];
+}
+
+function registrarc_cash_denomination_label($cents) {
+    $cents = intval($cents);
+
+    return ($cents % 100 === 0 ? (string)($cents / 100) : number_format($cents / 100, 2, ',', '')) . ' €';
+}
+
+// Garde les valeurs connues et les quantités entières positives
+function registrarc_normalize_cash_detail($detail) {
+    $out = [];
+
+    if (!is_array($detail)) {
+        return $out;
+    }
+
+    $denominations = registrarc_cash_denominations();
+
+    foreach (array_merge($denominations['coins'], $denominations['notes']) as $cents) {
+        $count = isset($detail[$cents]) ? trim((string)$detail[$cents]) : '';
+
+        if ($count !== '' && ctype_digit($count) && intval($count) > 0) {
+            $out[$cents] = min(intval($count), 100000);
+        }
+    }
+
+    return $out;
+}
+
+function registrarc_cash_detail_total(array $detail) {
+    $cents = 0;
+
+    foreach (registrarc_normalize_cash_detail($detail) as $value => $count) {
+        $cents += $value * $count;
+    }
+
+    return round($cents / 100, 2);
+}
+
+function registrarc_cash_float_file_path($TourId) {
+    return registrarc_data_dir() . '/cash_float_' . intval($TourId) . '.json';
+}
+
+// Montant saisi ("12,50", "12.5") : nombre positif arrondi au centime, null si vide ou invalide
+function registrarc_parse_cash_amount($value) {
+    $value = trim(str_replace([',', ' ', "\xC2\xA0", '€'], ['.', '', '', ''], (string)$value));
+
+    if ($value === '' || !is_numeric($value) || (float)$value < 0) {
+        return null;
+    }
+
+    return round(min((float)$value, 1000000), 2);
+}
+
+// Fond de caisse :
+// ['mode' => 'detail' (pièces et billets) ou 'simple' (un seul montant),
+//  'detail' => [...], 'amount' => montant simplifié, 'total' => x, 'updated_at' => ..., 'operator' => ...]
+function registrarc_load_cash_float($TourId) {
+    $data = registrarc_load_json_file(registrarc_cash_float_file_path($TourId));
+    $mode = isset($data['mode']) && $data['mode'] === 'simple' ? 'simple' : 'detail';
+    $detail = $mode === 'detail' ? registrarc_normalize_cash_detail(isset($data['detail']) ? $data['detail'] : []) : [];
+    $amount = $mode === 'simple' && isset($data['amount']) ? (float)registrarc_parse_cash_amount($data['amount']) : 0;
+
+    return [
+        'mode' => $mode,
+        'detail' => $detail,
+        'amount' => $amount,
+        'total' => $mode === 'simple' ? $amount : registrarc_cash_detail_total($detail),
+        'updated_at' => isset($data['updated_at']) ? (string)$data['updated_at'] : '',
+        'operator' => isset($data['operator']) ? (string)$data['operator'] : '',
+    ];
+}
+
+// $mode 'detail' : $detail = quantités par valeur ; $mode 'simple' : $amount = montant global
+function registrarc_save_cash_float($TourId, $detail, $mode = 'detail', $amount = null) {
+    $mode = $mode === 'simple' ? 'simple' : 'detail';
+    $detail = $mode === 'detail' ? registrarc_normalize_cash_detail($detail) : [];
+    $amount = $mode === 'simple' ? (float)registrarc_parse_cash_amount($amount) : 0;
+
+    return registrarc_update_json_file(registrarc_cash_float_file_path($TourId), function (array &$data) use ($mode, $detail, $amount) {
+        $data = [
+            'mode' => $mode,
+            'detail' => $detail,
+            'amount' => $amount,
+            'updated_at' => date('Y-m-d H:i:s'),
+            'operator' => registrarc_operator_name(),
+        ];
+    });
+}
+
+// $countedCash : espèces comptées dans la caisse, fond compris (null si non compté).
+// $countedDetail : comptage par pièces et billets ; s'il est rempli, il donne le total.
+// Les espèces attendues comprennent le fond de caisse, figé dans la clôture.
+function registrarc_close_cash($TourId, $countedCash, $comment, $countedDetail = null) {
     $period = registrarc_current_cash_period($TourId);
     $journal = registrarc_load_journal($TourId);
     $summary = registrarc_cash_summary($TourId, $period['index'], null, $journal);
-    $cash = isset($summary['totals']['ESP']) ? $summary['totals']['ESP'] : 0;
+    $takings = isset($summary['totals']['ESP']) ? $summary['totals']['ESP'] : 0;
+    $float = registrarc_load_cash_float($TourId);
+    $cash = round($float['total'] + $takings, 2);
+    $countedDetail = registrarc_normalize_cash_detail($countedDetail);
     $closureId = '';
 
-    $saved = registrarc_update_json_file(registrarc_closures_file_path($TourId), function (array &$closures) use ($period, $summary, $countedCash, $cash, $comment, &$closureId) {
+    if (!empty($countedDetail)) {
+        $countedCash = registrarc_cash_detail_total($countedDetail);
+    }
+
+    $saved = registrarc_update_json_file(registrarc_closures_file_path($TourId), function (array &$closures) use ($period, $summary, $countedCash, $countedDetail, $cash, $takings, $float, $comment, &$closureId) {
         $closures = array_values($closures);
         $closureId = 'C' . (count($closures) + 1);
         $closures[] = [
@@ -456,8 +565,13 @@ function registrarc_close_cash($TourId, $countedCash, $comment) {
             'totals' => $summary['totals'],
             'total' => $summary['total'],
             'count' => $summary['count'],
+            'cash_float_mode' => $float['mode'],
+            'cash_float' => (float)$float['total'],
+            'cash_float_detail' => $float['detail'],
+            'cash_takings' => (float)$takings,
             'cash_expected' => (float)$cash,
             'cash_counted' => $countedCash === null ? null : (float)$countedCash,
+            'cash_counted_detail' => $countedDetail,
             'cash_difference' => $countedCash === null ? null : (float)round($countedCash - $cash, 2),
             'operator' => registrarc_operator_name(),
             'comment' => mb_substr(trim((string)$comment), 0, 200),

@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/module-I%40nseo-14336b" alt="Module I@nseo">
-  <img src="https://img.shields.io/badge/version-1.2.3-14336b" alt="Version 1.2.3">
+  <img src="https://img.shields.io/badge/version-1.2.4-14336b" alt="Version 1.2.4">
   <img src="https://img.shields.io/badge/langue-fran%C3%A7ais-14336b" alt="En français">
   <img src="https://img.shields.io/badge/tir%20%C3%A0%20l'arc-greffe-e3242b" alt="Tir à l'arc, greffe">
 </p>
@@ -67,7 +67,7 @@
   <tr>
     <td width="50%" valign="top">
       <strong>La liste des inscrits</strong><br>
-      Tous les archers du concours, avec ce que chacun doit payer pour chacun de ses départs.
+      Tous les archers du concours, avec ce que chacun doit payer pour chacun de ses départs, et leur passage au greffe pointé départ par départ.
     </td>
     <td width="50%" valign="top">
       <strong>L'encaissement</strong><br>
@@ -81,7 +81,7 @@
     </td>
     <td valign="top">
       <strong>La caisse</strong><br>
-      Chaque opération est notée (qui, quand, sur quel appareil). Clôture de caisse avec comptage des espèces.
+      Chaque opération est notée (qui, quand, sur quel appareil). Fond de caisse et clôture de caisse avec comptage des pièces et billets.
     </td>
   </tr>
   <tr>
@@ -91,7 +91,7 @@
     </td>
     <td valign="top">
       <strong>Les tarifs du club</strong><br>
-      Jeunes ou adultes, club organisateur ou non, départs supplémentaires, tarifs spéciaux, plafond, inscription tardive.
+      Jeunes ou adultes, club organisateur ou non, tarif dégressif par départ, tarifs spéciaux, plafond.
     </td>
   </tr>
   <tr>
@@ -120,6 +120,16 @@ RegistrArc ne modifie jamais les inscriptions dans I@nseo : il les lit et garde 
 
 ## Nouveautés de la version 1.2
 
+Version 1.2.4 :
+
+- **Passage au greffe** : la liste a une vue **par archer** pour pointer les archers qui se présentent, départ par départ, avec leur cible, leur blason et le nombre d'archers restant à passer. Voir [le passage au greffe](#le-passage-au-greffe).
+- **Recherche en direct** dans la liste, **croix rouge** pour tout réinitialiser, et « ; » pour afficher plusieurs archers à la fois.
+- **Fond de caisse**, détaillé par pièces et billets ou en un seul montant. La **caisse** est maintenant dans le tableau de bord, page **Trésorier**.
+- **Tarif dégressif** : un supplément différent pour chaque départ, ajouté avec le bouton **+**. Le club organisateur est gratuit par défaut, et la majoration pour inscription tardive est supprimée.
+- **Archers surclassés** aussi signalés en rouge dans la liste.
+
+Depuis la version 1.2.0 :
+
 - **Aide intégrée** : ce mode d'emploi s'ouvre dans le module avec le bouton **? Aide**, même sans internet, avec un sommaire sur la droite qui suit la lecture.
 - **Tableau de bord en trois pages** : Greffe, Trésorier et Terrain, avec des chiffres clés, des graphiques interactifs, les points à vérifier signalés ⚠ et un filtre par départ.
 - **Carte des clubs** : une bulle par club, placée sur sa ville, avec la page **Villes des clubs** pour corriger.
@@ -134,7 +144,7 @@ RegistrArc ne modifie jamais les inscriptions dans I@nseo : il les lit et garde 
 |:-:|---|---|
 | **1** | Une fois pour toutes | [Installer le module](#installer-le-module) |
 | **2** | Avant le concours | [Régler les tarifs et les modes de paiement](#régler-les-tarifs-et-les-paiements) |
-| **3** | Pendant le concours | Encaisser [à l'ordinateur](#encaisser-à-lordinateur) ou [sur un téléphone](#encaisser-sur-un-téléphone) |
+| **3** | Pendant le concours | [Pointer les archers au greffe](#le-passage-au-greffe), encaisser [à l'ordinateur](#encaisser-à-lordinateur) ou [sur un téléphone](#encaisser-sur-un-téléphone) |
 | **4** | Après le concours | [Clôturer la caisse](#la-caisse), [faire les factures](#faire-une-facture), [déposer les chèques](#préparer-la-remise-de-chèques), puis [clôturer le concours](#le-tableau-de-bord) |
 
 > [!TIP]
@@ -195,15 +205,23 @@ Au départ, toutes les catégories en dessous de U21 (U11, U13, U15, U18) sont r
 Pour les archers du club organisateur et pour ceux des autres clubs, jeunes et adultes, vous indiquez :
 
 - le prix du **1er départ** ;
-- le **supplément** à payer pour **chaque** départ en plus.
+- le **supplément** à payer pour le **2e départ**, et si besoin pour le 3e, le 4e… (tarif dégressif).
 
-Exemple avec les prix proposés au départ :
+Le bouton bleu **+** ajoute une colonne pour le départ suivant, avec son propre supplément. On peut en ajouter jusqu'au nombre de départs du concours dans I@nseo (rappelé au-dessus du tableau) ; une fois ce nombre atteint, le **+** devient gris. Le bouton **−** retire la dernière colonne. Au-delà du dernier départ du tableau, chaque départ coûte le dernier supplément. La colonne **Total** se met à jour pendant la saisie.
+
+Exemple avec les prix proposés au départ (un seul supplément, répété à chaque départ). Le club organisateur est **gratuit** par défaut, jeunes et adultes :
 
 | Archer | 1 départ | 2 départs | 3 départs |
 |---|:-:|:-:|:-:|
 | Jeune d'un autre club (8 € puis 6 €) | 8 € | 14 € | 20 € |
 | Adulte d'un autre club (10 € puis 8 €) | 10 € | 18 € | 26 € |
-| Adulte du club organisateur (5 € puis 5 €) | 5 € | 10 € | 15 € |
+| Archer du club organisateur (0 €) | 0 € | 0 € | 0 € |
+
+Exemple de tarif dégressif sur 3 départs (un clic sur **+** pour ajouter le 3e), pour un adulte d'un autre club : 10 € le 1er départ, + 7 € le 2e, + 4 € le 3e.
+
+| 1 départ | 2 départs | 3 départs | 4 départs |
+|:-:|:-:|:-:|:-:|
+| 10 € | 17 € | 21 € | 25 € |
 
 Le club organisateur est celui indiqué dans les informations du concours, dans I@nseo. Les départs d'un même archer sont reconnus grâce à son numéro de licence.
 
@@ -238,16 +256,11 @@ Les **règles** donnent un prix spécial à certains archers. Pour chaque règle
 </details>
 
 <details>
-<summary><strong>Plafond par archer et inscription tardive</strong></summary>
+<summary><strong>Plafond par archer</strong></summary>
 
 <br>
 
-Dans la partie **Réductions et majorations** des réglages (laisser à 0 pour ne pas s'en servir) :
-
-- **Plafond par archer** : un archer ne paie jamais plus que ce montant pour l'ensemble de ses départs.
-- **Majoration inscription tardive** : un supplément ajouté aux départs marqués « inscription tardive » dans la liste des engagements (bouton ✎ de la ligne).
-
-Le plafond s'applique d'abord, la majoration ensuite : un archer en retard paie toujours sa majoration.
+**Plafond par archer** (laisser à 0 pour ne pas s'en servir) : un archer ne paie jamais plus que ce montant pour l'ensemble de ses départs.
 
 </details>
 
@@ -289,9 +302,31 @@ Avant de remplacer vos réglages, RegistrArc vous prévient si le fichier vient 
 
 C'est l'écran principal (voir l'aperçu en haut de cette page). Chaque ligne est un départ d'un archer : licence, nom, club, catégorie, départ, cible, montant et état du paiement.
 
-- **Chercher un archer** : par club, catégorie, départ, état du paiement (payés, non payés, gratuits, remboursés) ou en tapant un nom, une licence, un club. **Réinitialiser** remet tout à zéro.
+- **Chercher un archer** : par club, catégorie, départ, état du paiement (payés, non payés, gratuits, remboursés) ou en tapant un nom, une licence, un club. La liste se met à jour au fil de la frappe, sans bouton à cliquer. Pour afficher **plusieurs archers à la fois**, séparez les recherches par un point-virgule : `terrieur ; 812137B ; dupont` affiche ces trois archers. Il suffit ensuite de les cocher pour les encaisser ou les facturer ensemble. La **croix rouge** ✕ remet tous les filtres à zéro.
 - **Trier** : cliquez sur le titre d'une colonne ; cliquez à nouveau pour inverser l'ordre.
-- **Repères** : « Archer non affecté » signale un archer sans cible ; une étiquette violette indique un prix spécial.
+- **Vue par engagement ou par archer** : l'interrupteur au-dessus du champ **Opérateur** change la présentation de la liste. La vue **par engagement** (une ligne par départ, avec le paiement) sert à encaisser ; la vue **par archer** sert à suivre le [passage au greffe](#le-passage-au-greffe).
+- **Repères** : « Archer non affecté » signale un archer sans cible ; une étiquette violette indique un prix spécial ; une catégorie en rouge signale un archer **surclassé** (au survol : « Surclassé : U15F > U18F »).
+
+</details>
+
+### Le passage au greffe
+
+<details>
+<summary><strong>Pointer les archers qui se présentent</strong></summary>
+
+<br>
+
+<img src="docs/images/liste-par-archer.png" alt="Vue par archer : passage au greffe" width="100%">
+
+Choisissez **Par archer** avec l'interrupteur au-dessus du champ **Opérateur**. La liste montre une ligne par archer (licence, nom, prénom, club, catégorie) et une colonne par départ :
+
+- **-** : l'archer ne tire pas ce départ ;
+- **✕ rouge** : il n'est pas encore passé au greffe. Un clic sur la croix le pointe ;
+- **✓ vert** : il est passé au greffe. Son numéro de cible et son blason s'affichent dessous (blason en rouge s'il n'est pas celui de sa catégorie). Un clic sur la coche annule le pointage.
+
+Sous le titre de chaque départ, une pastille indique les **archers encore à passer au greffe** sur ceux attendus (par exemple **8/23**, en rouge), puis **✓ 23** en vert quand tout le monde est passé. Ces chiffres tiennent compte des filtres : avec le filtre **Départ**, on suit un seul départ. La recherche marche aussi (avec « ; » pour plusieurs archers).
+
+Pour encaisser, revenez à la vue **Par engagement**.
 
 </details>
 
@@ -378,7 +413,7 @@ Deux cas sont signalés **en rouge**, pour vérifier avant le début des tirs :
 | **Le blason** | L'archer n'a pas le blason prévu par défaut pour sa catégorie dans I@nseo. |
 | **La catégorie** | L'archer est **surclassé** : sa catégorie d'âge (d'après sa date de naissance) n'est pas sa catégorie de classement. |
 
-Gardez le doigt appuyé (ou passez la souris) sur l'élément en rouge pour voir le détail, par exemple « blason par défaut de la catégorie : Piquet Blanc » ou « catégorie d'âge U15F, tire en U18F ». Taper **surclassé** dans la recherche liste tous les archers surclassés.
+Gardez le doigt appuyé (ou passez la souris) sur l'élément en rouge pour voir le détail, par exemple « blason par défaut de la catégorie : Piquet Blanc » ou « Surclassé : U15F > U18F ». Taper **surclassé** dans la recherche liste tous les archers surclassés.
 
 Ces repères sont seulement des informations : ils ne changent ni le prix ni l'inscription. Pour corriger un blason ou une catégorie, passez par I@nseo.
 
@@ -423,9 +458,22 @@ Les paiements importés apparaissent dans la caisse avec l'origine « HelloAsso 
 
 <img src="docs/images/caisse.png" alt="Caisse" width="100%">
 
-Le bouton **Caisse** montre tout ce qui a été encaissé, annulé ou remboursé depuis la dernière clôture : total par mode de paiement et liste des opérations, avec l'heure, l'opérateur et l'appareil utilisé.
+La caisse se trouve dans le **Tableau de bord**, page **Trésorier**, sous les graphiques. Elle montre tout ce qui a été encaissé, annulé ou remboursé depuis la dernière clôture : total par mode de paiement et liste des opérations, avec l'heure, l'opérateur et l'appareil utilisé. **Imprimer** ouvre la caisse en cours sur une page à imprimer.
 
-Pour **clôturer la caisse** (en fin de matinée, de journée…) : comptez les espèces, tapez le montant compté, puis **Clôturer la caisse**. RegistrArc affiche l'écart avec les espèces attendues. Chaque clôture reste consultable et imprimable ; les opérations suivantes comptent pour la clôture suivante.
+Le **fond de caisse** est la monnaie mise dans la caisse avant d'ouvrir. Deux façons de le saisir, au choix :
+
+- **Détaillé** : le nombre de pièces et de billets de chaque valeur (de 0,01 € à 200 €). Le total se calcule tout seul.
+- **Simplifié** : un seul montant, sans détail.
+
+Cliquez ensuite sur **Enregistrer le fond de caisse**. Les espèces attendues comprennent ce fond en plus des encaissements en espèces. Le fond reste le même d'une clôture à l'autre : après chaque clôture, on retire la recette et on laisse le fond dans la caisse.
+
+Pour **clôturer la caisse** (en fin de matinée, de journée…) :
+
+1. Comptez les pièces et les billets présents dans la caisse, fond compris.
+2. Avec un fond détaillé, tapez la quantité de chaque valeur : le total compté s'affiche au fur et à mesure. Avec un fond simplifié, tapez seulement le montant compté.
+3. Cliquez sur **Clôturer la caisse**.
+
+RegistrArc affiche alors l'écart avec les espèces attendues, et la somme **à retirer en laissant le fond**. Chaque clôture reste consultable dans **Clôtures précédentes** : **Voir / imprimer** ouvre son rapport, avec le détail du comptage et du fond. Les opérations qui suivent comptent pour la clôture suivante.
 
 </details>
 
@@ -443,7 +491,7 @@ En haut, choisissez la **page** qui correspond à votre rôle, et éventuellemen
 | Page | Pour qui | Ce qu'elle montre |
 |---|---|---|
 | **Greffe** | le greffe, pendant les inscriptions | nombre d'archers (jeunes et adultes), d'engagements et de clubs ; archers sur plusieurs départs ; archers **sans cible** et **surclassés** à vérifier ; inscriptions tardives et tarifs spéciaux. Graphiques : engagements par départ, par catégorie, clubs les plus représentés, départs par archer, et la **carte des clubs**. |
-| **Trésorier** | le trésorier, pour les comptes | attendu, encaissé (avec jauge), reste dû, remboursé, montant moyen par archer, **chèques à déposer**, déposé en banque, **écart de caisse**. Graphiques : encaissé au fil du temps, par mode de paiement, par départ, **reste dû par club** (pour les relances), recette par tarif ; tableaux des remises de chèques et des clôtures de caisse. |
+| **Trésorier** | le trésorier, pour les comptes | attendu, encaissé (avec jauge), reste dû, remboursé, montant moyen par archer, **chèques à déposer**, déposé en banque, **écart de caisse**. Graphiques : encaissé au fil du temps, par mode de paiement, par départ, **reste dû par club** (pour les relances), recette par tarif ; tableaux des remises de chèques et des clôtures de caisse ; en dessous, la **[caisse](#la-caisse)** (fond de caisse, clôture, opérations). |
 | **Terrain** | les bénévoles au comptoir, le jour J | archers à encaisser, encaissé aujourd'hui, **dernière opération** (il y a combien de temps, par qui), opérateurs du jour, reçus demandés, archers sans cible. Graphiques : activité heure par heure, reste à encaisser par départ, encaissements par opérateur, par poste (ordinateur ou téléphone) et par origine (liste, mode Kiosk, HelloAsso). |
 
 - Les tuiles marquées **⚠** signalent un point à vérifier (archers sans cible ou surclassés, chèques pas encore déposés, écart de caisse).
@@ -647,7 +695,7 @@ Le concours a été clôturé depuis le tableau de bord. Rouvrez-le au même end
 
 <br>
 
-Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.3 »), et dans le sous-titre de la page d'aide.
+Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.4 »), et dans le sous-titre de la page d'aide.
 
 </details>
 
