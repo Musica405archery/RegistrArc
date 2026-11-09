@@ -194,7 +194,9 @@ function registrarc_get_tournament_info($TourId) {
     ];
 
     $query = "
-        SELECT ToCommitee, ToComDescr, ToName, ToWhere, ToWhenFrom, ToWhenTo, ToNumSession
+        SELECT ToCommitee, ToComDescr, ToName, ToWhere, ToWhenFrom, ToWhenTo, ToNumSession,
+            (SELECT MAX(SesOrder) FROM Session WHERE SesTournament = ToId AND SesType = 'Q') AS SesMax,
+            (SELECT MAX(QuSession) FROM Qualifications INNER JOIN Entries ON EnId = QuId WHERE EnTournament = ToId) AS QuMax
         FROM Tournament
         WHERE ToId = $TourId
     ";
@@ -209,8 +211,13 @@ function registrarc_get_tournament_info($TourId) {
         $data['when_label'] = registrarc_tournament_date_string($row->ToWhenFrom, $row->ToWhenTo);
         $data['organizer_code'] = $row->ToCommitee;
         $data['organizer_name'] = $row->ToComDescr;
-        // Nombre de départs déclarés dans I@nseo (informations du concours)
-        $data['sessions'] = isset($row->ToNumSession) ? intval($row->ToNumSession) : 0;
+        // Nombre de départs du concours dans I@nseo : le plus grand entre le nombre
+        // déclaré (ToNumSession), les sessions de qualification et les départs des archers
+        $data['sessions'] = max(
+            isset($row->ToNumSession) ? intval($row->ToNumSession) : 0,
+            isset($row->SesMax) ? intval($row->SesMax) : 0,
+            isset($row->QuMax) ? intval($row->QuMax) : 0
+        );
 
         if (empty($data['organizer_name']) && $data['organizer_code']) {
             $organizerNameQuery = "

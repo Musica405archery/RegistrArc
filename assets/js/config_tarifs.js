@@ -528,6 +528,9 @@ function initTarifTiers() {
 
         tables.querySelectorAll('[data-tier-add]').forEach(function(btn) {
             btn.disabled = tiers >= max;
+            btn.title = tiers >= max
+                ? 'Le concours compte ' + max + ' départs dans I@nseo : pas de départ de plus à tarifer'
+                : 'Ajouter un départ';
         });
 
         tables.querySelectorAll('[data-tier-remove]').forEach(function(btn) {

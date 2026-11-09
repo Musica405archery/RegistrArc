@@ -220,8 +220,9 @@ body {
 .tarif-tier-buttons { width: 1%; white-space: nowrap; }
 
 .tarif-tier-btn {
-    width: 24px;
-    height: 24px;
+    width: 30px;
+    height: 30px;
+    font-size: 18px !important;
     padding: 0;
     border: 1px solid var(--line-strong, #cbd5e1);
     border-radius: 999px;
@@ -233,8 +234,9 @@ body {
     cursor: pointer;
 }
 
-.tarif-tier-btn:hover:not(:disabled) { background: #eef2ff; }
-.tarif-tier-btn:disabled { opacity: .35; cursor: default; }
+.tarif-tier-btn[data-tier-add]:not(:disabled) { background: #14336b; border-color: #14336b; color: #fff; }
+.tarif-tier-btn:hover:not(:disabled) { filter: brightness(1.15); }
+.tarif-tier-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 .delete-btn {
     border: none;
