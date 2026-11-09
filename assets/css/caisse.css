@@ -1,0 +1,54 @@
+/* RegistrArc - caisse.css : grilles de pièces et billets */
+
+.rg-cash-grid {
+    display: grid;
+    gap: 0 18px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    margin-bottom: 10px;
+}
+
+.rg-float-modes { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 4px 0 12px; }
+.rg-float-modes label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+[data-float-mode][hidden] { display: none; }
+[data-float-mode="simple"] { margin-bottom: 12px; }
+
+.rg-cash-table { align-self: start; }
+.rg-cash-table td { padding-top: 4px; padding-bottom: 4px; vertical-align: middle; }
+.rg-cash-table td:last-child { width: 34%; }
+
+.rg-cash-table input {
+    width: 80px;
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--rg-line-strong);
+    border-radius: var(--rg-radius);
+    font: inherit;
+    text-align: right;
+}
+
+.rg-cash-total {
+    grid-column: 1 / -1;
+    margin: 8px 0 0;
+    text-align: right;
+    font-size: 15px;
+}
+
+.rg-cash-total strong { font-size: 18px; }
+
+/* Opérations du tableau de bord : défilement dans le tableau, en-tête fixe */
+.rg-cash-ops {
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.rg-cash-ops thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    box-shadow: inset 0 -1px 0 var(--rg-line-strong);
+}
+
+@media print {
+    .rg-cash-table input { border: none; width: auto; }
+    .rg-cash-ops { max-height: none; overflow: visible; }
+}

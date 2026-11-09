@@ -190,10 +190,11 @@ function registrarc_get_tournament_info($TourId) {
         'when_label' => '',
         'organizer_code' => '',
         'organizer_name' => '',
+        'sessions' => 0,
     ];
 
     $query = "
-        SELECT ToCommitee, ToComDescr, ToName, ToWhere, ToWhenFrom, ToWhenTo
+        SELECT ToCommitee, ToComDescr, ToName, ToWhere, ToWhenFrom, ToWhenTo, ToNumSession
         FROM Tournament
         WHERE ToId = $TourId
     ";
@@ -208,6 +209,8 @@ function registrarc_get_tournament_info($TourId) {
         $data['when_label'] = registrarc_tournament_date_string($row->ToWhenFrom, $row->ToWhenTo);
         $data['organizer_code'] = $row->ToCommitee;
         $data['organizer_name'] = $row->ToComDescr;
+        // Nombre de départs déclarés dans I@nseo (informations du concours)
+        $data['sessions'] = isset($row->ToNumSession) ? intval($row->ToNumSession) : 0;
 
         if (empty($data['organizer_name']) && $data['organizer_code']) {
             $organizerNameQuery = "
@@ -530,9 +533,10 @@ function registrarc_default_tarifs() {
             'jeunes' => [1 => 8, 2 => 14],
             'adultes' => [1 => 10, 2 => 18],
         ],
+        // Club organisateur : gratuit par défaut
         'organizer' => [
-            'jeunes' => [1 => 4, 2 => 8],
-            'adultes' => [1 => 5, 2 => 10],
+            'jeunes' => [1 => 0, 2 => 0],
+            'adultes' => [1 => 0, 2 => 0],
         ],
     ];
 }
@@ -841,23 +845,97 @@ function registrarc_age_category($categorie, $ageClasses = null) {
     return 'adultes';
 }
 
+// Tarif dégressif : pour chaque groupe et classe d'âge, le total cumulé payé
+// pour 1, 2, 3… départs ([1 => 10, 2 => 17, 3 => 21]). Au-delà du dernier
+// palier, chaque départ coûte le dernier supplément.
+// Limite technique ; dans les paramètres, le nombre de départs du concours (I@nseo) s'applique
+function registrarc_tarif_max_tiers() {
+    return 20;
+}
+
+// Nombre de paliers utilisés (au moins 2, comme l'ancien format 1er / 2e départ)
+function registrarc_tarif_tiers_count($tarifs) {
+    $count = 2;
+
+    foreach (['clubs_autres', 'organizer'] as $group) {
+        foreach (['jeunes', 'adultes'] as $age) {
+            for ($i = registrarc_tarif_max_tiers(); $i > $count; $i--) {
+                if (isset($tarifs[$group][$age][$i])) {
+                    $count = $i;
+                    break;
+                }
+            }
+        }
+    }
+
+    return $count;
+}
+
+// Tous les tableaux ont le même nombre de paliers, sans trou : un palier
+// manquant reprend le supplément précédent
+function registrarc_normalize_tarifs($tarifs) {
+    $default = registrarc_default_tarifs();
+
+    if (!is_array($tarifs)) {
+        return $default;
+    }
+
+    $count = registrarc_tarif_tiers_count($tarifs);
+    $out = [];
+
+    foreach (['clubs_autres', 'organizer'] as $group) {
+        foreach (['jeunes', 'adultes'] as $age) {
+            $source = isset($tarifs[$group][$age]) && is_array($tarifs[$group][$age]) ? $tarifs[$group][$age] : $default[$group][$age];
+            $step = 0;
+
+            for ($i = 1; $i <= $count; $i++) {
+                if (isset($source[$i]) && is_numeric($source[$i])) {
+                    $total = (int)$source[$i];
+                } else {
+                    $total = $i === 1 ? (isset($default[$group][$age][1]) ? $default[$group][$age][1] : 0) : $out[$group][$age][$i - 1] + $step;
+                }
+
+                if ($i > 1) {
+                    $step = $total - $out[$group][$age][$i - 1];
+                }
+
+                $out[$group][$age][$i] = $total;
+            }
+        }
+    }
+
+    return $out;
+}
+
 function registrarc_prix_engagement($clubCode, $categorie, $numeroEngagement, $tarifs, $organizerClubCode, $ageClasses = null) {
-    $isOrganizer = ($clubCode == $organizerClubCode);
+    $group = ($clubCode == $organizerClubCode) ? 'organizer' : 'clubs_autres';
     $age = registrarc_age_category($categorie, $ageClasses);
 
-    if ($isOrganizer) {
-        $p1 = isset($tarifs['organizer'][$age][1]) ? floatval($tarifs['organizer'][$age][1]) : 0;
-        $p2 = isset($tarifs['organizer'][$age][2]) ? floatval($tarifs['organizer'][$age][2]) : $p1;
-    } else {
-        $p1 = isset($tarifs['clubs_autres'][$age][1]) ? floatval($tarifs['clubs_autres'][$age][1]) : 0;
-        $p2 = isset($tarifs['clubs_autres'][$age][2]) ? floatval($tarifs['clubs_autres'][$age][2]) : $p1;
-    }
+    return registrarc_tarif_step(isset($tarifs[$group][$age]) && is_array($tarifs[$group][$age]) ? $tarifs[$group][$age] : [], $numeroEngagement);
+}
+
+// Prix du n-ième départ d'après les totaux cumulés [1 => 10, 2 => 17, 3 => 21]
+function registrarc_tarif_step(array $totals, $numeroEngagement) {
+    $p1 = isset($totals[1]) ? floatval($totals[1]) : 0;
 
     if ($numeroEngagement <= 1) {
         return $p1;
     }
 
-    return $p2 - $p1;
+    // Dernier palier renseigné à partir du 2e départ
+    $last = 1;
+
+    while ($last < registrarc_tarif_max_tiers() && isset($totals[$last + 1])) {
+        $last++;
+    }
+
+    if ($last === 1) {
+        return 0.0;
+    }
+
+    $tier = min(intval($numeroEngagement), $last);
+
+    return floatval($totals[$tier]) - floatval($totals[$tier - 1]);
 }
 
 function registrarc_rule_entry_value($scope, array $entry) {

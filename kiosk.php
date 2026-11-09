@@ -350,7 +350,7 @@ foreach ($rows as $r) {
 
                     if (!empty($row['is_upgraded'])) {
                         $categoryHtml = '<span class="is-upgraded" title="'
-                            . htmlspecialchars('Surclassé : catégorie d\x27âge ' . $row['age_class'] . ', tire en ' . $row['class_code']) . '">'
+                            . htmlspecialchars('Surclassé : ' . $row['age_class'] . ' > ' . $row['class_code']) . '">'
                             . $categoryHtml . '</span>';
                     }
 

@@ -34,6 +34,16 @@
         // stockage indisponible : page Greffe par défaut
     }
 
+    // dashboard.php?page=tresorier (retour après un formulaire de la caisse)
+    const askedPage = new URLSearchParams(window.location.search).get('page');
+
+    if (askedPage === 'greffe' || askedPage === 'tresorier' || askedPage === 'terrain') {
+        state.page = askedPage;
+    }
+
+    // Blocs de la page affichés seulement avec leur onglet (la caisse avec Trésorier)
+    const pageBlocks = Array.prototype.slice.call(document.querySelectorAll('[data-dashboard-page]'));
+
     // -----------------------------------------------------------------------
     // Formats
     // -----------------------------------------------------------------------
@@ -750,7 +760,7 @@
             { label: 'Archers sur plusieurs départs', value: nf0.format(multi), sub: percent(multi, archers.length) + ' % des archers' },
             { label: 'Sans cible', value: nf0.format(A.unassigned), warn: A.unassigned > 0, sub: A.unassigned ? 'à placer dans I@nseo' : 'tous les archers sont placés' },
             { label: 'Surclassés', value: nf0.format(A.upgraded), warn: A.upgraded > 0, sub: A.upgraded ? 'à vérifier (catégorie d\'âge différente)' : 'aucun' },
-            { label: 'Inscriptions tardives', value: nf0.format(A.late), sub: A.late ? 'majorées si un supplément est réglé' : 'aucune' },
+            { label: 'Inscriptions tardives', value: nf0.format(A.late), sub: A.late ? 'marquées dans la liste' : 'aucune' },
             { label: 'Tarifs spéciaux', value: nf0.format(A.special), sub: plural(tarifs, 'règle utilisée', 'règles utilisées') }
         ];
     }
@@ -1636,6 +1646,10 @@
             t.setAttribute('aria-selected', t.getAttribute('data-page') === page ? 'true' : 'false');
         });
 
+        pageBlocks.forEach(function (block) {
+            block.hidden = block.getAttribute('data-dashboard-page') !== page;
+        });
+
         try {
             localStorage.setItem(PAGE_KEY, page);
         } catch (e) {
@@ -1684,4 +1698,13 @@
     });
 
     setPage(state.page);
+
+    // Retour d'un formulaire de la caisse : la caisse, une fois les graphiques dessinés
+    if (window.location.hash === '#caisse') {
+        const caisse = document.getElementById('caisse');
+
+        if (caisse && !caisse.hidden) {
+            caisse.scrollIntoView();
+        }
+    }
 })();

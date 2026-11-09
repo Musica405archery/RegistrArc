@@ -242,30 +242,6 @@ function registrarc_format_timestamp_for_message($timestamp) {
 // ---------------------------------------------------------------------------
 // Normalisation
 // ---------------------------------------------------------------------------
-function registrarc_normalize_tarifs($tarifs) {
-    $default = registrarc_default_tarifs();
-
-    if (!is_array($tarifs)) {
-        return $default;
-    }
-
-    $out = $default;
-
-    foreach (['clubs_autres', 'organizer'] as $group) {
-        foreach (['jeunes', 'adultes'] as $age) {
-            foreach ([1, 2] as $idx) {
-                if (isset($tarifs[$group][$age][$idx])) {
-                    $out[$group][$age][$idx] = (int)$tarifs[$group][$age][$idx];
-                } elseif (isset($tarifs[$group][$age][(string)$idx])) {
-                    $out[$group][$age][$idx] = (int)$tarifs[$group][$age][(string)$idx];
-                }
-            }
-        }
-    }
-
-    return $out;
-}
-
 function registrarc_legacy_scope_to_current($scope, array $allowedRuleScopes) {
     $scope = trim((string)$scope);
 
@@ -496,30 +472,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = "Enregistrement impossible : le dossier JSON n'est pas accessible en écriture.";
             $messageType = 'error';
         } else {
-            $OJA1 = isset($_POST['OJA1']) ? (int)$_POST['OJA1'] : 0;
-            $OJA2 = isset($_POST['OJA2']) ? (int)$_POST['OJA2'] : 0;
-            $OAA1 = isset($_POST['OAA1']) ? (int)$_POST['OAA1'] : 0;
-            $OAA2 = isset($_POST['OAA2']) ? (int)$_POST['OAA2'] : 0;
+            // Tarifs saisis : prix du 1er départ puis supplément de chaque départ suivant,
+            // enregistrés en totaux cumulés (1 départ, 2 départs…)
+            $tiersLimit = min(registrarc_tarif_max_tiers(), max(2, $tournament['sessions'], registrarc_tarif_tiers_count(registrarc_load_settings($TourId)['tarifs'])));
+            $tiers = isset($_POST['tarif_tiers']) ? max(2, min($tiersLimit, (int)$_POST['tarif_tiers'])) : 2;
+            $posted = isset($_POST['tarif']) && is_array($_POST['tarif']) ? $_POST['tarif'] : [];
+            $tarifs = [];
 
-            $PJA1 = isset($_POST['PJA1']) ? (int)$_POST['PJA1'] : 0;
-            $PJA2 = isset($_POST['PJA2']) ? (int)$_POST['PJA2'] : 0;
-            $PAA1 = isset($_POST['PAA1']) ? (int)$_POST['PAA1'] : 0;
-            $PAA2 = isset($_POST['PAA2']) ? (int)$_POST['PAA2'] : 0;
+            foreach (['clubs_autres', 'organizer'] as $group) {
+                foreach (['jeunes', 'adultes'] as $age) {
+                    $total = 0;
+
+                    for ($i = 1; $i <= $tiers; $i++) {
+                        $total += isset($posted[$group][$age][$i]) ? max(0, (int)$posted[$group][$age][$i]) : 0;
+                        $tarifs[$group][$age][$i] = $total;
+                    }
+                }
+            }
 
             $ageClasses = [
                 'jeunes' => isset($_POST['age_classes_jeunes']) ? registrarc_split_age_class_string($_POST['age_classes_jeunes']) : [],
                 'adultes' => isset($_POST['age_classes_adultes']) ? registrarc_split_age_class_string($_POST['age_classes_adultes']) : [],
-            ];
-
-            $tarifs = [
-                'clubs_autres' => [
-                    'jeunes' => [1 => $OJA1, 2 => $OJA1 + $OJA2],
-                    'adultes' => [1 => $OAA1, 2 => $OAA1 + $OAA2],
-                ],
-                'organizer' => [
-                    'jeunes' => [1 => $PJA1, 2 => $PJA1 + $PJA2],
-                    'adultes' => [1 => $PAA1, 2 => $PAA1 + $PAA2],
-                ],
             ];
 
             $modesCodes = isset($_POST['pm_code']) && is_array($_POST['pm_code']) ? $_POST['pm_code'] : [];
@@ -605,7 +578,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'rules' => $rules,
                 'options' => [
                     'cap_per_archer' => isset($_POST['cap_per_archer']) ? str_replace(',', '.', $_POST['cap_per_archer']) : 0,
-                    'late_fee' => isset($_POST['late_fee']) ? str_replace(',', '.', $_POST['late_fee']) : 0,
                 ],
             ];
 
@@ -638,15 +610,11 @@ $currentSettingsTimestampLabel = registrarc_format_timestamp_for_message($curren
 $ageClassesJeunesText = implode(', ', $currentAgeClasses['jeunes']);
 $ageClassesAdultesText = implode(', ', $currentAgeClasses['adultes']);
 
-$OJA1 = (int)$currentTarifs['clubs_autres']['jeunes'][1];
-$OJA2 = (int)$currentTarifs['clubs_autres']['jeunes'][2] - $OJA1;
-$OAA1 = (int)$currentTarifs['clubs_autres']['adultes'][1];
-$OAA2 = (int)$currentTarifs['clubs_autres']['adultes'][2] - $OAA1;
-
-$PJA1 = (int)$currentTarifs['organizer']['jeunes'][1];
-$PJA2 = (int)$currentTarifs['organizer']['jeunes'][2] - $PJA1;
-$PAA1 = (int)$currentTarifs['organizer']['adultes'][1];
-$PAA2 = (int)$currentTarifs['organizer']['adultes'][2] - $PAA1;
+$currentTarifs = registrarc_normalize_tarifs($currentTarifs);
+$tarifTiers = registrarc_tarif_tiers_count($currentTarifs);
+// Le bouton + ajoute des départs jusqu'au nombre de départs déclarés dans I@nseo
+$tarifMaxTiers = min(registrarc_tarif_max_tiers(), max(2, $tournament['sessions'], $tarifTiers));
+$tarifGroups = ['clubs_autres' => 'Clubs extérieurs', 'organizer' => 'Club organisateur'];
 
 // ---------------------------------------------------------------------------
 // Affichage
@@ -668,7 +636,6 @@ include('Common/Templates/head.php');
         <div class="header-actions">
             <a href="index.php">Liste</a>
             <a href="dashboard.php">Tableau de bord</a>
-            <a href="caisse.php">Caisse</a>
             <a href="kiosk.php">Mode Kiosk</a>
             <a href="config_tarifs.php" class="is-active">⚙ Paramètres</a>
             <a href="aide.php#régler-les-tarifs-et-les-paiements">? Aide</a>
@@ -825,74 +792,78 @@ include('Common/Templates/head.php');
         <div class="card">
             <div class="card-title">Tarifs d'inscription</div>
             <div class="card-help">
-                Montants en euros. Le deuxième départ est calculé comme :
-                <span class="chip">1er départ + supplément</span>.
+                Montants en euros. Chaque départ suivant est calculé comme :
+                <span class="chip">départs précédents + supplément</span>.
+                <?php if ($tarifMaxTiers > 2): ?>
+                    Le bouton <strong>+</strong> ajoute un départ avec son propre supplément, jusqu'aux <?php echo intval($tarifMaxTiers); ?> départs du concours.
+                <?php endif; ?>
+                Au-delà du dernier départ du tableau, chaque départ coûte le dernier supplément.
             </div>
 
-            <div class="grid-2">
-                <div>
-                    <strong>Clubs extérieurs</strong>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Classe d'âge</th>
-                                <th>1er départ</th>
-                                <th>Supplément</th>
-                                <th>Total 2 départs</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>Jeunes</td>
-                                <td><input type="number" name="OJA1" value="<?php echo $OJA1; ?>" min="0" step="1" class="tarif-input"></td>
-                                <td><input type="number" name="OJA2" value="<?php echo $OJA2; ?>" min="0" step="1" class="tarif-input"></td>
-                                <td><?php echo $OJA1 + $OJA2; ?> €</td>
-                            </tr>
-                            <tr>
-                                <td>Adultes</td>
-                                <td><input type="number" name="OAA1" value="<?php echo $OAA1; ?>" min="0" step="1" class="tarif-input"></td>
-                                <td><input type="number" name="OAA2" value="<?php echo $OAA2; ?>" min="0" step="1" class="tarif-input"></td>
-                                <td><?php echo $OAA1 + $OAA2; ?> €</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            <input type="hidden" name="tarif_tiers" id="tarif_tiers" value="<?php echo intval($tarifTiers); ?>" data-max="<?php echo intval($tarifMaxTiers); ?>">
 
-                <div>
-                    <strong>Club organisateur</strong>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Classe d'âge</th>
-                                <th>1er départ</th>
-                                <th>Supplément</th>
-                                <th>Total 2 départs</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>Jeunes</td>
-                                <td><input type="number" name="PJA1" value="<?php echo $PJA1; ?>" min="0" step="1" class="tarif-input"></td>
-                                <td><input type="number" name="PJA2" value="<?php echo $PJA2; ?>" min="0" step="1" class="tarif-input"></td>
-                                <td><?php echo $PJA1 + $PJA2; ?> €</td>
-                            </tr>
-                            <tr>
-                                <td>Adultes</td>
-                                <td><input type="number" name="PAA1" value="<?php echo $PAA1; ?>" min="0" step="1" class="tarif-input"></td>
-                                <td><input type="number" name="PAA2" value="<?php echo $PAA2; ?>" min="0" step="1" class="tarif-input"></td>
-                                <td><?php echo $PAA1 + $PAA2; ?> €</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            <div class="grid-2" id="tarifTables">
+                <?php foreach ($tarifGroups as $group => $groupLabel): ?>
+                    <div class="tarif-scroll">
+                        <strong><?php echo $groupLabel; ?></strong>
+                        <table class="tarif-table">
+                            <thead>
+                                <tr>
+                                    <th>Classe d'âge</th>
+                                    <?php for ($i = 1; $i <= $tarifMaxTiers; $i++): ?>
+                                        <th data-tier="<?php echo $i; ?>" <?php echo $i > $tarifTiers ? 'hidden' : ''; ?>>
+                                            <?php echo $i === 1 ? '1er départ' : ($i === 2 && $tarifMaxTiers === 2 ? 'Supplément' : 'Suppl. ' . $i . 'e départ'); ?>
+                                        </th>
+                                    <?php endfor; ?>
+                                    <?php if ($tarifMaxTiers > 2): ?>
+                                        <th class="tarif-tier-buttons">
+                                            <button type="button" class="tarif-tier-btn" data-tier-add title="Ajouter un départ" aria-label="Ajouter un départ">+</button>
+                                            <button type="button" class="tarif-tier-btn" data-tier-remove title="Retirer le dernier départ" aria-label="Retirer le dernier départ">−</button>
+                                        </th>
+                                    <?php endif; ?>
+                                    <th>Total <span data-tier-count><?php echo intval($tarifTiers); ?></span> départs</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach (['jeunes' => 'Jeunes', 'adultes' => 'Adultes'] as $age => $ageLabel): ?>
+                                    <?php
+                                    // Prix de chaque départ ; les cases au-delà des départs enregistrés
+                                    // reprennent le dernier supplément (prêtes si on ajoute un départ)
+                                    $steps = [];
+                                    $total = 0;
+
+                                    for ($i = 1; $i <= $tarifMaxTiers; $i++) {
+                                        $steps[$i] = (int)registrarc_tarif_step($currentTarifs[$group][$age], $i);
+
+                                        if ($i <= $tarifTiers) {
+                                            $total += $steps[$i];
+                                        }
+                                    }
+                                    ?>
+                                    <tr data-tarif-row>
+                                        <td><?php echo $ageLabel; ?></td>
+                                        <?php for ($i = 1; $i <= $tarifMaxTiers; $i++): ?>
+                                            <td data-tier="<?php echo $i; ?>" <?php echo $i > $tarifTiers ? 'hidden' : ''; ?>>
+                                                <input type="number" name="tarif[<?php echo $group; ?>][<?php echo $age; ?>][<?php echo $i; ?>]" value="<?php echo $steps[$i]; ?>" min="0" step="1" class="tarif-input" aria-label="<?php echo htmlspecialchars($groupLabel . ', ' . mb_strtolower($ageLabel) . ', ' . ($i === 1 ? '1er départ' : 'supplément du ' . $i . 'e départ')); ?>">
+                                            </td>
+                                        <?php endfor; ?>
+                                        <?php if ($tarifMaxTiers > 2): ?>
+                                            <td></td>
+                                        <?php endif; ?>
+                                        <td class="tarif-row-total"><span data-tarif-total><?php echo $total; ?></span> €</td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endforeach; ?>
             </div>
         </div>
 
         <div class="card">
-            <div class="card-title">Réductions et majorations</div>
+            <div class="card-title">Plafond par archer</div>
             <div class="card-help">
-                Laisser à 0 pour ne pas utiliser une option. Elles s'appliquent après le tarif normal ou la règle avancée,
-                dans cet ordre : plafond, puis majoration.
+                Laisser à 0 pour ne pas l'utiliser. Il s'applique après le tarif normal ou la règle avancée.
             </div>
 
             <table>
@@ -901,11 +872,6 @@ include('Common/Templates/head.php');
                         <td style="width:34%;"><strong>Plafond par archer</strong></td>
                         <td style="width:16%;"><input type="number" name="cap_per_archer" value="<?php echo htmlspecialchars((string)$currentOptions['cap_per_archer']); ?>" min="0" step="0.5" class="tarif-input"> €</td>
                         <td>Montant maximal payé par un archer pour l'ensemble de ses départs.</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Majoration inscription tardive</strong></td>
-                        <td><input type="number" name="late_fee" value="<?php echo htmlspecialchars((string)$currentOptions['late_fee']); ?>" min="0" step="0.5" class="tarif-input"> €</td>
-                        <td>Ajoutée aux départs marqués « inscription tardive » depuis la liste des engagements.</td>
                     </tr>
                 </tbody>
             </table>
