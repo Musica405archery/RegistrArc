@@ -29,12 +29,11 @@ test('tableau de bord : données par engagement et opérations de caisse, sans n
     assert_same(['paid', 'paid', 'due'], array_column($r, 'st'));
     assert_amount(10, $r[2]['d']);
     assert_same(1, $r[1]['dep'], 'chèque déposé');
-    assert_same(1, $r[0]['r'], 'reçu demandé');
     assert_same([1, 1, 1], [$r[2]['u'], $r[2]['l'], $r[2]['n']], 'sans cible, tardive, note');
     assert_same('Standard', $r[0]['t']);
 
     assert_same(2, count($d['journal']));
-    assert_same(['payment', 8.0, 'ESP', '1', 'Testeur', 'Téléphone', 'kiosque'], array_slice($d['journal'][0], 1));
+    assert_same(['payment', 8.0, 'ESP', '1', 'Testeur'], array_slice($d['journal'][0], 1), 'sans poste ni origine depuis la fin de la page Terrain');
     assert_same(1, count($d['deposits']));
     assert_amount(0, $d['closures'][0]['diff'], '8 € comptés pour 8 € attendus');
     assert_same(['1', '2'], $d['sessions']);

@@ -1,10 +1,10 @@
 // RegistrArc - assets/js/dashboard.js (scripts de dashboard.php)
 //
-// Tableau de bord en trois pages, dessiné en SVG sans bibliothèque externe :
+// Tableau de bord en deux pages, dessiné en SVG sans bibliothèque externe :
 // - Greffe : inscrits, départs, catégories, clubs, points à vérifier
 // - Trésorier : attendu, encaissé, reste dû, modes, tarifs, chèques, caisse
-// - Terrain : à encaisser, activité du jour, opérateurs, postes, origines
-// Le filtre Départ s'applique aux trois pages ; chaque graphique a sa vue
+// (le suivi au comptoir est dans la liste, vue par archer)
+// Le filtre Départ s'applique aux deux pages ; chaque graphique a sa vue
 // tableau (mêmes données, sans survol). Données : lib/registrarc_dashboard.inc.php
 //
 // Les noms (clubs, catégories, opérateurs) sont insérés avec textContent, jamais en HTML.
@@ -27,7 +27,7 @@
     try {
         const saved = localStorage.getItem(PAGE_KEY);
 
-        if (saved === 'greffe' || saved === 'tresorier' || saved === 'terrain') {
+        if (saved === 'greffe' || saved === 'tresorier') {
             state.page = saved;
         }
     } catch (e) {
@@ -37,7 +37,7 @@
     // dashboard.php?page=tresorier (retour après un formulaire de la caisse)
     const askedPage = new URLSearchParams(window.location.search).get('page');
 
-    if (askedPage === 'greffe' || askedPage === 'tresorier' || askedPage === 'terrain') {
+    if (askedPage === 'greffe' || askedPage === 'tresorier') {
         state.page = askedPage;
     }
 
@@ -94,7 +94,6 @@
     }
 
     const OPERATION_LABELS = { payment: 'Encaissement', cancel: 'Annulation', refund: 'Remboursement' };
-    const SOURCE_LABELS = { liste: 'Liste des engagements', kiosque: 'Mode Kiosk', import: 'Import de paiements', helloasso: 'HelloAsso' };
 
     function parseDate(s) {
         const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s || '');
@@ -103,33 +102,8 @@
     }
 
     const dateFull = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    const dateLong = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     const dateDay = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit' });
     const dateTime = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
-
-    function dayKey(t) {
-        const d = new Date(t);
-
-        return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
-    }
-
-    function since(t, now) {
-        const minutes = Math.round((now - t) / 60000);
-
-        if (minutes < 1) {
-            return 'à l\'instant';
-        }
-
-        if (minutes < 60) {
-            return 'il y a ' + minutes + ' min';
-        }
-
-        if (minutes < 24 * 60) {
-            return 'il y a ' + Math.floor(minutes / 60) + ' h ' + String(minutes % 60).padStart(2, '0');
-        }
-
-        return dateFull.format(t);
-    }
 
     // -----------------------------------------------------------------------
     // Petits outils DOM / SVG
@@ -226,18 +200,6 @@
             + 'H' + x + 'Z';
     }
 
-    // Colonne : bout arrondi de 4px en haut, carrée sur l'axe
-    function columnPath(x, y, w, h) {
-        const r = Math.min(4, w / 2, h);
-
-        return 'M' + x + ',' + (y + h)
-            + 'V' + (y + r)
-            + 'Q' + x + ',' + y + ' ' + (x + r) + ',' + y
-            + 'H' + (x + w - r)
-            + 'Q' + (x + w) + ',' + y + ' ' + (x + w) + ',' + (y + r)
-            + 'V' + (y + h) + 'Z';
-    }
-
     // -----------------------------------------------------------------------
     // Infobulle (une par carte) : la valeur d'abord, le libellé ensuite
     // -----------------------------------------------------------------------
@@ -308,13 +270,11 @@
     // Données : opérations de caisse dans l'ordre du temps, puis calculs
     // pour le départ choisi
     // -----------------------------------------------------------------------
-    const NOW = parseDate(data.now) || Date.now();
-
     const OPS = data.journal
         .map(function (op, i) {
             return {
                 t: parseDate(op[0]), i: i, type: op[1], amount: op[2], method: op[3],
-                session: op[4], operator: op[5], device: op[6], source: op[7]
+                session: op[4], operator: op[5]
             };
         })
         .filter(function (op) {
@@ -363,7 +323,6 @@
             upgraded: 0,
             late: 0,
             special: 0,
-            receipts: 0,
             notes: 0,
             chequesPending: { count: 0, amount: 0 }
         };
@@ -401,7 +360,6 @@
             A.upgraded += r.up;
             A.late += r.l;
             A.special += r.t !== 'Standard' ? 1 : 0;
-            A.receipts += r.r;
             A.notes += r.n;
         });
 
@@ -584,84 +542,6 @@
                     }
                 });
             }
-
-            chart.appendChild(group);
-        });
-
-        body.appendChild(chart);
-    }
-
-    // -----------------------------------------------------------------------
-    // Colonnes (une série) : cols : [{ label, title, value, extra }]
-    // -----------------------------------------------------------------------
-    function renderColumns(card, body, cols, opts) {
-        const fmt = opts.format;
-        const tip = tooltip(card);
-        const width = Math.max(260, body.clientWidth);
-        const height = 230;
-        const scale = niceTicks(Math.max.apply(null, cols.map(function (c) { return c.value; }).concat([0])), 4, fmt.integer);
-        const margin = {
-            top: 20,
-            right: 8,
-            bottom: 26,
-            left: Math.ceil(Math.max.apply(null, scale.ticks.map(function (t) { return textWidth(fmt.tick(t), 11); }))) + 12
-        };
-        const plotW = width - margin.left - margin.right;
-        const plotH = height - margin.top - margin.bottom;
-        const band = plotW / Math.max(1, cols.length);
-        const thick = Math.max(4, Math.min(24, band - 6));
-        const y = function (v) { return margin.top + plotH - v / scale.max * plotH; };
-        const labelEvery = Math.max(1, Math.ceil((Math.max.apply(null, cols.map(function (c) { return textWidth(c.label, 11); })) + 8) / band));
-        const maxIndex = cols.reduce(function (best, c, i) { return c.value > cols[best].value ? i : best; }, 0);
-
-        const chart = svg('svg', {
-            width: width,
-            height: height,
-            viewBox: '0 0 ' + width + ' ' + height,
-            role: 'img',
-            'aria-label': card.querySelector('h2').textContent + ' : ' + cols.map(function (c) { return c.label + ' ' + fmt.v(c.value); }).join(', ')
-        });
-
-        scale.ticks.forEach(function (t) {
-            chart.appendChild(svg('line', { x1: margin.left, x2: width - margin.right, y1: y(t), y2: y(t), class: t === 0 ? 'rg-viz-axis' : 'rg-viz-grid' }));
-            chart.appendChild(svg('text', { x: margin.left - 8, y: y(t) + 4, class: 'rg-viz-tick', 'text-anchor': 'end' }, fmt.tick(t)));
-        });
-
-        cols.forEach(function (c, i) {
-            const cx = margin.left + band * i + band / 2;
-            const group = svg('g', { class: 'rg-viz-row', tabindex: '0' });
-            group.appendChild(svg('rect', { x: margin.left + band * i, y: margin.top, width: band, height: plotH, class: 'rg-viz-hit' }));
-
-            if (c.value > 0) {
-                const path = svg('path', { d: columnPath(cx - thick / 2, y(c.value), thick, y(0) - y(c.value)), class: 'rg-viz-bar' });
-                path.style.fill = 'var(--viz-series-1)';
-                group.appendChild(path);
-            }
-
-            // Seule la plus haute colonne porte sa valeur ; les autres sont dans l'infobulle
-            if (i === maxIndex && c.value > 0) {
-                group.appendChild(svg('text', { x: cx, y: y(c.value) - 6, class: 'rg-viz-value', 'text-anchor': 'middle' }, fmt.v(c.value)));
-            }
-
-            if (i % labelEvery === 0) {
-                group.appendChild(svg('text', { x: cx, y: height - 8, class: 'rg-viz-tick', 'text-anchor': 'middle' }, c.label));
-            }
-
-            const show = function (px, py) {
-                tip.show(c.title || c.label, [{ value: fmt.v(c.value), label: opts.name }].concat(c.extra || []), '', px, py);
-            };
-
-            group.addEventListener('pointermove', function (ev) {
-                const p = pointIn(card, ev.clientX, ev.clientY);
-                show(p.x, p.y);
-            });
-            group.addEventListener('pointerleave', tip.hide);
-            group.addEventListener('focus', function () {
-                const box = chart.getBoundingClientRect();
-                const p = pointIn(card, box.left + cx, box.top + y(c.value));
-                show(p.x, p.y);
-            });
-            group.addEventListener('blur', tip.hide);
 
             chart.appendChild(group);
         });
@@ -1401,166 +1281,11 @@
     }
 
     // -----------------------------------------------------------------------
-    // Page Terrain : ce qui se passe au greffe, en ce moment
-    // -----------------------------------------------------------------------
-    // Jour suivi : aujourd'hui s'il y a eu des opérations, sinon le dernier jour actif
-    function activityDay(A) {
-        const today = dayKey(NOW);
-
-        if (A.J.some(function (op) { return dayKey(op.t) === today; })) {
-            return { key: today, t: NOW, isToday: true };
-        }
-
-        if (!A.J.length) {
-            return null;
-        }
-
-        const lastT = A.J[A.J.length - 1].t;
-
-        return { key: dayKey(lastT), t: lastT, isToday: false };
-    }
-
-    function terrainTiles(A) {
-        const today = dayKey(NOW);
-        const todayOps = A.J.filter(function (op) { return dayKey(op.t) === today; });
-        const todayPayments = todayOps.filter(function (op) { return op.type === 'payment'; });
-        const operators = {};
-
-        todayOps.forEach(function (op) {
-            operators[op.operator || '?'] = true;
-        });
-
-        const lastOp = A.J.length ? A.J[A.J.length - 1] : null;
-
-        return [
-            { label: 'À encaisser', value: nf0.format(A.counts.due), sub: euro(A.remaining) + ' restant dû' },
-            { label: 'Encaissé aujourd\'hui', value: euro(todayOps.reduce(function (s, op) { return s + op.amount; }, 0)), sub: plural(todayPayments.length, 'encaissement', 'encaissements') },
-            {
-                label: 'Dernière opération',
-                value: lastOp ? since(lastOp.t, NOW) : '—',
-                sub: lastOp ? (OPERATION_LABELS[lastOp.type] || lastOp.type) + ' · ' + (lastOp.operator || 'opérateur non renseigné') + (lastOp.device ? ' · ' + lastOp.device : '') : 'aucune opération'
-            },
-            { label: 'Opérateurs aujourd\'hui', value: nf0.format(Object.keys(operators).length), sub: 'personnes ayant encaissé' },
-            { label: 'Reçus demandés', value: nf0.format(A.receipts), sub: 'à remettre aux archers' },
-            { label: 'Sans cible', value: nf0.format(A.unassigned), warn: A.unassigned > 0, sub: A.unassigned ? 'à placer dans I@nseo' : 'tous placés' }
-        ];
-    }
-
-    function countBy(ops, keyOf, labelOf) {
-        const groups = {};
-
-        ops.forEach(function (op) {
-            const g = add(groups, keyOf(op), { count: 0, amount: 0 });
-            g.count += op.type === 'payment' ? 1 : 0;
-            g.amount += op.amount;
-            g.all = (g.all || 0) + 1;
-        });
-
-        return Object.keys(groups).map(function (k) {
-            return {
-                label: labelOf(k),
-                values: [groups[k].count],
-                extra: [{ value: euro(groups[k].amount), label: 'encaissé net' }, { value: nf0.format(groups[k].all), label: 'opérations' }]
-            };
-        }).sort(function (a, b) { return b.values[0] - a.values[0]; });
-    }
-
-    const TERRAIN_CARDS = [
-        {
-            id: 'f-hours',
-            wide: true,
-            title: 'Activité heure par heure',
-            subtitle: function (A) {
-                const day = activityDay(A);
-
-                return !day ? 'Nombre d\'encaissements par heure.'
-                    : 'Encaissements par heure, ' + (day.isToday ? 'aujourd\'hui' : 'le ' + dateLong.format(day.t) + ' (dernier jour avec des opérations)') + '.';
-            },
-            render: function (card, body, A, asTable) {
-                const day = activityDay(A);
-                const hours = {};
-
-                (day ? A.J.filter(function (op) { return dayKey(op.t) === day.key; }) : []).forEach(function (op) {
-                    const h = new Date(op.t).getHours();
-                    const g = hours[h] || (hours[h] = { count: 0, amount: 0 });
-                    g.count += op.type === 'payment' ? 1 : 0;
-                    g.amount += op.amount;
-                });
-
-                const list = Object.keys(hours).map(Number);
-                const cols = [];
-
-                if (list.length) {
-                    for (let h = Math.min.apply(null, list); h <= Math.max.apply(null, list); h++) {
-                        const g = hours[h] || { count: 0, amount: 0 };
-                        cols.push({ label: h + ' h', title: h + ' h – ' + (h + 1) + ' h', value: g.count, extra: [{ value: euro(g.amount), label: 'encaissé net' }] });
-                    }
-                }
-
-                if (asTable) {
-                    body.appendChild(table(['Heure', 'Encaissements', 'Encaissé net'], cols.map(function (c) {
-                        return [c.title, nf0.format(c.value), c.extra[0].value];
-                    }), 1));
-                    return;
-                }
-
-                if (!cols.length) {
-                    empty(body, 'Aucune opération de caisse pour l\'instant.');
-                    return;
-                }
-
-                renderColumns(card, body, cols, { format: FMT.count, name: 'encaissements' });
-            }
-        },
-        {
-            id: 'f-due',
-            title: 'Reste à encaisser par départ',
-            subtitle: function () { return 'Nombre d\'engagements à payer.' + (state.session === '*' && data.sessions.length > 1 ? ' Cliquez sur un départ pour filtrer.' : ''); },
-            render: function (card, body, A, asTable) {
-                const keys = Object.keys(A.sessions).sort(function (a, b) { return a.localeCompare(b, 'fr', { numeric: true }); });
-                const rows = keys.filter(function (k) { return A.sessions[k].due > 0; }).map(function (k) {
-                    return { label: sessionLabel(k), values: [A.sessions[k].due], extra: [{ value: euro(A.sessions[k].remaining), label: 'restant dû' }], onSelect: state.session === '*' && keys.length > 1 ? function () { setSession(k); } : null };
-                });
-
-                barsOrTable(card, body, asTable, rows, [{ name: 'À payer', color: COLOR.due }], { format: FMT.count, header: 'Départ', empty: 'Tout est encaissé.' });
-            }
-        },
-        {
-            id: 'f-operators',
-            title: 'Encaissements par opérateur',
-            subtitle: function () { return 'Sur tout le concours, d\'après le prénom saisi dans le champ Opérateur.'; },
-            render: function (card, body, A, asTable) {
-                barsOrTable(card, body, asTable, countBy(A.J, function (op) { return op.operator; }, function (k) { return k || 'Non renseigné'; }),
-                    [{ name: 'Encaissements', color: COLOR.paid }], { format: FMT.count, header: 'Opérateur', empty: 'Aucune opération.' });
-            }
-        },
-        {
-            id: 'f-devices',
-            title: 'Encaissements par poste',
-            subtitle: function () { return 'Ordinateur, téléphone ou tablette.'; },
-            render: function (card, body, A, asTable) {
-                barsOrTable(card, body, asTable, countBy(A.J, function (op) { return op.device; }, function (k) { return k || 'Inconnu'; }),
-                    [{ name: 'Encaissements', color: COLOR.paid }], { format: FMT.count, header: 'Poste', empty: 'Aucune opération.' });
-            }
-        },
-        {
-            id: 'f-sources',
-            title: 'Encaissements par origine',
-            subtitle: function () { return 'Depuis la liste, le mode Kiosk, un import ou HelloAsso.'; },
-            render: function (card, body, A, asTable) {
-                barsOrTable(card, body, asTable, countBy(A.J, function (op) { return op.source; }, function (k) { return SOURCE_LABELS[k] || k || 'Inconnue'; }),
-                    [{ name: 'Encaissements', color: COLOR.paid }], { format: FMT.count, header: 'Origine', empty: 'Aucune opération.' });
-            }
-        }
-    ];
-
-    // -----------------------------------------------------------------------
     // Pages : tuiles puis cartes ; chaque carte peut passer en tableau
     // -----------------------------------------------------------------------
     const PAGES = {
         greffe: { tiles: greffeTiles, cards: GREFFE_CARDS },
-        tresorier: { tiles: tresorierTiles, cards: TRESORIER_CARDS },
-        terrain: { tiles: terrainTiles, cards: TERRAIN_CARDS }
+        tresorier: { tiles: tresorierTiles, cards: TRESORIER_CARDS }
     };
 
     function buildCard(def, grid, A) {

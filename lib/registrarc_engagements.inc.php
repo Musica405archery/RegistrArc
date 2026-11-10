@@ -170,6 +170,8 @@ function registrarc_load_engagements($TourId, $refresh = false) {
             q.QuSession AS session_no,
             q.QuTarget AS target,
             q.QuLetter AS letter,
+            q.QuScore AS score,
+            q.QuHits AS hits,
             e.EnIndClEvent,
             e.EnTeamClEvent,
             e.EnIndFEvent,
@@ -219,6 +221,9 @@ function registrarc_load_engagements($TourId, $refresh = false) {
             'target_no' => $unassigned ? '' : trim($target . $letter),
             'target_label' => $unassigned ? 'Archer non affecté' : trim($target . $letter),
             'target_is_unassigned' => $unassigned,
+            // Score de qualification saisi dans I@nseo (feuille de marque) et nombre de flèches
+            'score' => isset($row->score) ? intval($row->score) : 0,
+            'hits' => isset($row->hits) ? intval($row->hits) : 0,
             'EnIndClEvent' => $row->EnIndClEvent,
             'EnTeamClEvent' => $row->EnTeamClEvent,
             'EnIndFEvent' => $row->EnIndFEvent,

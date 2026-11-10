@@ -7,6 +7,9 @@
     margin-bottom: 12px;
 }
 
+/* Signaler un problème : à droite de la barre */
+.rg-doc-issue { margin-left: auto; text-decoration: none; }
+
 /* Texte à gauche, sommaire à droite qui reste visible pendant la lecture */
 .rg-doc-shell {
     display: grid;
