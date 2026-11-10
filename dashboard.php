@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ---------------------------------------------------------------------------
 // Données du tableau de bord : lib/registrarc_dashboard.inc.php. Les pages
-// Greffe, Trésorier et Terrain sont dessinées dans le navigateur par
+// Greffe et Trésorier sont dessinées dans le navigateur par
 // assets/js/dashboard.js, sans bibliothèque externe. Aucun nom d'archer n'est transmis.
 // ---------------------------------------------------------------------------
 $tournament = registrarc_get_tournament_info($TourId);
@@ -80,7 +80,6 @@ registrarc_render_flash($flash);
             <div class="rg-seg rg-viz-pages" role="tablist" aria-labelledby="rgVizPageLabel">
                 <button type="button" role="tab" data-page="greffe" aria-selected="true">Greffe</button>
                 <button type="button" role="tab" data-page="tresorier" aria-selected="false">Trésorier</button>
-                <button type="button" role="tab" data-page="terrain" aria-selected="false">Terrain</button>
             </div>
         </div>
         <div class="rg-field">

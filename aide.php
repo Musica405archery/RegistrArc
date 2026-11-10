@@ -28,6 +28,10 @@ if (preg_match('#github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$#i
     $repoBase = 'https://github.com/' . $m[1] . '/' . $m[2] . '/blob/' . str_replace('%2F', '/', rawurlencode($branch)) . '/';
 }
 
+// Signaler un problème : nouveau ticket (issue) sur le dépôt GitHub du module
+$repo = registrarc_update_github_repo($updateConfig);
+$issuesUrl = $repo ? 'https://github.com/' . $repo[0] . '/' . $repo[1] . '/issues/new' : '';
+
 $PAGE_TITLE = 'RegistrArc - Mode d\'emploi';
 include('Common/Templates/head.php');
 registrarc_page_open('Mode d\'emploi', 'RegistrArc ' . registrarc_local_version_number() . ' · ' . $tournament['name'], 'aide');
@@ -46,6 +50,9 @@ registrarc_page_open('Mode d\'emploi', 'RegistrArc ' . registrarc_local_version_
         <button type="button" class="rg-btn" data-doc-action="open">Tout déplier</button>
         <button type="button" class="rg-btn" data-doc-action="close">Tout replier</button>
         <button type="button" class="rg-btn" data-doc-action="print">Imprimer</button>
+        <?php if ($issuesUrl !== ''): ?>
+            <a class="rg-btn rg-doc-issue" href="<?php echo htmlspecialchars($issuesUrl); ?>" target="_blank" rel="noopener" title="Ouvre GitHub dans un nouvel onglet (compte GitHub gratuit nécessaire)">Signaler un problème ↗</a>
+        <?php endif; ?>
     </div>
 
     <div class="rg-doc-shell">

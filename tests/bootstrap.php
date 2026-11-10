@@ -65,6 +65,8 @@ function test_add_entry($licence, $categorie, $clubCode, $session = 1, $target =
         'session_no' => $session,
         'target' => $target,
         'letter' => $letter,
+        'score' => 0,
+        'hits' => 0,
         'EnIndClEvent' => '1',
         'EnTeamClEvent' => '0',
         'EnIndFEvent' => '0',
