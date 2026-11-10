@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/module-I%40nseo-14336b" alt="Module I@nseo">
-  <img src="https://img.shields.io/badge/version-1.2.4-14336b" alt="Version 1.2.4">
+  <img src="https://img.shields.io/badge/version-1.2.5-14336b" alt="Version 1.2.5">
   <img src="https://img.shields.io/badge/langue-fran%C3%A7ais-14336b" alt="En français">
   <img src="https://img.shields.io/badge/tir%20%C3%A0%20l'arc-greffe-e3242b" alt="Tir à l'arc, greffe">
 </p>
@@ -67,7 +67,7 @@
   <tr>
     <td width="50%" valign="top">
       <strong>La liste des inscrits</strong><br>
-      Tous les archers du concours, avec ce que chacun doit payer pour chacun de ses départs, et leur passage au greffe pointé départ par départ.
+      Tous les archers du concours, avec ce que chacun doit payer pour chacun de ses départs, leur passage au greffe pointé départ par départ, et l'impression de leurs feuilles de marque.
     </td>
     <td width="50%" valign="top">
       <strong>L'encaissement</strong><br>
@@ -101,7 +101,7 @@
     </td>
     <td valign="top">
       <strong>Le tableau de bord</strong><br>
-      Trois pages (Greffe, Trésorier, Terrain) de chiffres clés et de graphiques interactifs. Fichiers pour le trésorier, sauvegarde.
+      Deux pages (Greffe, Trésorier) de chiffres clés et de graphiques interactifs, avec la caisse. Fichiers pour le trésorier, sauvegarde.
     </td>
   </tr>
   <tr>
@@ -117,26 +117,6 @@
 </table>
 
 RegistrArc ne modifie jamais les inscriptions dans I@nseo : il les lit et garde ses propres informations à part.
-
-## Nouveautés de la version 1.2
-
-Version 1.2.4 :
-
-- **Passage au greffe** : la liste a une vue **par archer** pour pointer les archers qui se présentent, départ par départ, avec leur cible, leur blason et le nombre d'archers restant à passer. Voir [le passage au greffe](#le-passage-au-greffe).
-- **Recherche en direct** dans la liste, **croix rouge** pour tout réinitialiser, et « ; » pour afficher plusieurs archers à la fois.
-- **Fond de caisse**, détaillé par pièces et billets ou en un seul montant. La **caisse** est maintenant dans le tableau de bord, page **Trésorier**.
-- **Tarif dégressif** : un supplément différent pour chaque départ, ajouté avec le bouton **+**. Le club organisateur est gratuit par défaut, et la majoration pour inscription tardive est supprimée.
-- **Archers surclassés** aussi signalés en rouge dans la liste.
-
-Depuis la version 1.2.0 :
-
-- **Aide intégrée** : ce mode d'emploi s'ouvre dans le module avec le bouton **? Aide**, même sans internet, avec un sommaire sur la droite qui suit la lecture.
-- **Tableau de bord en trois pages** : Greffe, Trésorier et Terrain, avec des chiffres clés, des graphiques interactifs, les points à vérifier signalés ⚠ et un filtre par départ.
-- **Carte des clubs** : une bulle par club, placée sur sa ville, avec la page **Villes des clubs** pour corriger.
-- **Blasons dans le kiosque** : chaque archer affiche son blason. Il est en rouge s'il diffère du blason par défaut de sa catégorie.
-- **Archers surclassés** signalés en rouge dans le kiosque.
-- **Mises à jour plus sûres** : chaque fichier téléchargé est vérifié avant d'être installé.
-- La **version installée** s'affiche en bas de la page des paramètres.
 
 ## Le greffe en 4 étapes
 
@@ -304,7 +284,7 @@ C'est l'écran principal (voir l'aperçu en haut de cette page). Chaque ligne es
 
 - **Chercher un archer** : par club, catégorie, départ, état du paiement (payés, non payés, gratuits, remboursés) ou en tapant un nom, une licence, un club. La liste se met à jour au fil de la frappe, sans bouton à cliquer. Pour afficher **plusieurs archers à la fois**, séparez les recherches par un point-virgule : `terrieur ; 812137B ; dupont` affiche ces trois archers. Il suffit ensuite de les cocher pour les encaisser ou les facturer ensemble. La **croix rouge** ✕ remet tous les filtres à zéro.
 - **Trier** : cliquez sur le titre d'une colonne ; cliquez à nouveau pour inverser l'ordre.
-- **Vue par engagement ou par archer** : l'interrupteur au-dessus du champ **Opérateur** change la présentation de la liste. La vue **par engagement** (une ligne par départ, avec le paiement) sert à encaisser ; la vue **par archer** sert à suivre le [passage au greffe](#le-passage-au-greffe).
+- **Trois vues** : l'interrupteur au-dessus du champ **Opérateur** change la présentation de la liste. La vue **Par engagement** (une ligne par départ, avec le paiement) sert à encaisser ; la vue **Par archer** sert à suivre le [passage au greffe](#le-passage-au-greffe) ; la vue **FdM** sert à [imprimer les feuilles de marque](#imprimer-les-feuilles-de-marque).
 - **Repères** : « Archer non affecté » signale un archer sans cible ; une étiquette violette indique un prix spécial ; une catégorie en rouge signale un archer **surclassé** (au survol : « Surclassé : U15F > U18F »).
 
 </details>
@@ -327,6 +307,25 @@ Choisissez **Par archer** avec l'interrupteur au-dessus du champ **Opérateur**.
 Sous le titre de chaque départ, une pastille indique les **archers encore à passer au greffe** sur ceux attendus (par exemple **8/23**, en rouge), puis **✓ 23** en vert quand tout le monde est passé. Ces chiffres tiennent compte des filtres : avec le filtre **Départ**, on suit un seul départ. La recherche marche aussi (avec « ; » pour plusieurs archers).
 
 Pour encaisser, revenez à la vue **Par engagement**.
+
+</details>
+
+### Imprimer les feuilles de marque
+
+<details>
+<summary><strong>Feuille de marque d'un ou plusieurs archers, avec ses scores</strong></summary>
+
+<br>
+
+<img src="docs/images/liste-fdm.png" alt="Vue FdM : feuilles de marque" width="100%">
+
+Choisissez **FdM** avec l'interrupteur au-dessus du champ **Opérateur**. La liste montre une ligne par départ de chaque archer, avec sa cible et le **score déjà saisi** dans I@nseo (et le nombre de flèches).
+
+- **Imprimer**, au bout d'une ligne, ouvre la feuille de marque de cet archer.
+- Pour en imprimer **plusieurs**, cochez-les (ou cochez la case du titre pour tout prendre), puis **Imprimer les feuilles cochées** : toutes les feuilles arrivent dans **un seul PDF**, prêt à imprimer.
+- Les filtres et la recherche marchent comme dans la liste : par club, par départ, ou plusieurs archers séparés par « ; ».
+
+La feuille est celle d'I@nseo, avec les réglages de sa page d'impression : **feuille complète avec la colonne des totaux progressifs**, toutes les distances sur une seule page, le **drapeau ou logo du club**, l'en-tête et le pied de page sur toute la page. On y trouve **chaque flèche saisie**, le total de chaque volée, le **cumul**, les 10 et les X, et les cases de signature. Un archer sans score saisi a une feuille vierge à son nom. Il faut avoir, dans I@nseo, le droit de consulter les qualifications. Pour un concours en parcours ou en 3D, imprimez les feuilles une par une (bouton **Imprimer** de chaque ligne).
 
 </details>
 
@@ -480,7 +479,7 @@ RegistrArc affiche alors l'écart avec les espèces attendues, et la somme **à 
 ### Le tableau de bord
 
 <details>
-<summary><strong>Les trois pages : Greffe, Trésorier, Terrain</strong></summary>
+<summary><strong>Les deux pages : Greffe et Trésorier</strong></summary>
 
 <br>
 
@@ -492,24 +491,17 @@ En haut, choisissez la **page** qui correspond à votre rôle, et éventuellemen
 |---|---|---|
 | **Greffe** | le greffe, pendant les inscriptions | nombre d'archers (jeunes et adultes), d'engagements et de clubs ; archers sur plusieurs départs ; archers **sans cible** et **surclassés** à vérifier ; inscriptions tardives et tarifs spéciaux. Graphiques : engagements par départ, par catégorie, clubs les plus représentés, départs par archer, et la **carte des clubs**. |
 | **Trésorier** | le trésorier, pour les comptes | attendu, encaissé (avec jauge), reste dû, remboursé, montant moyen par archer, **chèques à déposer**, déposé en banque, **écart de caisse**. Graphiques : encaissé au fil du temps, par mode de paiement, par départ, **reste dû par club** (pour les relances), recette par tarif ; tableaux des remises de chèques et des clôtures de caisse ; en dessous, la **[caisse](#la-caisse)** (fond de caisse, clôture, opérations). |
-| **Terrain** | les bénévoles au comptoir, le jour J | archers à encaisser, encaissé aujourd'hui, **dernière opération** (il y a combien de temps, par qui), opérateurs du jour, reçus demandés, archers sans cible. Graphiques : activité heure par heure, reste à encaisser par départ, encaissements par opérateur, par poste (ordinateur ou téléphone) et par origine (liste, mode Kiosk, HelloAsso). |
+
+Pour suivre l'accueil au comptoir le jour J (qui est passé, qui reste à venir pour chaque départ), utilisez la vue **par archer** de la liste : voir [le passage au greffe](#le-passage-au-greffe).
 
 - Les tuiles marquées **⚠** signalent un point à vérifier (archers sans cible ou surclassés, chèques pas encore déposés, écart de caisse).
-- Passez la souris (ou le doigt) sur une barre, une colonne ou la courbe pour voir le détail. Cliquer sur un départ dans un graphique le sélectionne pour toute la page.
+- Passez la souris (ou le doigt) sur une barre ou la courbe pour voir le détail. Cliquer sur un départ dans un graphique le sélectionne pour toute la page.
 - Chaque graphique a un bouton **Tableau** qui montre les mêmes chiffres sous forme de tableau.
 
-<table>
-  <tr>
-    <td align="center" valign="top" width="50%">
-      <img src="docs/images/tableau-de-bord-tresorier.png" alt="Page Trésorier" width="100%"><br>
-      <strong>Page Trésorier</strong>
-    </td>
-    <td align="center" valign="top" width="50%">
-      <img src="docs/images/tableau-de-bord-terrain.png" alt="Page Terrain" width="100%"><br>
-      <strong>Page Terrain</strong>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="docs/images/tableau-de-bord-tresorier.png" alt="Page Trésorier" width="70%"><br>
+  <strong>Page Trésorier</strong>
+</p>
 
 - **La carte des clubs** place une bulle par club, sur sa ville. I@nseo ne connaissant pas la ville des clubs, RegistrArc la cherche dans le nom du club, parmi les communes de son département (3e et 4e chiffres du numéro de club FFTA). La taille de la bulle suit le nombre d'archers ; le survol donne le club, ses archers, ses engagements, son reste dû et sa ville. Une bulle **pâle en pointillé** signale un club dont la ville n'a pas été trouvée : il est placé au centre de son département.
 - **Villes des clubs** (lien sous la carte, ou bouton dans « Outils ») : la liste des clubs du concours avec la ville trouvée ; tapez une autre commune pour corriger ou compléter (des suggestions s'affichent). La correction est retenue pour tous les concours suivants ; laissez le champ vide pour revenir à la ville trouvée automatiquement. Le fond de carte vient d'OpenStreetMap et demande une connexion internet : sans internet, les bulles restent placées sur un fond vide. Les clubs dont le numéro ne correspond à aucun département (club étranger par exemple) sont listés sous la carte.
@@ -581,29 +573,21 @@ Ce mode d'emploi est disponible dans RegistrArc, même sans internet : bouton **
 - Le **sommaire**, à droite, suit votre lecture ; cliquez sur une partie pour y aller directement. Sur téléphone, il s'ouvre avec le bouton **Sommaire**.
 - **Tout déplier**, **Tout replier** et **Imprimer** sont en haut de la page.
 - Depuis les paramètres ou le mode Kiosk, l'aide s'ouvre directement sur la partie qui les concerne.
+- **Signaler un problème**, en haut à droite, ouvre le dépôt GitHub du module (voir ci-dessous).
 
-## Mettre à jour le module
+### Signaler un problème ou proposer une idée
 
-Quand une nouvelle version de RegistrArc existe, un bouton vert **⬆ Mise à jour** apparaît en haut de la liste. Seul l'administrateur d'I@nseo le voit.
+Un bug, un écran pas clair, une idée pour le greffe ? Déposez un ticket (une « issue ») sur le dépôt GitHub du module :
 
-<details>
-<summary><strong>Comment se passe la mise à jour</strong></summary>
+**[github.com/Musica405archery/RegistrArc/issues](https://github.com/Musica405archery/RegistrArc/issues)**
 
-<br>
+1. Créez un compte GitHub gratuit si vous n'en avez pas, puis cliquez sur **New issue**.
+2. Donnez un titre court, par exemple « La caisse n'affiche pas le fond de caisse ».
+3. Expliquez ce que vous avez fait, ce que vous attendiez et ce qui s'est passé. Indiquez la version de RegistrArc (en bas de la page **⚙ Paramètres**).
+4. Une capture d'écran aide beaucoup.
 
-<img src="docs/images/bouton-mise-a-jour.png" alt="Bouton de mise à jour" width="100%">
-
-Le bouton ouvre une page qui montre la version installée, la nouvelle version et ses nouveautés. Cliquez sur **Installer la version…**.
-
-<img src="docs/images/mise-a-jour.png" alt="Page de mise à jour" width="100%">
-
-- Vos paiements et vos réglages ne sont pas touchés.
-- Chaque fichier téléchargé est vérifié avant d'être installé ; si un seul ne correspond pas, ou si l'installation échoue en route, rien n'est changé.
-- La mise à jour installe toujours la dernière version publiée, et tous ses fichiers ensemble.
-- Le module vérifie s'il existe une nouvelle version toutes les 6 heures. Pour vérifier tout de suite, l'administrateur ouvre la page de mise à jour avec `update.php?force=1`.
-- Sans internet, RegistrArc fonctionne normalement : le bouton n'apparaît simplement pas.
-
-</details>
+> [!WARNING]
+> Les tickets sont **publics**. N'y mettez pas de noms d'archers, de numéros de licence ni de données de paiement : masquez-les sur les captures d'écran.
 
 ## Vos informations sont-elles en sécurité ?
 
@@ -690,12 +674,35 @@ Le concours a été clôturé depuis le tableau de bord. Rouvrez-le au même end
 
 </details>
 
+## Mettre à jour le module
+
+Quand une nouvelle version de RegistrArc existe, un bouton vert **⬆ Mise à jour** apparaît en haut de la liste. Seul l'administrateur d'I@nseo le voit.
+
+<details>
+<summary><strong>Comment se passe la mise à jour</strong></summary>
+
+<br>
+
+<img src="docs/images/bouton-mise-a-jour.png" alt="Bouton de mise à jour" width="100%">
+
+Le bouton ouvre une page qui montre la version installée, la nouvelle version et ses nouveautés. Cliquez sur **Installer la version…**.
+
+<img src="docs/images/mise-a-jour.png" alt="Page de mise à jour" width="100%">
+
+- Vos paiements et vos réglages ne sont pas touchés.
+- Chaque fichier téléchargé est vérifié avant d'être installé ; si un seul ne correspond pas, ou si l'installation échoue en route, rien n'est changé.
+- La mise à jour installe toujours la dernière version publiée, et tous ses fichiers ensemble.
+- Le module vérifie s'il existe une nouvelle version toutes les 6 heures. Pour vérifier tout de suite, l'administrateur ouvre la page de mise à jour avec `update.php?force=1`.
+- Sans internet, RegistrArc fonctionne normalement : le bouton n'apparaît simplement pas.
+
+</details>
+
 <details>
 <summary>Quelle version de RegistrArc est installée ?</summary>
 
 <br>
 
-Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.4 »), et dans le sous-titre de la page d'aide.
+Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.5 »), et dans le sous-titre de la page d'aide.
 
 </details>
 
@@ -705,6 +712,72 @@ Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (pa
 <br>
 
 Il n'apparaît que pour l'administrateur d'I@nseo, quand l'ordinateur a accès à internet et qu'une nouvelle version existe.
+
+</details>
+
+## Notes de version
+
+Ce qui change pour vous à chaque nouvelle version. La version installée est écrite en petit, en bas de la page **⚙ Paramètres**.
+
+### Version 1.2.5
+
+**Au greffe**
+
+- **Imprimer les feuilles de marque** : choisissez **FdM** au-dessus du champ Opérateur. La liste montre chaque archer avec sa cible et le score déjà saisi. **Imprimer** sort la feuille d'un archer ; cochez-en plusieurs pour les avoir toutes dans un seul PDF. La feuille est celle d'I@nseo : chaque flèche, le total de chaque volée, le cumul, et le logo du club. Voir [imprimer les feuilles de marque](#imprimer-les-feuilles-de-marque).
+- **La page Terrain du tableau de bord disparaît** : le suivi du comptoir se fait dans la liste, vue **Par archer**. Le tableau de bord garde ses pages Greffe et Trésorier.
+
+**Dans l'aide**
+
+- **Signaler un problème** : un bouton en haut de l'aide ouvre GitHub pour décrire un bug ou proposer une idée. Voir [signaler un problème](#signaler-un-problème-ou-proposer-une-idée).
+- **Ces notes de version**, écrites simplement, et tout ce qui concerne les mises à jour regroupé à la fin de l'aide.
+
+<details>
+<summary><strong>Version 1.2.4</strong></summary>
+
+<br>
+
+**Au greffe**
+
+- **Pointer les archers qui arrivent** : choisissez **Par archer** au-dessus du champ Opérateur. La liste montre une ligne par archer et une colonne par départ. Quand un archer se présente, cliquez sur la **croix rouge** : elle devient une **coche verte**, et sa cible et son blason s'affichent. Sous chaque départ, un petit compteur indique combien d'archers il reste à accueillir (par exemple **8/25**). Voir [le passage au greffe](#le-passage-au-greffe).
+- **Chercher plus vite** : la liste se met à jour pendant que vous tapez, sans bouton à cliquer. La **croix rouge** à côté de la recherche efface tous les filtres.
+- **Plusieurs archers d'un coup** : séparez les noms par un point-virgule, par exemple `terrieur ; dupont`.
+- **Archer surclassé** : quand un archer tire dans une catégorie plus âgée que la sienne, sa catégorie s'affiche en rouge, comme dans le kiosque.
+
+**Pour le trésorier**
+
+- **La caisse a déménagé** : elle se trouve maintenant dans le **Tableau de bord**, page **Trésorier**, sous les graphiques. Le bouton « Caisse » du menu a disparu.
+- **Fond de caisse** : notez la monnaie mise dans la caisse avant d'ouvrir, au choix pièce par pièce et billet par billet, ou en un seul montant. Il est compté dans les espèces attendues.
+- **Clôture** : comptez la caisse de la même façon. RegistrArc affiche l'écart éventuel et la somme à retirer en laissant le fond dans la caisse.
+
+**Pour régler les tarifs**
+
+- **Un prix par départ** : chaque départ peut avoir son propre supplément, par exemple 10 € le premier, + 7 € le deuxième, + 4 € le troisième. Le bouton bleu **+** ajoute un départ, jusqu'au nombre de départs du concours.
+- **Club organisateur gratuit par défaut** : changez les montants si votre club fait payer ses propres archers.
+- **Plus de majoration pour inscription tardive** : la case « inscription tardive » existe toujours, comme simple information pour le greffe.
+
+</details>
+
+<details>
+<summary><strong>Version 1.2.3</strong></summary>
+
+<br>
+
+- Le bouton **Mise à jour** installe toujours la toute dernière version, sans délai d'attente après sa sortie. Rien ne change dans l'utilisation du module.
+
+</details>
+
+<details>
+<summary><strong>Versions 1.2.0 à 1.2.2</strong></summary>
+
+<br>
+
+- **L'aide dans le module** : ce mode d'emploi s'ouvre avec le bouton **? Aide**, même sans internet.
+- **Un tableau de bord en trois pages** (Greffe, Trésorier, Terrain), avec les chiffres utiles et des graphiques, et les points à vérifier signalés ⚠.
+- **La carte des clubs** montre d'où viennent les archers.
+- **Dans le kiosque** : le blason de chaque archer, et en rouge ce qui mérite un coup d'œil (blason inhabituel, archer surclassé). Un archer remboursé n'est plus compté dans ce qui reste à encaisser.
+- **Des mises à jour plus sûres** : chaque fichier est vérifié avant d'être installé.
+- **Des exports pour tableur plus sûrs** : une valeur saisie ne peut plus être prise pour une formule par Excel ou LibreOffice.
+- La version installée s'affiche en bas de la page **⚙ Paramètres**.
 
 </details>
 

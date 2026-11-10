@@ -2,7 +2,7 @@
 // ============================================================================
 // RegistrArc - lib/registrarc_dashboard.inc.php
 // Données du tableau de bord (dashboard.php), mises en forme dans le navigateur
-// par assets/js/dashboard.js : pages Greffe, Trésorier et Terrain.
+// par assets/js/dashboard.js : pages Greffe et Trésorier.
 //
 // Aucun calcul de montant ici : tout vient de registrarc_load_engagements(),
 // du journal de caisse, des remises et des clôtures. Aucun nom d'archer ni
@@ -56,7 +56,6 @@ function registrarc_dashboard_data($TourId) {
             'u' => $e['target_is_unassigned'] ? 1 : 0,                                 // sans cible
             'l' => $e['late'] ? 1 : 0,                                                 // inscription tardive
             'up' => !empty($e['is_upgraded']) ? 1 : 0,                                 // surclassé
-            'r' => $e['receipt_required'] ? 1 : 0,                                     // reçu demandé
             'n' => $e['note'] !== '' ? 1 : 0,                                          // note
             'dep' => $e['deposit_id'] !== '' ? 1 : 0,                                  // chèque déposé
         ];
@@ -65,7 +64,7 @@ function registrarc_dashboard_data($TourId) {
     $sessions = array_map('strval', array_keys($sessions));
     sort($sessions, SORT_NATURAL);
 
-    // Opérations de caisse : [date, type, montant, mode, départ, opérateur, poste, origine]
+    // Opérations de caisse : [date, type, montant, mode, départ, opérateur]
     $journal = [];
 
     foreach (registrarc_load_journal($TourId) as $entry) {
@@ -74,7 +73,6 @@ function registrarc_dashboard_data($TourId) {
         }
 
         $id = isset($entry['engagement_id']) ? intval($entry['engagement_id']) : 0;
-        $device = isset($entry['device']) ? trim((string)$entry['device']) : '';
 
         $journal[] = [
             isset($entry['at']) ? (string)$entry['at'] : '',
@@ -83,8 +81,6 @@ function registrarc_dashboard_data($TourId) {
             isset($entry['method']) ? (string)$entry['method'] : '',
             isset($engagements[$id]) ? (string)$engagements[$id]['session'] : '',
             isset($entry['operator']) && trim((string)$entry['operator']) !== '' ? trim((string)$entry['operator']) : '',
-            $device !== '' ? strtok($device, ' ') : '',                                // Téléphone, Ordinateur, Tablette
-            isset($entry['source']) ? (string)$entry['source'] : '',
         ];
     }
 
@@ -125,7 +121,6 @@ function registrarc_dashboard_data($TourId) {
     }
 
     return [
-        'now' => date('Y-m-d H:i:s'),
         'records' => $records,
         'clubs' => $clubs,
         'club_deps' => $clubDeps,          // département de chaque club ('' si inconnu)

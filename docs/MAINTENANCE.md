@@ -29,11 +29,12 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 | `bankchequedeposite.php` | bordereau de remise de chèques, remises déposées (`?remise=R1`) |
 | `caisse.php` | reçoit les formulaires de la caisse (fond, clôture) et affiche les rapports imprimables : clôture (`?cloture=C1`), caisse en cours (`?imprimer=1`). Sans paramètre, renvoie vers le tableau de bord |
 | `dashboard.php` | tableau de bord (`?page=tresorier` ouvre la page Trésorier, avec la caisse), sauvegarde / restauration, clôture du concours |
+| `fdm.php` | feuilles de marque (vue FdM de la liste) : `?ids=12,15`, avec les options de `Qualification/PrintScore.php` (complète + totaux progressifs, toutes distances, flèches saisies, drapeau du club, en-tête de page). Un archer : `CreateSessionScorecard()` d'I@nseo (feuille personnelle remplie). Plusieurs : une page par archer dans un seul PDF, avec `QualificationScorecards()` et `ScorePDF::DrawScoreNew()` d'I@nseo, placées comme le fait `CreateSessionScorecard()` (tir sur cible, 1 à 4 distances ; parcours et 3D : une feuille à la fois). Lecture seule |
 | `export.php` | téléchargements : `?type=engagements`, `journal` (CSV), `backup` (JSON) |
 | `helloasso.php` | import des paiements HelloAsso |
 | `qrcodes.php` | étiquettes QR codes à imprimer |
 | `clubs.php` | villes des clubs pour la carte du tableau de bord : ville détectée, correction mémorisée par numéro de club |
-| `aide.php` | mode d'emploi : le `README.md` affiché dans le module (`aide.php#la-caisse` ouvre directement une partie) |
+| `aide.php` | mode d'emploi : le `README.md` affiché dans le module (`aide.php#la-caisse` ouvre directement une partie) ; bouton « Signaler un problème » vers les issues du dépôt de `module.json` |
 | `update.php` | page de mise à jour |
 | `menu.php` | entrée du menu I@nseo |
 | `lib/registrarc_page.inc.php` | début commun des pages : environnement I@nseo, bibliothèques, `registrarc_page_tour_id()` (tournoi ouvert et droit demandé) |
@@ -42,7 +43,7 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 | `lib/registrarc_caisse.inc.php` | opérations de paiement journalisées, remises déposées, fond de caisse, clôtures de caisse, concours clôturé |
 | `lib/registrarc_caisse_view.inc.php` | affichage de la caisse, partagé par la page Trésorier du tableau de bord et les rapports de `caisse.php` |
 | `lib/registrarc_invoices.inc.php` | registre des factures émises |
-| `lib/registrarc_dashboard.inc.php` | données du tableau de bord (pages Greffe, Trésorier, Terrain) : un enregistrement par engagement, sans nom ni licence, et les opérations de caisse ; dessin par `assets/js/dashboard.js` |
+| `lib/registrarc_dashboard.inc.php` | données du tableau de bord (pages Greffe et Trésorier) : un enregistrement par engagement, sans nom ni licence, et les opérations de caisse ; dessin par `assets/js/dashboard.js` |
 | `lib/registrarc_clubs.inc.php` | ville des clubs : détection dans le nom du club parmi les communes de son département, corrections (`data/club_cities.json`), repli au centre du département |
 | `lib/data/communes.json` | communes de métropole et de Corse avec leur centre (geo.api.gouv.fr, Licence Ouverte, généré), pour placer les clubs sans service en ligne |
 | `lib/registrarc_departements.inc.php` | nom et centre de chaque département (fichier généré à partir des contours IGN Admin Express, Licence Ouverte, via france-geojson) pour la carte des clubs |

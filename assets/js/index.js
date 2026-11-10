@@ -606,7 +606,59 @@ document.addEventListener('DOMContentLoaded', function() {
     checkModuleUpdate();
     initOperator();
     initLiveFilters();
+    initFdm();
 });
+
+// Feuilles de marque (vue FdM) : cases à cocher et impression de la sélection.
+// Écoute au niveau du document : la liste est remplacée par la recherche en direct.
+function updateFdmSelection() {
+    const button = document.getElementById('fdmPrintSelected');
+    const all = document.getElementById('fdmSelectAll');
+
+    if (!button) {
+        return;
+    }
+
+    const boxes = Array.from(document.querySelectorAll('.fdm-checkbox:not(:disabled)'));
+    const count = boxes.filter(cb => cb.checked).length;
+
+    button.disabled = count === 0;
+    button.textContent = count > 1 ? 'Imprimer les ' + count + ' feuilles cochées'
+        : count === 1 ? 'Imprimer la feuille cochée' : 'Imprimer les feuilles cochées';
+
+    if (all) {
+        all.checked = boxes.length > 0 && count === boxes.length;
+        all.indeterminate = count > 0 && count < boxes.length;
+    }
+}
+
+function initFdm() {
+    document.addEventListener('change', event => {
+        if (event.target.id === 'fdmSelectAll') {
+            document.querySelectorAll('.fdm-checkbox:not(:disabled)').forEach(cb => {
+                cb.checked = event.target.checked;
+            });
+        }
+
+        if (event.target.id === 'fdmSelectAll' || event.target.classList.contains('fdm-checkbox')) {
+            updateFdmSelection();
+        }
+    });
+
+    document.addEventListener('click', event => {
+        if (!event.target.closest('#fdmPrintSelected')) {
+            return;
+        }
+
+        const ids = Array.from(document.querySelectorAll('.fdm-checkbox:checked:not(:disabled)'), cb => cb.value);
+
+        if (ids.length) {
+            window.open('fdm.php?ids=' + ids.join(','), '_blank', 'noopener');
+        }
+    });
+
+    updateFdmSelection();
+}
 
 // Filtres en direct : la liste est redemandée au serveur à chaque changement,
 // sans recharger la page (même filtrage, mêmes totaux, filtres gardés en session).
@@ -651,13 +703,14 @@ function initLiveFilters() {
                     return;
                 }
 
-                // Les engagements cochés et encore affichés restent cochés
-                const checked = new Set(Array.from(document.querySelectorAll('.engagement-checkbox:checked'), cb => cb.value));
+                // Les engagements cochés et encore affichés restent cochés (liste et feuilles de marque)
+                const checked = new Set(Array.from(document.querySelectorAll('.engagement-checkbox:checked, .fdm-checkbox:checked'), cb => cb.value));
 
                 target.innerHTML = list.innerHTML;
-                target.querySelectorAll('.engagement-checkbox').forEach(cb => {
+                target.querySelectorAll('.engagement-checkbox, .fdm-checkbox:not(:disabled)').forEach(cb => {
                     cb.checked = checked.has(cb.value);
                 });
+                updateFdmSelection();
 
                 const exportLink = doc.getElementById('exportLink');
                 const currentExport = document.getElementById('exportLink');

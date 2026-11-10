@@ -41,11 +41,11 @@ $filters = [
     'payment'  => isset($_GET['payment_filter'])  ? $_GET['payment_filter']  : (isset($_SESSION[$filtersKey]['payment'])  ? $_SESSION[$filtersKey]['payment']  : 'all'),
     'session'  => isset($_GET['session_filter'])  ? $_GET['session_filter']  : (isset($_SESSION[$filtersKey]['session'])  ? $_SESSION[$filtersKey]['session']  : 'all'),
     'search'   => isset($_GET['search'])          ? trim($_GET['search'])    : (isset($_SESSION[$filtersKey]['search'])   ? $_SESSION[$filtersKey]['search']   : ''),
-    // Vue : 'engagement' (une ligne par départ) ou 'archer' (une ligne par archer)
+    // Vue : 'engagement' (une ligne par départ), 'archer' (une ligne par archer) ou 'fdm' (feuilles de marque)
     'view'     => isset($_GET['view'])            ? $_GET['view']            : (isset($_SESSION[$filtersKey]['view'])     ? $_SESSION[$filtersKey]['view']     : 'engagement'),
 ];
 
-$filters['view'] = $filters['view'] === 'archer' ? 'archer' : 'engagement';
+$filters['view'] = in_array($filters['view'], ['archer', 'fdm'], true) ? $filters['view'] : 'engagement';
 
 $_SESSION[$filtersKey] = $filters;
 
@@ -461,6 +461,8 @@ foreach (registrarc_load_engagements($TourId) as $engagement) {
         'target_no'            => $engagement['target_no'],
         'target_label'         => $engagement['target_label'],
         'target_is_unassigned' => $engagement['target_is_unassigned'],
+        'score'                => $engagement['score'],
+        'hits'                 => $engagement['hits'],
         'payment_status'       => $engagement['is_paid'] ? 1 : 0,
         'payment_method'       => $engagement['payment_method'],
         'receipt_required'     => $engagement['receipt_required'],
@@ -897,6 +899,7 @@ $categoryHtml = function (array $e) {
                     <div class="view-switch" role="radiogroup" aria-label="Vue de la liste">
                         <label><input type="radio" name="view" value="engagement" form="filterForm" <?php echo $filters['view'] === 'engagement' ? 'checked' : ''; ?>><span>Par engagement</span></label>
                         <label><input type="radio" name="view" value="archer" form="filterForm" <?php echo $filters['view'] === 'archer' ? 'checked' : ''; ?>><span>Par archer</span></label>
+                        <label title="Feuilles de marque"><input type="radio" name="view" value="fdm" form="filterForm" <?php echo $filters['view'] === 'fdm' ? 'checked' : ''; ?>><span>FdM</span></label>
                     </div>
 
                     <?php if ($canWrite): ?>
@@ -946,7 +949,83 @@ $categoryHtml = function (array $e) {
 
     <!-- Remplacé pendant la recherche en direct (assets/js/index.js) -->
     <div id="engagementsList">
-    <?php if ($filters['view'] === 'archer'): ?>
+    <?php if ($filters['view'] === 'fdm'): ?>
+        <?php
+        // Feuilles de marque : une ligne par départ d'un archer ; la feuille est
+        // imprimée par fdm.php (dessin I@nseo, flèches saisies, totaux et cumul)
+        $fdmPrintable = 0;
+
+        foreach ($displayEngagements as $e) {
+            $fdmPrintable += $e['session'] !== '' ? 1 : 0;
+        }
+        ?>
+        <div class="fdm-bar">
+            <button type="button" class="btn-primary" id="fdmPrintSelected" disabled>Imprimer les feuilles cochées</button>
+            <span class="fdm-help">Feuille de marque avec les flèches saisies dans I@nseo, le total de chaque volée et le cumul. Cochez un ou plusieurs archers : leurs feuilles sont réunies dans un seul PDF.</span>
+        </div>
+
+        <div class="table-wrapper">
+            <div class="table-responsive">
+                <table class="fdm-view">
+                    <thead>
+                        <tr>
+                            <th class="col-check">
+                                <input type="checkbox" id="fdmSelectAll" title="Tout sélectionner" <?php echo $fdmPrintable ? '' : 'disabled'; ?>>
+                            </th>
+                            <th><?php echo $sortLink('licence', 'Licence'); ?></th>
+                            <th><?php echo $sortLink('nom', 'Nom'); ?></th>
+                            <th><?php echo $sortLink('prenom', 'Prénom'); ?></th>
+                            <th><?php echo $sortLink('club', 'Club'); ?></th>
+                            <th><?php echo $sortLink('categorie', 'Catégorie'); ?></th>
+                            <th><?php echo $sortLink('depart', 'Départ'); ?></th>
+                            <th><?php echo $sortLink('cible', 'Cible'); ?></th>
+                            <th style="text-align:right;">Score saisi</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($displayEngagements as $e): ?>
+                            <?php $printable = $e['session'] !== ''; ?>
+                            <tr>
+                                <td class="col-check">
+                                    <input type="checkbox" class="fdm-checkbox" value="<?php echo intval($e['engagement_id']); ?>" <?php echo $printable ? '' : 'disabled title="Archer sans départ : pas de feuille de marque"'; ?>>
+                                </td>
+                                <td class="num"><?php echo htmlspecialchars($e['licence']); ?></td>
+                                <td><strong><?php echo htmlspecialchars($e['nom']); ?></strong></td>
+                                <td><?php echo htmlspecialchars($e['prenom']); ?></td>
+                                <td><?php echo htmlspecialchars($e['club']); ?></td>
+                                <td><?php echo $categoryHtml($e); ?></td>
+                                <td><?php echo $printable ? 'Départ ' . htmlspecialchars($e['session']) : '—'; ?></td>
+                                <td class="<?php echo !empty($e['target_is_unassigned']) ? 'target-unassigned' : ''; ?>"><?php echo htmlspecialchars($e['target_label']); ?></td>
+                                <td class="num" style="text-align:right;">
+                                    <?php if ($e['hits'] > 0): ?>
+                                        <strong><?php echo intval($e['score']); ?></strong> <span class="fdm-hits">(<?php echo intval($e['hits']); ?> flèches)</span>
+                                    <?php else: ?>
+                                        <span class="fdm-hits">pas encore saisi</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if ($printable): ?>
+                                        <a class="btn-small" href="fdm.php?ids=<?php echo intval($e['engagement_id']); ?>" target="_blank" rel="noopener">Imprimer</a>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+
+                        <?php if (empty($displayEngagements)): ?>
+                            <tr>
+                                <td colspan="10" style="text-align:center;padding:20px;color:var(--muted);">Aucun engagement trouvé.</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="summary-footer num">
+            <div>Feuilles affichées : <strong><?php echo intval($fdmPrintable); ?></strong></div>
+        </div>
+    <?php elseif ($filters['view'] === 'archer'): ?>
         <?php
         // Colonnes : les départs du concours (et « Sans départ » s'il y en a)
         $archerSessions = $sessions;
