@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/module-I%40nseo-14336b" alt="Module I@nseo">
-  <img src="https://img.shields.io/badge/version-1.2.5-14336b" alt="Version 1.2.5">
+  <img src="https://img.shields.io/badge/version-1.2.6-14336b" alt="Version 1.2.6">
   <img src="https://img.shields.io/badge/langue-fran%C3%A7ais-14336b" alt="En français">
   <img src="https://img.shields.io/badge/tir%20%C3%A0%20l'arc-greffe-e3242b" alt="Tir à l'arc, greffe">
 </p>
@@ -81,7 +81,7 @@
     </td>
     <td valign="top">
       <strong>La caisse</strong><br>
-      Chaque opération est notée (qui, quand, sur quel appareil). Fond de caisse et clôture de caisse avec comptage des pièces et billets.
+      Chaque opération est notée (qui, quand, sur quel appareil). Fond de caisse et clôture de caisse, détaillés pièce par pièce ou d'un seul montant.
     </td>
   </tr>
   <tr>
@@ -101,7 +101,7 @@
     </td>
     <td valign="top">
       <strong>Le tableau de bord</strong><br>
-      Deux pages (Greffe, Trésorier) de chiffres clés et de graphiques interactifs, avec la caisse. Fichiers pour le trésorier, sauvegarde.
+      Deux vues claires, Greffe et Trésorier, en parties numérotées : chiffres clés, passage au greffe, caisse, recettes, banque, sauvegarde.
     </td>
   </tr>
   <tr>
@@ -157,10 +157,19 @@ Une personne qui a seulement le droit de consulter voit toutes les pages, mais l
 
 ## Régler les tarifs et les paiements
 
-À faire avant chaque concours : dans la liste des engagements, cliquez sur **⚙ Paramètres**. Les réglages sont propres à chaque concours.
+À faire avant chaque concours : dans la liste des engagements, cliquez sur **⚙ Paramètres**. Les réglages sont propres à chaque concours ; son numéro est rappelé sous le titre de la page.
+
+La page suit quatre étapes, chacune sous un bandeau numéroté :
+
+1. **Catégories** : quelles catégories paient le tarif jeunes, lesquelles le tarif adultes ;
+2. **Tarifs d'inscription** : le tarif simple (par départ, et le plafond par archer), puis les tarifs personnalisés ;
+3. **Paiements** : les moyens de paiement acceptés, et l'option qui pointe l'archer au greffe quand son paiement est validé ;
+4. **Export / Import** des paramètres.
+
+Un clic sur un bandeau replie ou déplie sa partie (chevron à droite) ; la page s'en souvient sur ce poste.
 
 > [!IMPORTANT]
-> Pensez à cliquer sur **Enregistrer les paramètres** en bas de la page.
+> Pensez à cliquer sur **Enregistrer les paramètres** : le bouton est en fin de page et reste toujours visible en bas de l'écran.
 
 <details>
 <summary><strong>Jeunes et adultes</strong></summary>
@@ -225,7 +234,7 @@ Les **règles** donnent un prix spécial à certains archers. Pour chaque règle
 | Région | le numéro du club commence par ces 2 chiffres | `10` |
 | Département | le numéro du club contient ces chiffres en 3e et 4e position | `69` |
 | Qualification individuelle ou par équipe | l'archer y participe (`OUI`) ou non (`NON`) | `OUI` |
-| Finale individuelle, par équipe, double mixte | pareil ; proposé seulement si le concours a ces finales | `OUI` |
+| Finale individuelle, par équipe, double mixte | pareil ; proposé seulement si une épreuve du concours a des phases finales. En individuel, l'archer compte comme finaliste si sa catégorie est dans une épreuve avec phases finales | `OUI` |
 
 À savoir :
 
@@ -253,6 +262,8 @@ Les **règles** donnent un prix spécial à certains archers. Pour chaque règle
 
 Espèces, Chèque, Virement et Gratuit sont proposés au départ. Vous pouvez en ajouter (par exemple Carte bancaire) ou les renommer. Seuls les paiements par **chèque** apparaissent sur la remise de chèques.
 
+Chaque mode a son **logo**, choisi d'après le code : billet pour `ESP`, chèque pour `CHQ`, flèches pour `VIR`, carte pour `CB`, cœur pour un paiement en ligne (`HA` pour HelloAsso), ticket pour les chèques-vacances (`ANCV`), cadeau pour `GRA`. Un autre code reçoit un logo neutre.
+
 **Inscriptions gratuites** : quand le prix d'une inscription est de 0 €, l'archer n'a rien à payer. RegistrArc l'affiche « Gratuit » et ne le compte pas parmi les archers à encaisser : il n'y a rien à valider.
 
 </details>
@@ -262,12 +273,14 @@ Espèces, Chèque, Virement et Gratuit sont proposés au départ. Vous pouvez en
 
 <br>
 
-En haut de la page des réglages :
+À la fin de la page des réglages (étape 4) :
 
 - **Exporter** enregistre tous vos réglages dans un fichier ;
 - **Importer** les recharge, par exemple pour reprendre les tarifs de l'an dernier ou les mettre sur un autre ordinateur.
 
 Avant de remplacer vos réglages, RegistrArc vous prévient si le fichier vient d'un autre concours ou s'il est plus ancien que vos réglages actuels.
+
+Pour retrouver à la main les fichiers d'un concours (dans le dossier `data/` du module), cherchez son numéro : l'étape 4 rappelle le nom des fichiers, par exemple `settings_12.json` pour les réglages du concours n° 12.
 
 </details>
 
@@ -284,7 +297,7 @@ C'est l'écran principal (voir l'aperçu en haut de cette page). Chaque ligne es
 
 - **Chercher un archer** : par club, catégorie, départ, état du paiement (payés, non payés, gratuits, remboursés) ou en tapant un nom, une licence, un club. La liste se met à jour au fil de la frappe, sans bouton à cliquer. Pour afficher **plusieurs archers à la fois**, séparez les recherches par un point-virgule : `terrieur ; 812137B ; dupont` affiche ces trois archers. Il suffit ensuite de les cocher pour les encaisser ou les facturer ensemble. La **croix rouge** ✕ remet tous les filtres à zéro.
 - **Trier** : cliquez sur le titre d'une colonne ; cliquez à nouveau pour inverser l'ordre.
-- **Trois vues** : l'interrupteur au-dessus du champ **Opérateur** change la présentation de la liste. La vue **Par engagement** (une ligne par départ, avec le paiement) sert à encaisser ; la vue **Par archer** sert à suivre le [passage au greffe](#le-passage-au-greffe) ; la vue **FdM** sert à [imprimer les feuilles de marque](#imprimer-les-feuilles-de-marque).
+- **Trois vues** : l'interrupteur à droite du titre « Actions sur les engagements sélectionnés » change la présentation de la liste. La vue **Par engagement** (une ligne par départ, avec le paiement) sert à encaisser ; la vue **Par archer** sert à suivre le [passage au greffe](#le-passage-au-greffe) ; la vue **FdM** sert à [imprimer les feuilles de marque](#imprimer-les-feuilles-de-marque).
 - **Repères** : « Archer non affecté » signale un archer sans cible ; une étiquette violette indique un prix spécial ; une catégorie en rouge signale un archer **surclassé** (au survol : « Surclassé : U15F > U18F »).
 
 </details>
@@ -298,7 +311,7 @@ C'est l'écran principal (voir l'aperçu en haut de cette page). Chaque ligne es
 
 <img src="docs/images/liste-par-archer.png" alt="Vue par archer : passage au greffe" width="100%">
 
-Choisissez **Par archer** avec l'interrupteur au-dessus du champ **Opérateur**. La liste montre une ligne par archer (licence, nom, prénom, club, catégorie) et une colonne par départ :
+Choisissez **Par archer** avec l'interrupteur à droite du titre « Actions sur les engagements sélectionnés ». La liste montre une ligne par archer (licence, nom, prénom, club, catégorie) et une colonne par départ :
 
 - **-** : l'archer ne tire pas ce départ ;
 - **✕ rouge** : il n'est pas encore passé au greffe. Un clic sur la croix le pointe ;
@@ -307,6 +320,9 @@ Choisissez **Par archer** avec l'interrupteur au-dessus du champ **Opérateur**.
 Sous le titre de chaque départ, une pastille indique les **archers encore à passer au greffe** sur ceux attendus (par exemple **8/23**, en rouge), puis **✓ 23** en vert quand tout le monde est passé. Ces chiffres tiennent compte des filtres : avec le filtre **Départ**, on suit un seul départ. La recherche marche aussi (avec « ; » pour plusieurs archers).
 
 Pour encaisser, revenez à la vue **Par engagement**.
+
+> [!TIP]
+> **Pointer en encaissant** : dans **⚙ Paramètres**, partie **Paiements**, l'option « Valider un paiement pointe aussi l'archer au greffe » est cochée par défaut. Chaque paiement validé depuis la liste ou le mode Kiosk pointe alors l'archer pour ce départ, sans clic de plus. Un paiement importé (HelloAsso, autre poste) ne pointe personne, et **Supprimer le paiement** retire aussi le pointage. Décochez l'option pour pointer à part.
 
 </details>
 
@@ -319,7 +335,7 @@ Pour encaisser, revenez à la vue **Par engagement**.
 
 <img src="docs/images/liste-fdm.png" alt="Vue FdM : feuilles de marque" width="100%">
 
-Choisissez **FdM** avec l'interrupteur au-dessus du champ **Opérateur**. La liste montre une ligne par départ de chaque archer, avec sa cible et le **score déjà saisi** dans I@nseo (et le nombre de flèches).
+Choisissez **FdM** avec l'interrupteur à droite du titre « Actions sur les engagements sélectionnés ». La liste montre une ligne par départ de chaque archer, avec sa cible et le **score déjà saisi** dans I@nseo (et le nombre de flèches).
 
 - **Imprimer**, au bout d'une ligne, ouvre la feuille de marque de cet archer.
 - Pour en imprimer **plusieurs**, cochez-les (ou cochez la case du titre pour tout prendre), puis **Imprimer les feuilles cochées** : toutes les feuilles arrivent dans **un seul PDF**, prêt à imprimer.
@@ -335,7 +351,7 @@ La feuille est celle d'I@nseo, avec les réglages de sa page d'impression : **fe
 <br>
 
 - **Un archer** : sur sa ligne, choisissez le mode de paiement, puis **Valider**. En cas d'erreur, **Annuler** le remet en « Non payé ».
-- **Plusieurs archers** : cochez leurs lignes, choisissez le mode de paiement en haut de la liste, puis **Valider**.
+- **Plusieurs archers** : cochez leurs lignes, choisissez le mode de paiement en haut de la liste, puis **Valider**. **Supprimer le paiement** remet les engagements cochés en « Non payé », et **Rembourser** enregistre leur remboursement. Ces trois boutons s'activent dès que 2 engagements sont cochés ; pour un seul archer, utilisez les boutons de sa ligne.
 - **Un chèque pour plusieurs archers** : si vous validez au moins 2 archers par chèque, RegistrArc propose d'en faire un **chèque groupé**. Ils apparaîtront ensemble sur la remise de chèques.
 
 > [!TIP]
@@ -344,13 +360,13 @@ La feuille est celle d'I@nseo, avec les réglages de sa page d'impression : **fe
 </details>
 
 <details>
-<summary><strong>Rembourser, noter, signaler une inscription tardive</strong></summary>
+<summary><strong>Rembourser, supprimer un paiement, noter</strong></summary>
 
 <br>
 
-- **Rembourser** : sur la ligne d'un archer payé, **Rembourser**, puis choisissez comment il est remboursé (espèces, chèque, virement). Il passe en « Remboursé » et le remboursement apparaît dans la caisse.
-- **Annuler** sert à corriger une erreur de saisie. Un chèque déjà déposé à la banque ne peut plus être annulé, seulement remboursé.
-- **Le bouton ✎** ajoute une note visible par tout le greffe (« paiera dimanche », « chèque à l'ordre du club »…) et permet de marquer l'**inscription tardive**.
+- **Rembourser** : sur la ligne d'un archer payé, **Rembourser**, choisissez comment il est remboursé (espèces, chèque, virement) et indiquez le **motif**, obligatoire (blessure, désistement…). Il passe en « Remboursé », le motif s'affiche sous la mention « Remboursé » et le remboursement apparaît dans la caisse avec son motif. Pour plusieurs archers cochés, le motif est demandé au moment de cliquer sur **Rembourser**.
+- **Annuler** (archer payé) ou **Supprimer le paiement** (archer remboursé) sert à corriger une erreur : l'archer redevient « Non payé » et n'est plus pointé au greffe pour ce départ. Sur un archer remboursé, le remboursement est annulé en même temps ; la caisse garde les deux opérations, chacune dans son mode de paiement. Un chèque déjà déposé à la banque ne peut plus être annulé, seulement remboursé.
+- **Le bouton ✎** ajoute une note visible par tout le greffe (« paiera dimanche », « chèque à l'ordre du club »…).
 
 </details>
 
@@ -359,6 +375,7 @@ La feuille est celle d'I@nseo, avec les réglages de sa page d'impression : **fe
 
 <br>
 
+- **Le compteur** devant les boutons (par exemple **1 234 cochés**) rappelle combien d'engagements sont cochés.
 - **Facture** et **Facture groupée** : voir [Faire une facture](#faire-une-facture).
 - **Remise de chèque** : voir [Préparer la remise de chèques](#préparer-la-remise-de-chèques).
 - **Liste Greffe** : imprime la liste telle qu'elle est affichée à l'écran.
@@ -388,7 +405,7 @@ Le bouton **Mode Kiosk** ouvre un écran fait pour encaisser debout, avec un té
 
 1. **Trouvez l'archer** en tapant son nom, sa licence, son club ou son blason, ou en choisissant le départ. Seuls les archers qui doivent encore payer sont affichés ; cochez **Afficher payés et gratuits** pour voir tout le monde.
 2. **Touchez sa ligne**, ou plusieurs lignes. **Tout sélectionner** coche toutes les lignes affichées. Le total apparaît en bas.
-3. **Choisissez le mode de paiement**, cochez **Reçu demandé** si l'archer veut un reçu, puis **Encaisser**.
+3. **Choisissez le mode de paiement** (chaque mode a son logo : pièces, chèque, carte…), cochez **Reçu demandé** si l'archer veut un reçu, puis **Encaisser**.
 
 En haut de l'écran : le nombre d'archers à encaisser, la somme qui reste à encaisser, le nombre de payés et le nombre de reçus demandés. Tapez votre prénom dans le champ **Opérateur** : il est retenu sur le téléphone.
 
@@ -457,7 +474,7 @@ Les paiements importés apparaissent dans la caisse avec l'origine « HelloAsso 
 
 <img src="docs/images/caisse.png" alt="Caisse" width="100%">
 
-La caisse se trouve dans le **Tableau de bord**, page **Trésorier**, sous les graphiques. Elle montre tout ce qui a été encaissé, annulé ou remboursé depuis la dernière clôture : total par mode de paiement et liste des opérations, avec l'heure, l'opérateur et l'appareil utilisé. **Imprimer** ouvre la caisse en cours sur une page à imprimer.
+La caisse se trouve dans le **Tableau de bord**, vue **Trésorier**, partie **2. Caisse**. Elle montre tout ce qui a été encaissé, annulé ou remboursé depuis la dernière clôture : total par mode de paiement et liste des opérations, avec l'heure, l'opérateur et l'appareil utilisé. **Imprimer** ouvre la caisse en cours sur une page à imprimer.
 
 Le **fond de caisse** est la monnaie mise dans la caisse avant d'ouvrir. Deux façons de le saisir, au choix :
 
@@ -469,7 +486,11 @@ Cliquez ensuite sur **Enregistrer le fond de caisse**. Les espèces attendues co
 Pour **clôturer la caisse** (en fin de matinée, de journée…) :
 
 1. Comptez les pièces et les billets présents dans la caisse, fond compris.
-2. Avec un fond détaillé, tapez la quantité de chaque valeur : le total compté s'affiche au fur et à mesure. Avec un fond simplifié, tapez seulement le montant compté.
+2. Choisissez le comptage, quel que soit le type du fond de caisse :
+   - **Détaillée** : tapez la quantité de chaque valeur, le total compté s'affiche au fur et à mesure ;
+   - **Simplifiée** : tapez seulement le montant compté.
+
+   Par défaut, la clôture suit le type du fond de caisse.
 3. Cliquez sur **Clôturer la caisse**.
 
 RegistrArc affiche alors l'écart avec les espèces attendues, et la somme **à retirer en laissant le fond**. Chaque clôture reste consultable dans **Clôtures précédentes** : **Voir / imprimer** ouvre son rapport, avec le détail du comptage et du fond. Les opérations qui suivent comptent pour la clôture suivante.
@@ -479,28 +500,30 @@ RegistrArc affiche alors l'écart avec les espèces attendues, et la somme **à 
 ### Le tableau de bord
 
 <details>
-<summary><strong>Les deux pages : Greffe et Trésorier</strong></summary>
+<summary><strong>Les deux vues : Greffe et Trésorier</strong></summary>
 
 <br>
 
-<img src="docs/images/tableau-de-bord.png" alt="Tableau de bord, page Greffe" width="100%">
+<img src="docs/images/tableau-de-bord.png" alt="Tableau de bord, vue Greffe" width="100%">
 
-En haut, choisissez la **page** qui correspond à votre rôle, et éventuellement un **départ** : tous les chiffres et graphiques de la page suivent. RegistrArc retient la dernière page ouverte sur l'appareil.
+En haut, choisissez la **vue** qui correspond à votre rôle, **Greffe** ou **Trésorier**, et éventuellement un **départ** : tous les chiffres et graphiques suivent. RegistrArc retient la dernière vue ouverte sur l'appareil.
 
-| Page | Pour qui | Ce qu'elle montre |
-|---|---|---|
-| **Greffe** | le greffe, pendant les inscriptions | nombre d'archers (jeunes et adultes), d'engagements et de clubs ; archers sur plusieurs départs ; archers **sans cible** et **surclassés** à vérifier ; inscriptions tardives et tarifs spéciaux. Graphiques : engagements par départ, par catégorie, clubs les plus représentés, départs par archer, et la **carte des clubs**. |
-| **Trésorier** | le trésorier, pour les comptes | attendu, encaissé (avec jauge), reste dû, remboursé, montant moyen par archer, **chèques à déposer**, déposé en banque, **écart de caisse**. Graphiques : encaissé au fil du temps, par mode de paiement, par départ, **reste dû par club** (pour les relances), recette par tarif ; tableaux des remises de chèques et des clôtures de caisse ; en dessous, la **[caisse](#la-caisse)** (fond de caisse, clôture, opérations). |
+Chaque vue est découpée en parties numérotées, comme les paramètres. Un clic sur un bandeau replie ou déplie sa partie ; la page s'en souvient sur ce poste.
 
-Pour suivre l'accueil au comptoir le jour J (qui est passé, qui reste à venir pour chaque départ), utilisez la vue **par archer** de la liste : voir [le passage au greffe](#le-passage-au-greffe).
+| Vue | Ses parties |
+|---|---|
+| **Greffe** | 1. **En bref** : archers (jeunes, adultes, clubs), engagements, **passés au greffe** (avec jauge), **à vérifier** (sans cible, surclassés) · 2. **Passage au greffe** : passés et attendus, départ par départ · 3. **Qui vient ?** : catégories, clubs les plus représentés, **carte des clubs** · 4. **Outils du greffe** : QR codes, villes des clubs, liste pour le tableur |
+| **Trésorier** | 1. **En bref** : encaissé (avec jauge), reste dû, **chèques à déposer**, **écart de caisse** · 2. **[Caisse](#la-caisse)** : fond de caisse, clôture, opérations · 3. **Recettes** : par mode de paiement, par départ, au fil du temps, **reste dû par club** (pour les relances) · 4. **Banque et factures** : remises de chèques, clôtures, factures émises, fichiers pour le tableur, import HelloAsso · 5. **Sauvegarde et fin du concours** |
 
-- Les tuiles marquées **⚠** signalent un point à vérifier (archers sans cible ou surclassés, chèques pas encore déposés, écart de caisse).
+Le pointage des archers se fait dans la vue **par archer** de la liste : voir [le passage au greffe](#le-passage-au-greffe).
+
+- Les tuiles marquées **⚠** signalent un point à vérifier (archers sans cible ou surclassés, reste dû, chèques pas encore déposés, écart de caisse).
 - Passez la souris (ou le doigt) sur une barre ou la courbe pour voir le détail. Cliquer sur un départ dans un graphique le sélectionne pour toute la page.
 - Chaque graphique a un bouton **Tableau** qui montre les mêmes chiffres sous forme de tableau.
 
 <p align="center">
-  <img src="docs/images/tableau-de-bord-tresorier.png" alt="Page Trésorier" width="70%"><br>
-  <strong>Page Trésorier</strong>
+  <img src="docs/images/tableau-de-bord-tresorier.png" alt="Vue Trésorier" width="70%"><br>
+  <strong>Vue Trésorier</strong>
 </p>
 
 - **La carte des clubs** place une bulle par club, sur sa ville. I@nseo ne connaissant pas la ville des clubs, RegistrArc la cherche dans le nom du club, parmi les communes de son département (3e et 4e chiffres du numéro de club FFTA). La taille de la bulle suit le nombre d'archers ; le survol donne le club, ses archers, ses engagements, son reste dû et sa ville. Une bulle **pâle en pointillé** signale un club dont la ville n'a pas été trouvée : il est placé au centre de son département.
@@ -670,7 +693,7 @@ Un autre concours a été ouvert dans I@nseo entre-temps. Rechargez la page : el
 
 <br>
 
-Le concours a été clôturé depuis le tableau de bord. Rouvrez-le au même endroit (partie « Fin du concours ») si des modifications sont encore nécessaires.
+Le concours a été clôturé depuis le tableau de bord. Rouvrez-le au même endroit (vue Trésorier, partie « Sauvegarde et fin du concours ») si des modifications sont encore nécessaires.
 
 </details>
 
@@ -702,7 +725,7 @@ Le bouton ouvre une page qui montre la version installée, la nouvelle version e
 
 <br>
 
-Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.5 »), et dans le sous-titre de la page d'aide.
+Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.6 »), et dans le sous-titre de la page d'aide.
 
 </details>
 
@@ -719,7 +742,33 @@ Il n'apparaît que pour l'administrateur d'I@nseo, quand l'ordinateur a accès �
 
 Ce qui change pour vous à chaque nouvelle version. La version installée est écrite en petit, en bas de la page **⚙ Paramètres**.
 
-### Version 1.2.5
+### Version 1.2.6
+
+**Au greffe**
+
+- **Encaisser pointe l'archer** : valider un paiement depuis la liste ou le mode Kiosk note aussi l'archer comme passé au greffe pour ce départ. C'est réglé par défaut ; l'option se décoche dans **⚙ Paramètres**, partie **Paiements**.
+- **Supprimer le paiement défait tout** : l'engagement redevient à payer, le remboursement éventuel est annulé, et l'archer n'est plus pointé au greffe.
+- **Un remboursement demande toujours un motif** (forfait, erreur d'inscription…), noté dans la caisse.
+- **Les boutons groupés** (Valider, Supprimer le paiement, Rembourser) ne s'activent qu'à partir de 2 engagements cochés ; pour un seul, utilisez les boutons de sa ligne. Le nombre d'engagements cochés s'affiche une fois, devant les boutons.
+- **Le choix de la vue** (Par engagement, Par archer, FdM) est à droite du titre « Actions sur les engagements sélectionnés », le champ **Opérateur** juste dessous.
+- **Plus d'inscription tardive** : la case et la majoration disparaissent.
+
+**Pour le trésorier**
+
+- **Un tableau de bord plus clair**, en deux vues : **Greffe** (en bref, passage au greffe départ par départ, qui vient, outils) et **Trésorier** (en bref, caisse, recettes, banque et factures, sauvegarde et fin du concours). Chaque partie se replie d'un clic sur son bandeau. Voir [le tableau de bord](#le-tableau-de-bord).
+- **Clôture de caisse simplifiée** : à chaque clôture, comptez pièce par pièce ou tapez un seul montant, quel que soit le type du fond de caisse.
+- **Des logos pour les moyens de paiement** (pièces, chèque, carte, virement…), dans les paramètres et le mode Kiosk.
+
+**Dans les paramètres**
+
+- **Une page en quatre parties numérotées** : catégories, tarifs, paiements, export / import. Chaque partie se replie, et **Enregistrer les paramètres** reste toujours visible en bas de l'écran.
+- **Le numéro du concours** est rappelé sous le titre, pour retrouver ses fichiers.
+- **Finales** : un archer compte comme finaliste individuel seulement si sa catégorie est dans une épreuve qui a des phases finales.
+
+<details>
+<summary><strong>Version 1.2.5</strong></summary>
+
+<br>
 
 **Au greffe**
 
@@ -730,6 +779,8 @@ Ce qui change pour vous à chaque nouvelle version. La version installée est é
 
 - **Signaler un problème** : un bouton en haut de l'aide ouvre GitHub pour décrire un bug ou proposer une idée. Voir [signaler un problème](#signaler-un-problème-ou-proposer-une-idée).
 - **Ces notes de version**, écrites simplement, et tout ce qui concerne les mises à jour regroupé à la fin de l'aide.
+
+</details>
 
 <details>
 <summary><strong>Version 1.2.4</strong></summary>
@@ -753,7 +804,7 @@ Ce qui change pour vous à chaque nouvelle version. La version installée est é
 
 - **Un prix par départ** : chaque départ peut avoir son propre supplément, par exemple 10 € le premier, + 7 € le deuxième, + 4 € le troisième. Le bouton bleu **+** ajoute un départ, jusqu'au nombre de départs du concours.
 - **Club organisateur gratuit par défaut** : changez les montants si votre club fait payer ses propres archers.
-- **Plus de majoration pour inscription tardive** : la case « inscription tardive » existe toujours, comme simple information pour le greffe.
+- **Plus de majoration pour inscription tardive.**
 
 </details>
 

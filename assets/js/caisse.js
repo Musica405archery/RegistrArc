@@ -48,7 +48,8 @@
 
     document.querySelectorAll('[data-float-form]').forEach(function (form) {
         form.addEventListener('change', function (event) {
-            if (event.target.name !== 'float_mode') {
+            // Fond de caisse (float_mode) ou comptage de la clôture (count_mode)
+            if (event.target.name !== 'float_mode' && event.target.name !== 'count_mode') {
                 return;
             }
 

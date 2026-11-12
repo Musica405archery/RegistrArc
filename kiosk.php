@@ -444,7 +444,9 @@ foreach ($rows as $r) {
                             <div class="state <?php echo $isSettled ? 'state-paid' : 'state-unpaid'; ?>">
                                 <?php
                                 if ($isPaid) {
-                                    echo htmlspecialchars('Payé' . ($row['payment_method_label'] !== '' ? ' · ' . $row['payment_method_label'] : ''));
+                                    // Logo du mode de paiement, comme dans les paramètres
+                                    echo ($row['payment_method'] !== '' ? registrarc_payment_icon($row['payment_method']) : '')
+                                        . htmlspecialchars('Payé' . ($row['payment_method_label'] !== '' ? ' · ' . $row['payment_method_label'] : ''));
                                 } elseif ($row['state'] === 'free') {
                                     echo 'Rien à payer';
                                 } elseif ($row['state'] === 'refunded') {
@@ -483,7 +485,8 @@ foreach ($rows as $r) {
                 <div class="segmented pay-modes" role="group" aria-label="Mode de paiement">
                     <?php foreach ($paymentModes as $code => $label): ?>
                         <button type="button" class="pay-mode" data-code="<?php echo htmlspecialchars($code); ?>" onclick="selectPaymentMode(this);">
-                            <?php echo htmlspecialchars($label); ?>
+                            <?php echo registrarc_payment_icon($code); ?>
+                            <span class="pay-mode-label"><?php echo htmlspecialchars($label); ?></span>
                         </button>
                     <?php endforeach; ?>
                 </div>

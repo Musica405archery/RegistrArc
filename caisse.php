@@ -54,9 +54,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['close_cash'])) {
     if ($formError !== '') {
         registrarc_flash('caisse', $formError, 'error');
     } else {
-        // Le comptage par pièces et billets donne le total ; à défaut, total saisi (fond simplifié)
-        $countedCash = registrarc_parse_cash_amount(isset($_POST['cash_counted']) ? $_POST['cash_counted'] : '');
-        $countedDetail = isset($_POST['count']) ? $_POST['count'] : [];
+        // Comptage au choix : détaillé (pièces et billets, qui donnent le total) ou
+        // simplifié (un seul montant). Seul le comptage choisi est pris en compte.
+        $countMode = isset($_POST['count_mode']) && $_POST['count_mode'] === 'simple' ? 'simple' : 'detail';
+        $countedCash = $countMode === 'simple' ? registrarc_parse_cash_amount(isset($_POST['cash_counted']) ? $_POST['cash_counted'] : '') : null;
+        $countedDetail = $countMode === 'detail' && isset($_POST['count']) ? $_POST['count'] : [];
         $closureId = registrarc_close_cash($TourId, $countedCash, isset($_POST['comment']) ? $_POST['comment'] : '', $countedDetail);
 
         if ($closureId !== '') {

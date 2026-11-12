@@ -557,6 +557,57 @@ function registrarc_default_payment_modes() {
     ];
 }
 
+// ---------------------------------------------------------------------------
+// Logos des modes de paiement : SVG dessinés ici (aucune image ni ressource
+// externe), une famille par type de paiement, reconnue d'après le code
+// ---------------------------------------------------------------------------
+function registrarc_payment_icon_svgs() {
+    $svg = function ($paths) {
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' . $paths . '</svg>';
+    };
+
+    return [
+        // Pièces de monnaie : une pile et une pièce de face
+        'cash' => $svg('<ellipse cx="8" cy="6.5" rx="5" ry="2"/><path d="M3 6.5v11c0 1.1 2.2 2 5 2s5-.9 5-2v-11"/><path d="M3 10.2c0 1.1 2.2 2 5 2s5-.9 5-2M3 13.9c0 1.1 2.2 2 5 2s5-.9 5-2"/><circle cx="17.5" cy="15" r="4.8"/><circle cx="17.5" cy="15" r="2.2"/>'),
+        'cheque' => $svg('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 10h7M6 14h4"/><path d="M14 15.5c1-1.6 2 1 3-.4s1.4 1 2.4 0"/>'),
+        'transfer' => $svg('<path d="M4 8h14l-3.5-3.5"/><path d="M20 16H6l3.5 3.5"/>'),
+        'card' => $svg('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/>'),
+        'free' => $svg('<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8h14v-8M12 8v12"/><path d="M12 8C10.5 5 7 5 7 7.5S10.5 8 12 8zM12 8c1.5-3 5-3 5-.5S13.5 8 12 8z"/>'),
+        'online' => $svg('<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>'),
+        'voucher' => $svg('<path d="M3 7h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4z"/><path d="M14 7v2M14 11v2M14 15v2"/>'),
+        'other' => $svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h.01M12 12h.01M16 12h.01" stroke-width="2.6"/>'),
+    ];
+}
+
+// Famille d'un code de paiement : ESP, CHQ, VIR, CB, GRA, en ligne, bons, autre
+function registrarc_payment_icon_family($code) {
+    $code = strtoupper(trim((string)$code));
+    $families = [
+        'cash' => ['ESP', 'ESPECES', 'LIQ', 'CASH'],
+        'cheque' => ['CHQ', 'CHEQUE', 'CHEQ', 'CH'],
+        'transfer' => ['VIR', 'VIREMENT', 'VIRT', 'SEPA'],
+        'card' => ['CB', 'CARTE', 'TPE', 'CARD', 'SUMUP'],
+        'free' => ['GRA', 'GRATUIT', 'OFFERT'],
+        'online' => ['HA', 'HELLOASSO', 'PAYPAL', 'WEB', 'LIGNE', 'EN_LIGNE'],
+        'voucher' => ['ANCV', 'CV', 'CHQV', 'BON', 'PASS', 'COUPON'],
+    ];
+
+    foreach ($families as $family => $codes) {
+        if (in_array($code, $codes, true)) {
+            return $family;
+        }
+    }
+
+    return 'other';
+}
+
+function registrarc_payment_icon($code) {
+    $family = registrarc_payment_icon_family($code);
+    $svgs = registrarc_payment_icon_svgs();
+
+    return '<span class="pm-icon pm-icon-' . $family . '">' . $svgs[$family] . '</span>';
+}
+
 function registrarc_default_age_classes() {
     return [
         'jeunes' => ['U11', 'U13', 'U15', 'U18'],
@@ -703,6 +754,7 @@ function registrarc_normalize_settings($TourId, $settings) {
         'payment_modes' => registrarc_default_payment_modes(),
         'rules' => [],
         'options' => registrarc_default_pricing_options(),
+        'greffe' => registrarc_default_greffe_options(),
     ];
 
     if (!is_array($settings)) {
@@ -711,6 +763,10 @@ function registrarc_normalize_settings($TourId, $settings) {
 
     if (isset($settings['options'])) {
         $out['options'] = registrarc_normalize_pricing_options($settings['options']);
+    }
+
+    if (isset($settings['greffe'])) {
+        $out['greffe'] = registrarc_normalize_greffe_options($settings['greffe']);
     }
 
     if (isset($settings['tarifs']) && is_array($settings['tarifs'])) {

@@ -76,8 +76,8 @@ test('plafond par archer : excédent retiré en partant du dernier départ', fun
     assert_same([['label' => 'Plafond par archer', 'amount' => -8.0]], $e[$d3]['adjustments']);
 });
 
-test('inscription tardive : simple information, sans majoration', function () {
-    // Une ancienne majoration encore présente dans les paramètres n'est plus appliquée
+test('ancienne inscription tardive et ancienne majoration : ignorées', function () {
+    // Données d'une ancienne version : majoration dans les paramètres, case « tardive » sur un engagement
     test_settings(['options' => ['cap_per_archer' => 10, 'late_fee' => 3]]);
     $d1 = test_add_entry('A1', 'CLS1H', '1099000', 1);
     $d2 = test_add_entry('A1', 'CLS1H', '1099000', 2);
@@ -86,10 +86,60 @@ test('inscription tardive : simple information, sans majoration', function () {
     $e = registrarc_load_engagements(1, true);
     assert_same(10.0, $e[$d1]['amount_due']);
     assert_same(0.0, $e[$d2]['amount_due'], 'plafonné à 0, pas de majoration');
-    assert_true($e[$d2]['late']);
+    assert_true(!isset($e[$d2]['late']), 'plus de notion d\'inscription tardive');
     assert_same('arrivé hier', $e[$d2]['note']);
     assert_same('Standard · Plafond par archer', registrarc_engagement_tarif_label($e[$d2]));
     assert_same(['cap_per_archer' => 10.0], registrarc_load_pricing_options(1));
+
+    // Enregistrer la note efface l'ancienne case
+    registrarc_set_archer_note(1, $d2, 'arrivé hier');
+    assert_true(!isset(registrarc_load_archer_info(1)[(string)$d2]['late']));
+});
+
+test('remboursement : motif obligatoire, affiché dans la caisse', function () {
+    $a = test_add_entry('A1', 'CLS1H', '1099000', 1);
+    registrarc_record_payments(1, [$a], 'CHQ', false, 'liste');
+
+    $r = registrarc_refund_payments(1, [$a], 'ESP', 'liste', '   ');
+    assert_same([], $r['done'], 'sans motif : rien n\'est remboursé');
+    assert_same('motif du remboursement manquant', $r['skipped'][$a]);
+    assert_same('paid', registrarc_load_engagements(1, true)[$a]['state']);
+
+    $r = registrarc_refund_payments(1, [$a], 'ESP', 'liste', 'Blessure');
+    assert_same([$a], $r['done']);
+    $e = registrarc_load_engagements(1, true)[$a];
+    assert_same('refunded', $e['state']);
+    assert_same('Blessure', $e['payment']['refund_reason']);
+
+    $journal = registrarc_load_journal(1);
+    $last = end($journal);
+    assert_same(['refund', -10.0, 'ESP', 'Blessure'], [$last['type'], (float)$last['amount'], $last['method'], $last['label']]);
+});
+
+test('supprimer le paiement d\'un engagement remboursé : annule aussi le remboursement', function () {
+    $a = test_add_entry('A1', 'CLS1H', '1099000', 1);
+    registrarc_record_payments(1, [$a], 'CHQ', false, 'liste');
+    registrarc_refund_payments(1, [$a], 'ESP', 'liste', 'Désistement');
+
+    $r = registrarc_cancel_payments(1, [$a], 'liste');
+    assert_same([$a], $r['done']);
+    assert_same('due', registrarc_load_engagements(1, true)[$a]['state'], 'redevient non payé');
+
+    // Caisse juste par mode : chèque +10 -10, espèces -10 +10
+    $summary = registrarc_cash_summary(1);
+    assert_amount(0, $summary['totals']['CHQ']);
+    assert_amount(0, $summary['totals']['ESP']);
+    $types = array_column(array_slice(registrarc_load_journal(1), -2), 'type');
+    assert_same(['refund_cancel', 'cancel'], $types);
+
+    // Chèque remboursé mais déjà déposé : refusé
+    $b = test_add_entry('B1', 'CLS1H', '1099000', 1);
+    registrarc_record_payments(1, [$b], 'CHQ', false, 'liste');
+    registrarc_create_deposit(1, [['group_id' => '', 'engagement_ids' => [$b]]]);
+    registrarc_refund_payments(1, [$b], 'CHQ', 'liste', 'Erreur d\'inscription');
+    $r = registrarc_cancel_payments(1, [$b], 'liste');
+    assert_same([], $r['done']);
+    assert_true(strpos($r['skipped'][$b], 'déposé') !== false);
 });
 
 test('passage au greffe : pointé, conservé avec la note, puis annulé', function () {
@@ -114,6 +164,61 @@ test('passage au greffe : pointé, conservé avec la note, puis annulé', functi
     assert_true(registrarc_set_archer_note(1, $d1, '', false));
     assert_same([], registrarc_load_archer_info(1));
     assert_same(false, registrarc_toggle_checkin(1, 0));
+});
+
+test('paiement au comptoir : pointe au greffe seulement si l\'option est cochée', function () {
+    $a = test_add_entry('A1', 'CLS1H', '1099000', 1);
+    $b = test_add_entry('B1', 'CLS1H', '1099000', 1);
+    $c = test_add_entry('C1', 'CLS1H', '1099000', 2);
+
+    // Option cochée par défaut ; décochée : le paiement ne pointe personne
+    assert_same(true, registrarc_load_greffe_options(1)['checkin_on_payment']);
+    test_settings(['greffe' => ['checkin_on_payment' => false]]);
+    assert_same(false, registrarc_load_greffe_options(1)['checkin_on_payment']);
+    registrarc_record_payments(1, [$a], 'ESP', false, 'liste');
+    assert_same('', registrarc_load_engagements(1, true)[$a]['checked_in']);
+
+    // Option cochée : liste et mode Kiosk pointent, pas un paiement en ligne
+    test_settings(['greffe' => ['checkin_on_payment' => true]]);
+    assert_same(true, registrarc_load_greffe_options(1)['checkin_on_payment']);
+    registrarc_record_payments(1, [$b], 'CHQ', false, 'kiosque');
+    registrarc_record_payments(1, [$c], 'CB', false, 'helloasso');
+
+    $e = registrarc_load_engagements(1, true);
+    assert_true($e[$b]['checked_in'] !== '', 'payé au kiosque : pointé');
+    assert_same('', $e[$c]['checked_in'], 'payé en ligne : pas pointé');
+
+    // Déjà pointé : changer de mode de paiement garde l'heure du pointage
+    $info = registrarc_load_archer_info(1);
+    $info[(string)$b]['checked_in'] = '2026-11-12 08:00:00';
+    file_put_contents(registrarc_archers_file_path(1), json_encode($info));
+    registrarc_record_payments(1, [$b], 'ESP', false, 'liste');
+    assert_same('2026-11-12 08:00:00', registrarc_load_engagements(1, true)[$b]['checked_in']);
+});
+
+test('supprimer le paiement retire aussi le pointage au greffe', function () {
+    $a = test_add_entry('A1', 'CLS1H', '1099000', 1);
+    $b = test_add_entry('B1', 'CLS1H', '1099000', 1);
+    $c = test_add_entry('C1', 'CLS1H', '1099000', 1);
+
+    // Option décochée : le pointage manuel est retiré quand même
+    test_settings(['greffe' => ['checkin_on_payment' => false]]);
+    registrarc_record_payments(1, [$a, $b, $c], 'ESP', false, 'liste');
+    registrarc_mark_checked_in(1, [$a, $b, $c]);
+    registrarc_set_archer_note(1, $a, 'Licence à vérifier');
+
+    registrarc_cancel_payments(1, [$a], 'liste');
+    registrarc_cancel_payments(1, [$c], 'import');
+    $e = registrarc_load_engagements(1, true);
+    assert_same('', $e[$a]['checked_in'], 'paiement supprimé : plus pointé');
+    assert_same('Licence à vérifier', registrarc_load_archer_info(1)[(string)$a]['note'], 'la note reste');
+    assert_true($e[$b]['checked_in'] !== '', 'les autres restent pointés');
+    assert_true($e[$c]['checked_in'] !== '', 'annulation importée : pointage gardé');
+
+    // Un remboursement annulé par « Supprimer le paiement » : pareil
+    registrarc_refund_payments(1, [$b], 'ESP', 'liste', 'Forfait');
+    registrarc_cancel_payments(1, [$b], 'liste');
+    assert_same('', registrarc_load_engagements(1, true)[$b]['checked_in']);
 });
 
 test('paramètres illisibles : tarifs par défaut', function () {
