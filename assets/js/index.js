@@ -15,20 +15,31 @@ function getSelectedEngagementIds() {
 
 function updateBulkInvoiceButton() {
     const btn = document.getElementById('bulk_invoice_btn');
+    const selectedIds = getSelectedEngagementIds();
+
+    // Valider, Supprimer le paiement et Rembourser : à partir de 2 engagements cochés
+    document.querySelectorAll('[data-bulk-min]').forEach(button => {
+        const min = parseInt(button.dataset.bulkMin, 10) || 1;
+
+        button.disabled = selectedIds.length < min;
+        button.title = button.disabled
+            ? 'Cochez au moins ' + min + ' engagements (pour un seul, utilisez les boutons de sa ligne)'
+            : button.dataset.title;
+    });
+
+    // Un seul compteur devant les boutons (même avec des milliers d'engagements)
+    const counter = document.getElementById('bulkCount');
+
+    if (counter) {
+        counter.hidden = selectedIds.length === 0;
+        counter.textContent = selectedIds.length.toLocaleString('fr-FR') + (selectedIds.length > 1 ? ' cochés' : ' coché');
+    }
 
     if (!btn) {
         return;
     }
 
-    const selectedIds = getSelectedEngagementIds();
-
-    if (selectedIds.length >= 2) {
-        btn.style.display = 'inline-flex';
-        btn.textContent = 'Facture groupée (' + selectedIds.length + ')';
-    } else {
-        btn.style.display = 'none';
-        btn.textContent = 'Facture groupée';
-    }
+    btn.style.display = selectedIds.length >= 2 ? 'inline-flex' : 'none';
 }
 
 function toggleSelectAll(master) {
@@ -58,10 +69,29 @@ function confirmBulkAction(type) {
 
     const actionTexts = {
         validate: 'valider le paiement',
-        unvalidate: 'retirer le paiement',
+        unvalidate: 'supprimer le paiement (le pointage au greffe est retiré, et le remboursement annulé si besoin)',
         refund: 'enregistrer le remboursement'
     };
     const actionText = actionTexts[type] || type;
+
+    // Remboursement : motif obligatoire
+    if (type === 'refund') {
+        const reason = window.prompt('Motif du remboursement pour ' + count + ' engagement(s) (obligatoire) :', '');
+        const reasonInput = document.getElementById('bulk_refund_reason');
+
+        if (reason === null) {
+            return false;
+        }
+
+        if (!reason.trim()) {
+            alert('Le motif du remboursement est obligatoire.');
+            return false;
+        }
+
+        if (reasonInput) {
+            reasonInput.value = reason.trim();
+        }
+    }
 
     if (type !== 'validate') {
         return confirm(
@@ -93,13 +123,13 @@ function openNoteDialog(btn) {
     document.getElementById('noteEngagementId').value = btn.dataset.id;
     document.getElementById('noteArcher').textContent = btn.dataset.archer;
     document.getElementById('noteText').value = btn.dataset.note || '';
-    document.getElementById('noteLate').checked = btn.dataset.late === '1';
     document.getElementById('noteDialog').showModal();
 }
 
 function openRefundDialog(btn) {
     document.getElementById('refundEngagementId').value = btn.dataset.id;
     document.getElementById('refundArcher').textContent = btn.dataset.archer + ' · ' + btn.dataset.amount + ' €';
+    document.getElementById('refundReason').value = '';
     document.getElementById('refundDialog').showModal();
 }
 

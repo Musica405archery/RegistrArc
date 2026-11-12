@@ -1,10 +1,11 @@
 // RegistrArc - assets/js/dashboard.js (scripts de dashboard.php)
 //
-// Tableau de bord en deux pages, dessiné en SVG sans bibliothèque externe :
-// - Greffe : inscrits, départs, catégories, clubs, points à vérifier
-// - Trésorier : attendu, encaissé, reste dû, modes, tarifs, chèques, caisse
-// (le suivi au comptoir est dans la liste, vue par archer)
-// Le filtre Départ s'applique aux deux pages ; chaque graphique a sa vue
+// Tableau de bord en deux vues, dessiné en SVG sans bibliothèque externe :
+// - Greffe : en bref, passage au greffe par départ, qui vient, outils
+// - Trésorier : en bref, caisse, recettes, banque et factures, fin du concours
+// Chaque vue est faite de parties numérotées et repliables (dashboard.php) ;
+// ce script remplit leurs emplacements data-viz-tiles et data-viz-cards.
+// Le filtre Départ s'applique aux deux vues ; chaque graphique a sa vue
 // tableau (mêmes données, sans survol). Données : lib/registrarc_dashboard.inc.php
 //
 // Les noms (clubs, catégories, opérateurs) sont insérés avec textContent, jamais en HTML.
@@ -12,9 +13,8 @@
 (function () {
     const dataEl = document.getElementById('rgVizData');
     const root = document.getElementById('rgViz');
-    const pageEl = document.getElementById('rgVizPage');
 
-    if (!dataEl || !root || !pageEl) {
+    if (!dataEl || !root) {
         return;
     }
 
@@ -93,7 +93,7 @@
         return (data.modes && data.modes[code]) || code || 'Non précisé';
     }
 
-    const OPERATION_LABELS = { payment: 'Encaissement', cancel: 'Annulation', refund: 'Remboursement' };
+    const OPERATION_LABELS = { payment: 'Encaissement', cancel: 'Annulation', refund: 'Remboursement', refund_cancel: 'Remboursement annulé' };
 
     function parseDate(s) {
         const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s || '');
@@ -284,12 +284,6 @@
             return a.t - b.t || a.i - b.i;
         });
 
-    // Nombre d'engagements de chaque archer, tous départs confondus
-    const ENGAGEMENTS_PER_ARCHER = {};
-
-    data.records.forEach(function (r) {
-        ENGAGEMENTS_PER_ARCHER[r.a] = (ENGAGEMENTS_PER_ARCHER[r.a] || 0) + 1;
-    });
 
     function add(map, key, fields) {
         const g = map[key] || (map[key] = {});
@@ -319,9 +313,9 @@
             clubs: {},
             modes: {},
             tarifs: {},
+            checked: 0,           // engagements passés au greffe
             unassigned: 0,
             upgraded: 0,
-            late: 0,
             special: 0,
             notes: 0,
             chequesPending: { count: 0, amount: 0 }
@@ -348,7 +342,8 @@
                 }
             }
 
-            add(A.sessions, r.s, { paid: paid, due: due, other: other, collected: r.p, remaining: r.d });
+            add(A.sessions, r.s, { paid: paid, due: due, other: other, collected: r.p, remaining: r.d, checked: r.ci ? 1 : 0, count: 1 });
+            A.checked += r.ci ? 1 : 0;
             add(A.categories, r.cat, { count: 1 });
             add(A.clubs, r.c, { count: 1, due: due, remaining: r.d });
 
@@ -358,7 +353,6 @@
 
             A.unassigned += r.u;
             A.upgraded += r.up;
-            A.late += r.l;
             A.special += r.t !== 'Standard' ? 1 : 0;
             A.notes += r.n;
         });
@@ -629,39 +623,48 @@
     function greffeTiles(A) {
         const archers = Object.keys(A.archers);
         const jeunes = archers.filter(function (a) { return A.archers[a] === 'jeunes'; }).length;
-        const multi = archers.filter(function (a) { return ENGAGEMENTS_PER_ARCHER[a] > 1; }).length;
         const clubs = Object.keys(A.clubArchers).length;
-        const tarifs = Object.keys(A.tarifs).filter(function (t) { return t !== 'Standard'; }).length;
+        const pct = percent(A.checked, A.R.length);
+        const toCheck = A.unassigned + A.upgraded;
+        const checks = [];
+
+        if (A.unassigned) {
+            checks.push(plural(A.unassigned, 'sans cible', 'sans cible'));
+        }
+
+        if (A.upgraded) {
+            checks.push(plural(A.upgraded, 'surclassé', 'surclassés'));
+        }
 
         return [
-            { label: 'Archers', value: nf0.format(archers.length), sub: plural(jeunes, 'jeune', 'jeunes') + ' · ' + plural(archers.length - jeunes, 'adulte', 'adultes') },
+            { label: 'Archers', value: nf0.format(archers.length), sub: plural(jeunes, 'jeune', 'jeunes') + ' · ' + plural(archers.length - jeunes, 'adulte', 'adultes') + ' · ' + plural(clubs, 'club', 'clubs') },
             { label: 'Engagements', value: nf0.format(A.R.length), sub: plural(A.counts.free, 'gratuit', 'gratuits') + ' · ' + plural(A.counts.refunded, 'remboursé', 'remboursés') },
-            { label: 'Clubs', value: nf0.format(clubs), sub: clubs ? nf1.format(archers.length / clubs) + ' archers par club en moyenne' : '' },
-            { label: 'Archers sur plusieurs départs', value: nf0.format(multi), sub: percent(multi, archers.length) + ' % des archers' },
-            { label: 'Sans cible', value: nf0.format(A.unassigned), warn: A.unassigned > 0, sub: A.unassigned ? 'à placer dans I@nseo' : 'tous les archers sont placés' },
-            { label: 'Surclassés', value: nf0.format(A.upgraded), warn: A.upgraded > 0, sub: A.upgraded ? 'à vérifier (catégorie d\'âge différente)' : 'aucun' },
-            { label: 'Inscriptions tardives', value: nf0.format(A.late), sub: A.late ? 'marquées dans la liste' : 'aucune' },
-            { label: 'Tarifs spéciaux', value: nf0.format(A.special), sub: plural(tarifs, 'règle utilisée', 'règles utilisées') }
+            { label: 'Passés au greffe', value: nf0.format(A.checked) + ' / ' + nf0.format(A.R.length), meter: pct, sub: A.R.length - A.checked ? plural(A.R.length - A.checked, 'engagement attendu', 'engagements attendus') : 'tout le monde est passé' },
+            { label: 'À vérifier', value: nf0.format(toCheck), warn: toCheck > 0, sub: toCheck ? checks.join(' · ') : 'rien à signaler' }
         ];
     }
-
     const GREFFE_CARDS = [
         {
-            id: 'g-sessions',
-            title: 'Engagements par départ',
-            subtitle: function () { return 'Payés, à payer, et gratuits ou remboursés.' + (state.session === '*' && data.sessions.length > 1 ? ' Cliquez sur un départ pour filtrer.' : ''); },
+            id: 'g-checkin',
+            wide: true,
+            title: 'Archers passés au greffe par départ',
+            subtitle: function () { return 'Passés et encore attendus.' + (state.session === '*' && data.sessions.length > 1 ? ' Cliquez sur un départ pour filtrer.' : ''); },
             render: function (card, body, A, asTable) {
                 const keys = Object.keys(A.sessions).sort(function (a, b) { return a.localeCompare(b, 'fr', { numeric: true }); });
                 const rows = keys.map(function (k) {
                     const g = A.sessions[k];
 
-                    return { label: sessionLabel(k), values: [g.paid || 0, g.due || 0, g.other || 0], onSelect: state.session === '*' && keys.length > 1 ? function () { setSession(k); } : null };
+                    return {
+                        label: sessionLabel(k),
+                        values: [g.checked || 0, (g.count || 0) - (g.checked || 0)],
+                        extra: [{ value: nf0.format(g.checked || 0) + ' / ' + nf0.format(g.count || 0), label: 'passés' }],
+                        onSelect: state.session === '*' && keys.length > 1 ? function () { setSession(k); } : null
+                    };
                 });
 
                 barsOrTable(card, body, asTable, rows, [
-                    { name: 'Payés', color: COLOR.paid },
-                    { name: 'À payer', color: COLOR.due },
-                    { name: 'Gratuits ou remboursés', color: COLOR.other }
+                    { name: 'Passés au greffe', color: COLOR.paid },
+                    { name: 'Attendus', color: COLOR.due }
                 ], { format: FMT.count, header: 'Départ', empty: 'Aucun engagement.' });
             }
         },
@@ -691,25 +694,6 @@
 
                 barsOrTable(card, body, asTable, asTable ? rows.sort(function (a, b) { return b.values[0] - a.values[0]; }) : topRows(rows, 'Autres clubs'),
                     [{ name: 'Archers', color: COLOR.paid }], { format: FMT.count, header: 'Club', empty: 'Aucun engagement.' });
-            }
-        },
-        {
-            id: 'g-multi',
-            title: 'Départs par archer',
-            subtitle: function () { return 'Combien d\'archers tirent un, deux, trois départs ou plus.'; },
-            render: function (card, body, A, asTable) {
-                const buckets = [0, 0, 0];
-                const total = Object.keys(A.archers).length;
-
-                Object.keys(A.archers).forEach(function (a) {
-                    buckets[Math.min(3, ENGAGEMENTS_PER_ARCHER[a]) - 1]++;
-                });
-
-                const rows = ['1 départ', '2 départs', '3 départs ou plus'].map(function (label, i) {
-                    return { label: label, values: [buckets[i]], extra: [{ value: percent(buckets[i], total) + ' %', label: 'des archers' }] };
-                });
-
-                barsOrTable(card, body, asTable, total ? rows : [], [{ name: 'Archers', color: COLOR.paid }], { format: FMT.count, header: 'Départs', empty: 'Aucun archer.' });
             }
         },
         {
@@ -942,24 +926,17 @@
     // Page Trésorier : l'argent du concours
     // -----------------------------------------------------------------------
     function tresorierTiles(A) {
-        const paying = Object.keys(A.payingArchers).length;
-        const deposited = data.deposits.reduce(function (s, d) { return s + d.total; }, 0);
         const gaps = data.closures.filter(function (c) { return c.diff !== null; });
         const gap = Math.round(gaps.reduce(function (s, c) { return s + c.diff; }, 0) * 100) / 100;
         const pct = percent(A.collected, A.expected);
 
         return [
-            { label: 'Attendu', value: euro(A.expected), sub: 'encaissé + reste dû' },
-            { label: 'Encaissé', value: euro(A.collected), meter: pct, sub: pct + ' % de l\'attendu' },
-            { label: 'Reste dû', value: euro(A.remaining), sub: plural(A.counts.due, 'engagement à payer', 'engagements à payer') },
-            { label: 'Remboursé', value: euro(A.refunded), sub: plural(A.counts.refunded, 'engagement', 'engagements') },
-            { label: 'Montant moyen par archer', value: paying ? euro(A.collected / paying) : '—', sub: plural(paying, 'archer a payé', 'archers ont payé') },
+            { label: 'Encaissé', value: euro(A.collected), meter: pct, sub: pct + ' % des ' + euro(A.expected) + ' attendus' + (A.refunded > 0 ? ' · ' + euro(A.refunded) + ' remboursés' : '') },
+            { label: 'Reste dû', value: euro(A.remaining), warn: A.remaining > 0, sub: A.counts.due ? plural(A.counts.due, 'engagement à payer', 'engagements à payer') : 'tout est réglé' },
             { label: 'Chèques à déposer', value: nf0.format(A.chequesPending.count), warn: A.chequesPending.count > 0, sub: A.chequesPending.count ? euro(A.chequesPending.amount) + ' à porter à la banque' : 'tout est déposé' },
-            { label: 'Déposé en banque', value: euro(deposited), sub: plural(data.deposits.length, 'remise', 'remises') + ' · tous départs' },
-            { label: 'Écart de caisse', value: gaps.length ? signedEuro(gap) : '—', warn: Math.abs(gap) >= 0.01, sub: gaps.length ? plural(gaps.length, 'clôture comptée', 'clôtures comptées') : 'aucune clôture comptée' }
+            { label: 'Écart de caisse', value: gaps.length ? signedEuro(gap) : '—', warn: Math.abs(gap) >= 0.01, sub: gaps.length ? plural(gaps.length, 'clôture comptée', 'clôtures comptées') + ' · tous départs' : 'aucune clôture comptée' }
         ];
     }
-
     const TRESORIER_CARDS = [
         {
             id: 't-timeline',
@@ -995,6 +972,7 @@
         },
         {
             id: 't-due-clubs',
+            wide: true,
             title: 'Reste dû par club',
             subtitle: function () { return 'Pour les relances : les plus gros montants en premier.'; },
             render: function (card, body, A, asTable) {
@@ -1004,19 +982,6 @@
 
                 barsOrTable(card, body, asTable, asTable ? rows.sort(function (a, b) { return b.values[0] - a.values[0]; }) : topRows(rows, 'Autres clubs'),
                     [{ name: 'Reste dû', color: COLOR.due }], { format: FMT.euro, header: 'Club', empty: 'Rien à recouvrer : tout est réglé.' });
-            }
-        },
-        {
-            id: 't-tarifs',
-            title: 'Recette par tarif',
-            subtitle: function () { return 'Encaissé et reste dû pour chaque tarif (standard ou règle spéciale).'; },
-            render: function (card, body, A, asTable) {
-                const rows = Object.keys(A.tarifs).map(function (t) {
-                    return { label: t, values: [A.tarifs[t].collected, A.tarifs[t].remaining], extra: [{ value: nf0.format(A.tarifs[t].count), label: 'engagements' }] };
-                });
-
-                barsOrTable(card, body, asTable, asTable ? rows : topRows(rows, 'Autres tarifs'),
-                    [{ name: 'Encaissé', color: COLOR.paid }, { name: 'Reste dû', color: COLOR.due }], { format: FMT.euro, header: 'Tarif', empty: 'Aucun engagement payant.' });
             }
         },
         {
@@ -1284,9 +1249,15 @@
     // Pages : tuiles puis cartes ; chaque carte peut passer en tableau
     // -----------------------------------------------------------------------
     const PAGES = {
-        greffe: { tiles: greffeTiles, cards: GREFFE_CARDS },
-        tresorier: { tiles: tresorierTiles, cards: TRESORIER_CARDS }
+        greffe: { tiles: greffeTiles },
+        tresorier: { tiles: tresorierTiles }
     };
+
+    const CARDS = {};
+
+    GREFFE_CARDS.concat(TRESORIER_CARDS).forEach(function (def) {
+        CARDS[def.id] = def;
+    });
 
     function buildCard(def, grid, A) {
         const card = el('div', { class: 'rg-card rg-viz-card' + (def.wide || def.tableOnly ? ' is-wide' : '') });
@@ -1342,22 +1313,103 @@
 
     function renderPage() {
         const page = PAGES[state.page];
+        const pageRoot = document.querySelector('[data-dashboard-page="' + state.page + '"]');
         const A = compute();
 
         removeMap();
-        pageEl.textContent = '';
-        renderTiles(pageEl, page.tiles(A));
 
-        const grid = el('div', { class: 'rg-viz-cards' });
-        pageEl.appendChild(grid);
+        if (!pageRoot) {
+            return;
+        }
 
-        // Les cartes sont d'abord placées, puis dessinées à leur largeur réelle
-        page.cards.map(function (def) {
-            return buildCard(def, grid, A);
-        }).forEach(function (c) {
+        pageRoot.querySelectorAll('[data-viz-tiles]').forEach(function (slot) {
+            slot.textContent = '';
+            renderTiles(slot, page.tiles(A));
+        });
+
+        // Les cartes sont d'abord placées, puis dessinées à leur largeur réelle ;
+        // une partie repliée n'est dessinée qu'à son ouverture
+        const built = [];
+
+        pageRoot.querySelectorAll('[data-viz-cards]').forEach(function (slot) {
+            slot.textContent = '';
+
+            if (slot.closest('.rg-dash-section.is-collapsed')) {
+                return;
+            }
+
+            slot.getAttribute('data-viz-cards').split(',').forEach(function (id) {
+                if (CARDS[id]) {
+                    built.push(buildCard(CARDS[id], slot, A));
+                }
+            });
+        });
+
+        built.forEach(function (c) {
             renderCardBody(c.def, c.card, c.body, A);
         });
     }
+
+    // -----------------------------------------------------------------------
+    // Parties repliables (bandeau + chevron), état retenu sur ce poste
+    // -----------------------------------------------------------------------
+    const COLLAPSED_KEY = 'registrarc.dashboard.collapsed';
+    let collapsed = [];
+
+    try {
+        collapsed = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]') || [];
+    } catch (e) {
+        collapsed = [];
+    }
+
+    const hashSection = window.location.hash.replace('#', '');
+
+    function saveCollapsed() {
+        const list = [];
+
+        document.querySelectorAll('.rg-dash-section.is-collapsed').forEach(function (section) {
+            list.push(section.getAttribute('data-section'));
+        });
+
+        try {
+            localStorage.setItem(COLLAPSED_KEY, JSON.stringify(list));
+        } catch (e) {
+            // stockage indisponible : l'état n'est simplement pas retenu
+        }
+    }
+
+    function setCollapsed(section, value) {
+        section.classList.toggle('is-collapsed', value);
+        section.querySelector('.rg-dash-banner').setAttribute('aria-expanded', value ? 'false' : 'true');
+    }
+
+    document.querySelectorAll('.rg-dash-section').forEach(function (section) {
+        const banner = section.querySelector('.rg-dash-banner');
+        const name = section.getAttribute('data-section');
+
+        if (collapsed.indexOf(name) !== -1 && name !== hashSection) {
+            setCollapsed(section, true);
+        }
+
+        function toggle() {
+            const opening = section.classList.contains('is-collapsed');
+            setCollapsed(section, !opening);
+            saveCollapsed();
+
+            // Les graphiques se dessinent à la largeur de leur partie : à l'ouverture
+            if (opening && section.querySelector('[data-viz-cards]')) {
+                renderPage();
+            }
+        }
+
+        banner.addEventListener('click', toggle);
+        banner.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggle();
+            }
+        });
+    });
 
     // -----------------------------------------------------------------------
     // Navigation et filtres
@@ -1428,7 +1480,7 @@
     if (window.location.hash === '#caisse') {
         const caisse = document.getElementById('caisse');
 
-        if (caisse && !caisse.hidden) {
+        if (caisse && !caisse.closest('[data-dashboard-page]').hidden) {
             caisse.scrollIntoView();
         }
     }

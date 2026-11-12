@@ -431,6 +431,7 @@ function addPaymentModeRow() {
     const tr = document.createElement('tr');
 
     tr.innerHTML = `
+        <td class="pm-icon-cell"></td>
         <td><input type="text" name="pm_code[]" value="" placeholder="ESP"></td>
         <td><input type="text" name="pm_label[]" value="" placeholder="Espèces"></td>
         <td style="text-align:center;">
@@ -439,6 +440,26 @@ function addPaymentModeRow() {
     `;
 
     tbody.appendChild(tr);
+    updatePaymentIcon(tr.querySelector('input[name="pm_code[]"]'));
+}
+
+// Logo d'un mode de paiement d'après son code (familles et dessins fournis par la page)
+function updatePaymentIcon(input) {
+    const data = document.getElementById('pmIcons');
+    const cell = input ? input.closest('tr').querySelector('.pm-icon-cell') : null;
+
+    if (!data || !cell) {
+        return;
+    }
+
+    if (!updatePaymentIcon.icons) {
+        updatePaymentIcon.icons = JSON.parse(data.textContent);
+    }
+
+    const icons = updatePaymentIcon.icons;
+    const family = icons.codes[String(input.value || '').trim().toUpperCase()] || 'other';
+
+    cell.innerHTML = '<span class="pm-icon pm-icon-' + family + '">' + icons.svgs[family] + '</span>';
 }
 
 function deletePaymentModeRow(btn) {
@@ -564,8 +585,90 @@ function initTarifTiers() {
     update();
 }
 
+// Parties de la page repliables (chevron) ; l'état est retenu sur ce poste
+function initCollapsibleSections() {
+    const KEY = 'registrarc.settings.collapsed';
+    let collapsed = [];
+
+    try {
+        collapsed = JSON.parse(localStorage.getItem(KEY) || '[]') || [];
+    } catch (e) {
+        collapsed = [];
+    }
+
+    const hash = window.location.hash.replace('#', '');
+
+    function save() {
+        const list = [];
+        document.querySelectorAll('.settings-section.is-collapsed').forEach(function(section) {
+            list.push(section.dataset.section);
+        });
+
+        try {
+            localStorage.setItem(KEY, JSON.stringify(list));
+        } catch (e) {
+            // Pas de stockage : l'état n'est simplement pas retenu
+        }
+    }
+
+    function setCollapsed(section, value) {
+        section.classList.toggle('is-collapsed', value);
+        const banner = section.querySelector('.settings-banner');
+        if (banner) {
+            banner.setAttribute('aria-expanded', value ? 'false' : 'true');
+        }
+    }
+
+    document.querySelectorAll('.settings-section').forEach(function(section) {
+        const banner = section.querySelector('.settings-banner');
+        const name = section.dataset.section;
+
+        if (collapsed.indexOf(name) !== -1 && name !== hash) {
+            setCollapsed(section, true);
+        }
+
+        if (!banner) {
+            return;
+        }
+
+        function toggle() {
+            setCollapsed(section, !section.classList.contains('is-collapsed'));
+            save();
+        }
+
+        banner.addEventListener('click', toggle);
+        banner.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggle();
+            }
+        });
+    });
+
+    // Un champ invalide dans une partie repliée : on la déplie pour que le
+    // navigateur puisse l'afficher, sinon l'enregistrement semble ne rien faire
+    document.addEventListener('invalid', function(e) {
+        const section = e.target.closest ? e.target.closest('.settings-section.is-collapsed') : null;
+        if (section) {
+            setCollapsed(section, false);
+            save();
+        }
+    }, true);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     initTarifTiers();
+    initCollapsibleSections();
+
+    const pmTable = document.getElementById('pmTableBody');
+
+    if (pmTable) {
+        pmTable.addEventListener('input', function(e) {
+            if (e.target.name === 'pm_code[]') {
+                updatePaymentIcon(e.target);
+            }
+        });
+    }
 
     const importForm = document.getElementById('importSettingsForm');
 

@@ -14,21 +14,118 @@
     --viz-surface: #ffffff;
 }
 
-/* --- Filtres : une ligne au-dessus de tout ce qu'ils filtrent ------------- */
-/* Caisse, sous les graphiques de la page Trésorier */
-.rg-caisse-panel[hidden] { display: none; }
-.rg-caisse-panel { margin-top: 18px; scroll-margin-top: 12px; }
-.rg-caisse-panel .rg-section-title { margin: 0 0 10px; font-size: 18px; }
-
-.rg-viz-filters {
+/* --- Choix de la vue (Greffe / Trésorier) et du départ -------------------- */
+.rg-dash-bar {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 10px 18px;
-    margin-bottom: 14px;
+    align-items: stretch;
+    gap: 12px 18px;
+    margin: 4px 0 16px;
 }
 
-.rg-viz-label { color: var(--rg-muted); font-size: 12px; }
+.rg-dash-switch {
+    display: flex;
+    flex: 1 1 420px;
+    gap: 10px;
+}
+
+.rg-dash-switch button {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+    padding: 10px 16px;
+    border: 2px solid var(--rg-line-strong);
+    border-radius: var(--rg-radius);
+    background: var(--rg-surface);
+    color: var(--rg-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.rg-dash-switch button:hover { border-color: var(--rg-accent); }
+
+.rg-dash-switch button[aria-selected="true"] {
+    border-color: var(--rg-accent);
+    background: var(--rg-accent);
+    color: #fff;
+}
+
+.rg-dash-switch-title { font-size: 18px; font-weight: 700; }
+.rg-dash-switch-sub { font-size: 12px; opacity: .82; }
+
+.rg-dash-session { justify-content: flex-end; }
+.rg-dash-session select { min-height: 40px; min-width: 170px; }
+
+.rg-dash-page[hidden] { display: none; }
+
+/* --- Parties numérotées et repliables (comme les paramètres) -------------- */
+.rg-dash-section { scroll-margin-top: 12px; }
+
+.rg-dash-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 22px 0 12px;
+    padding: 11px 16px;
+    border-radius: var(--rg-radius);
+    background: linear-gradient(90deg, var(--rg-accent) 0%, #24508f 100%);
+    color: #fff;
+    cursor: pointer;
+    user-select: none;
+}
+
+.rg-dash-section:first-child .rg-dash-banner { margin-top: 0; }
+.rg-dash-banner:hover { filter: brightness(1.08); }
+.rg-dash-banner:focus-visible { outline: 3px solid #93b4e8; outline-offset: 2px; }
+
+.rg-dash-banner-num {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    background: #fff;
+    color: var(--rg-accent);
+    font-weight: 800;
+    font-size: 15px;
+}
+
+.rg-dash-banner-title { font-size: 17px; font-weight: 700; }
+.rg-dash-banner-sub { color: #c9d5ec; font-size: 13px; margin-top: 1px; }
+
+.rg-dash-banner-chevron {
+    flex: none;
+    width: 11px;
+    height: 11px;
+    margin: 0 6px 0 auto;
+    border-right: 3px solid #fff;
+    border-bottom: 3px solid #fff;
+    transform: translateY(-3px) rotate(45deg);
+    transition: transform .15s ease;
+}
+
+.rg-dash-section.is-collapsed .rg-dash-banner-chevron { transform: translateY(1px) rotate(-45deg); }
+.rg-dash-section.is-collapsed .rg-dash-section-body { display: none; }
+.rg-dash-section.is-collapsed .rg-dash-banner { margin-bottom: 0; }
+.rg-dash-section.is-collapsed + .rg-dash-section .rg-dash-banner { margin-top: 10px; }
+
+.rg-dash-section-body .rg-viz-tiles { margin-bottom: 0; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.rg-dash-section-body > .rg-card:last-child { margin-bottom: 0; }
+.rg-dash-card-gap { margin-top: 14px; }
+.rg-dash-hint { margin: 10px 2px 0; }
+
+@media (max-width: 640px) {
+    .rg-dash-switch { flex-basis: 100%; }
+    .rg-dash-switch button { padding: 8px 12px; }
+    .rg-dash-switch-title { font-size: 16px; }
+    .rg-dash-session, .rg-dash-session select { width: 100%; }
+}
 
 .rg-seg {
     display: inline-flex;
@@ -216,7 +313,7 @@
     .rg-viz-cards { grid-template-columns: minmax(0, 1fr); }
 }
 
-#rgVizPage { margin-bottom: 14px; }
+
 
 /* --- Carte des clubs (Leaflet, fond OpenStreetMap) ------------------------ */
 /* Empilement isolé : les calques de la carte ne passent pas sur le menu d'I@nseo */

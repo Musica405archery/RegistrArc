@@ -387,9 +387,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         } elseif ($action === 'unvalidate') {
-            $reportPayment(registrarc_cancel_payments($TourId, $postedIds, 'liste'), 'Engagements sélectionnés marqués comme non payés.');
+            $reportPayment(registrarc_cancel_payments($TourId, $postedIds, 'liste'), 'Paiement supprimé : les engagements sélectionnés sont non payés, plus pointés au greffe (remboursements annulés le cas échéant).');
         } elseif ($action === 'refund') {
-            $reportPayment(registrarc_refund_payments($TourId, $postedIds, $bulkMethod, 'liste'), 'Remboursement enregistré pour les engagements sélectionnés.');
+            $reason = isset($_POST['refund_reason']) ? trim((string)$_POST['refund_reason']) : '';
+
+            if ($reason === '') {
+                $setMessage('Remboursement non enregistré : le motif du remboursement est obligatoire.', 'error');
+            } else {
+                $reportPayment(registrarc_refund_payments($TourId, $postedIds, $bulkMethod, 'liste', $reason), 'Remboursement enregistré pour les engagements sélectionnés.');
+            }
         }
 
         $redirect();
@@ -405,9 +411,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $reportPayment(registrarc_record_payments($TourId, [$engagementId], $method, !empty($_POST['receipt_required']), 'liste'), 'Paiement de cet engagement validé.');
             } elseif ($action === 'refund') {
                 $method = isset($_POST['refund_method']) ? registrarc_clean_payment_method($_POST['refund_method'], $paymentModes) : 'ESP';
-                $reportPayment(registrarc_refund_payments($TourId, [$engagementId], $method, 'liste'), 'Remboursement enregistré.');
+                $reason = isset($_POST['refund_reason']) ? trim((string)$_POST['refund_reason']) : '';
+
+                if ($reason === '') {
+                    $setMessage('Remboursement non enregistré : le motif du remboursement est obligatoire.', 'error');
+                } else {
+                    $reportPayment(registrarc_refund_payments($TourId, [$engagementId], $method, 'liste', $reason), 'Remboursement enregistré.');
+                }
             } else {
-                $reportPayment(registrarc_cancel_payments($TourId, [$engagementId], 'liste'), 'Cet engagement est maintenant marqué comme non payé.');
+                $reportPayment(registrarc_cancel_payments($TourId, [$engagementId], 'liste'), 'Paiement supprimé : cet engagement est maintenant non payé et plus pointé au greffe.');
             }
         }
 
@@ -415,7 +427,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (isset($_POST['save_archer_info']) && isset($_POST['engagement_id'])) {
-        $saved = registrarc_set_archer_note($TourId, $_POST['engagement_id'], isset($_POST['note']) ? $_POST['note'] : '', !empty($_POST['late']));
+        $saved = registrarc_set_archer_note($TourId, $_POST['engagement_id'], isset($_POST['note']) ? $_POST['note'] : '');
 
         $setMessage($saved ? 'Note enregistrée.' : "Erreur : impossible d'enregistrer la note." . registrarc_storage_error_suffix(), $saved ? 'success' : 'error');
         $redirect();
@@ -473,11 +485,11 @@ foreach (registrarc_load_engagements($TourId) as $engagement) {
         'state'                => $engagement['state'],
         'is_free'              => registrarc_nothing_due($engagement['amount_due']),
         'note'                 => $engagement['note'],
-        'late'                 => $engagement['late'],
         'checked_in'           => $engagement['checked_in'],
         'checked_in_by'        => $engagement['checked_in_by'],
         'deposit_id'           => $engagement['deposit_id'],
         'refund_method'        => isset($engagement['payment']['refund_method']) ? (string)$engagement['payment']['refund_method'] : '',
+        'refund_reason'        => isset($engagement['payment']['refund_reason']) ? (string)$engagement['payment']['refund_reason'] : '',
         // Ordre du tri par statut : non payé, gratuit ou remboursé, payé
         'status_rank'          => $engagement['is_paid'] ? 2 : ($engagement['state'] === 'due' ? 0 : 1),
     ];
@@ -853,13 +865,17 @@ $categoryHtml = function (array $e) {
     </div>
 
     <div class="card">
+        <!-- À gauche : titre et barre d'action ; à droite : choix de la vue (à la hauteur du titre), l'opérateur dessous -->
+        <div class="actions-layout">
+        <div class="actions-main">
         <div class="card-title">Actions sur les engagements sélectionnés</div>
 
         <form method="POST" id="bulkForm">
             <?php echo registrarc_form_fields($TourId); ?>
             <input type="hidden" name="create_cheque_group_after_payment" id="create_cheque_group_after_payment" value="0">
+            <input type="hidden" name="refund_reason" id="bulk_refund_reason" value="">
 
-            <div class="filters-row">
+            <div class="filters-row bulk-row">
                 <div class="filter-group">
                     <label for="bulk_payment_method">Mode de paiement</label>
                     <select name="bulk_payment_method" id="bulk_payment_method">
@@ -871,17 +887,21 @@ $categoryHtml = function (array $e) {
                     </select>
                 </div>
 
-                <div class="filter-actions">
+                <div class="filter-actions bulk-actions">
+                    <!-- Nombre d'engagements cochés : affiché une seule fois, pour garder la barre compacte -->
+                    <span class="bulk-count" id="bulkCount" hidden></span>
+
                     <?php if ($canWrite): ?>
-                        <button type="submit" name="bulk_action" value="validate" class="btn-success" title="Valider le paiement des engagements cochés" onclick="return confirmBulkAction('validate');">Valider</button>
-                        <button type="submit" name="bulk_action" value="unvalidate" class="btn-danger" title="Retirer le paiement des engagements cochés" onclick="return confirmBulkAction('unvalidate');">Retirer</button>
-                        <button type="submit" name="bulk_action" value="refund" class="btn-ghost" onclick="return confirmBulkAction('refund');">Rembourser</button>
+                        <!-- Valider, Supprimer le paiement, Rembourser : actifs à partir de 2 engagements cochés (un seul : boutons de la ligne) -->
+                        <button type="submit" name="bulk_action" value="validate" class="btn-success" data-bulk-min="2" data-title="Valider le paiement des engagements cochés" disabled onclick="return confirmBulkAction('validate');">Valider</button>
+                        <button type="submit" name="bulk_action" value="unvalidate" class="btn-danger" data-bulk-min="2" data-title="Supprimer le paiement des engagements cochés" disabled onclick="return confirmBulkAction('unvalidate');">Supprimer le paiement</button>
+                        <button type="submit" name="bulk_action" value="refund" class="btn-ghost" data-bulk-min="2" data-title="Rembourser les engagements cochés" disabled onclick="return confirmBulkAction('refund');">Rembourser</button>
                     <?php endif; ?>
 
                     <button type="button" id="bulk_invoice_btn" class="btn-invoice bulk-invoice-button" onclick="return factureGroupePrompt();">Facture groupée</button>
                 </div>
 
-                <div class="filter-actions">
+                <div class="filter-actions bulk-tools">
                     <a href="?<?php echo htmlspecialchars(http_build_query(array_merge($_GET, ['action' => 'export_registrations']))); ?>" id="exportLink" class="btn-export" title="Exporter les inscriptions affichées et leurs paiements">Exporter</a>
 
                     <?php if ($canWrite): ?>
@@ -891,27 +911,27 @@ $categoryHtml = function (array $e) {
                     <button type="button" class="btn-cheque" onclick="return openChequeDeposit();">Remise de chèque</button>
                     <button type="button" class="btn-print-list" onclick="return printGreffeList();">Liste Greffe</button>
                 </div>
-
-                <div class="actions-spacer"></div>
-
-                <div class="view-operator">
-                    <!-- Vue de la liste : rattachée au formulaire des filtres (recherche en direct) -->
-                    <div class="view-switch" role="radiogroup" aria-label="Vue de la liste">
-                        <label><input type="radio" name="view" value="engagement" form="filterForm" <?php echo $filters['view'] === 'engagement' ? 'checked' : ''; ?>><span>Par engagement</span></label>
-                        <label><input type="radio" name="view" value="archer" form="filterForm" <?php echo $filters['view'] === 'archer' ? 'checked' : ''; ?>><span>Par archer</span></label>
-                        <label title="Feuilles de marque"><input type="radio" name="view" value="fdm" form="filterForm" <?php echo $filters['view'] === 'fdm' ? 'checked' : ''; ?>><span>FdM</span></label>
-                    </div>
-
-                    <?php if ($canWrite): ?>
-                        <div class="filter-group operator-field">
-                            <label for="operatorName">Opérateur</label>
-                            <input type="text" id="operatorName" placeholder="Votre prénom" maxlength="40" autocomplete="off">
-                        </div>
-                    <?php endif; ?>
-                </div>
             </div>
 
         </form>
+        </div>
+
+        <div class="actions-side">
+            <!-- Vue de la liste : rattachée au formulaire des filtres (recherche en direct) -->
+            <div class="view-switch" role="radiogroup" aria-label="Vue de la liste">
+                <label><input type="radio" name="view" value="engagement" form="filterForm" <?php echo $filters['view'] === 'engagement' ? 'checked' : ''; ?>><span>Par engagement</span></label>
+                <label><input type="radio" name="view" value="archer" form="filterForm" <?php echo $filters['view'] === 'archer' ? 'checked' : ''; ?>><span>Par archer</span></label>
+                <label title="Feuilles de marque"><input type="radio" name="view" value="fdm" form="filterForm" <?php echo $filters['view'] === 'fdm' ? 'checked' : ''; ?>><span>FdM</span></label>
+            </div>
+
+            <?php if ($canWrite): ?>
+                <div class="filter-group operator-field">
+                    <label for="operatorName">Opérateur</label>
+                    <input type="text" id="operatorName" placeholder="Votre prénom" maxlength="40" autocomplete="off">
+                </div>
+            <?php endif; ?>
+        </div>
+        </div>
 
         <?php if ($canWrite): ?>
         <!-- Pointage au greffe (vue par archer) : les boutons ✕ / ✓ de la liste envoient ce formulaire -->
@@ -1204,14 +1224,9 @@ $categoryHtml = function (array $e) {
                             <td class="num"><?php echo htmlspecialchars($e['licence']); ?></td>
                             <td>
                                 <div class="row-name"><?php echo htmlspecialchars($e['nom']); ?></div>
-                                <?php if ($e['note'] !== '' || !empty($e['late'])): ?>
+                                <?php if ($e['note'] !== ''): ?>
                                     <div class="row-extra">
-                                        <?php if (!empty($e['late'])): ?>
-                                            <span class="row-late">Inscription tardive</span>
-                                        <?php endif; ?>
-                                        <?php if ($e['note'] !== ''): ?>
-                                            <span class="row-note"><?php echo htmlspecialchars($e['note']); ?></span>
-                                        <?php endif; ?>
+                                        <span class="row-note"><?php echo htmlspecialchars($e['note']); ?></span>
                                     </div>
                                 <?php endif; ?>
                             </td>
@@ -1253,7 +1268,7 @@ $categoryHtml = function (array $e) {
                                                 <?php echo registrarc_form_fields($TourId); ?>
                                                 <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
                                                 <input type="hidden" name="validate_payment" value="unvalidate">
-                                                <button type="submit" class="btn-small btn-danger" onclick="return confirm(<?php echo htmlspecialchars(json_encode('Annuler le paiement de ' . $archerLabel . ' ?'), ENT_QUOTES); ?>);">Annuler</button>
+                                                <button type="submit" class="btn-small btn-danger" onclick="return confirm(<?php echo htmlspecialchars(json_encode('Annuler le paiement de ' . $archerLabel . ' ? Son pointage au greffe sera aussi retiré.'), ENT_QUOTES); ?>);">Annuler</button>
                                             </form>
                                         <?php endif; ?>
 
@@ -1266,6 +1281,18 @@ $categoryHtml = function (array $e) {
                                         $refundLabel = isset($paymentModes[$refundMethod]) ? $paymentModes[$refundMethod] : $refundMethod;
                                         ?>
                                         <span class="status-refunded"><?php echo htmlspecialchars('Remboursé' . ($refundLabel !== '' ? ' · ' . $refundLabel : '')); ?></span>
+                                        <?php if ($e['refund_reason'] !== ''): ?>
+                                            <span class="refund-reason" title="Motif du remboursement"><?php echo htmlspecialchars($e['refund_reason']); ?></span>
+                                        <?php endif; ?>
+
+                                        <?php if ($canWrite && $e['deposit_id'] === ''): ?>
+                                            <form method="POST">
+                                                <?php echo registrarc_form_fields($TourId); ?>
+                                                <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
+                                                <input type="hidden" name="validate_payment" value="unvalidate">
+                                                <button type="submit" class="btn-small btn-danger" title="Annule le remboursement et supprime le paiement : l'engagement redevient non payé et n'est plus pointé au greffe" onclick="return confirm(<?php echo htmlspecialchars(json_encode('Supprimer le paiement et le remboursement de ' . $archerLabel . ' ?'), ENT_QUOTES); ?>);">Supprimer le paiement</button>
+                                            </form>
+                                        <?php endif; ?>
                                     <?php elseif ($state === 'free'): ?>
                                         <span class="status-free">Rien à payer</span>
                                     <?php elseif ($canWrite): ?>
@@ -1285,7 +1312,7 @@ $categoryHtml = function (array $e) {
                                     <?php endif; ?>
 
                                     <?php if ($canWrite): ?>
-                                        <button type="button" class="btn-small" title="Note et inscription tardive" data-id="<?php echo intval($e['engagement_id']); ?>" data-archer="<?php echo htmlspecialchars($archerLabel); ?>" data-note="<?php echo htmlspecialchars($e['note']); ?>" data-late="<?php echo !empty($e['late']) ? '1' : '0'; ?>" onclick="openNoteDialog(this);">✎</button>
+                                        <button type="button" class="btn-small" title="Note visible par le greffe" data-id="<?php echo intval($e['engagement_id']); ?>" data-archer="<?php echo htmlspecialchars($archerLabel); ?>" data-note="<?php echo htmlspecialchars($e['note']); ?>" onclick="openNoteDialog(this);">✎</button>
                                     <?php endif; ?>
 
                                     <button type="button" class="btn-small" onclick="return factureEngagementPrompt('<?php echo intval($e['engagement_id']); ?>');">Facture</button>
@@ -1336,10 +1363,6 @@ $categoryHtml = function (array $e) {
             Note visible par le greffe
             <textarea name="note" id="noteText" rows="3" maxlength="200" placeholder="Ex. : paiera dimanche, chèque à l'ordre du club…"></textarea>
         </label>
-        <label class="check-line">
-            <input type="checkbox" name="late" id="noteLate" value="1">
-            Inscription tardive
-        </label>
         <div class="dialog-actions">
             <button type="button" class="btn-ghost" onclick="this.closest('dialog').close();">Annuler</button>
             <button type="submit" class="btn-primary">Enregistrer</button>
@@ -1363,6 +1386,10 @@ $categoryHtml = function (array $e) {
                     <?php endif; ?>
                 <?php endforeach; ?>
             </select>
+        </label>
+        <label>
+            Motif du remboursement (obligatoire)
+            <textarea name="refund_reason" id="refundReason" rows="2" maxlength="200" required placeholder="Ex. : blessure, désistement avant le concours, erreur d'inscription…"></textarea>
         </label>
         <div class="dialog-actions">
             <button type="button" class="btn-ghost" onclick="this.closest('dialog').close();">Annuler</button>

@@ -82,6 +82,7 @@ function registrarc_journal_type_label($type) {
         'payment' => 'Encaissement',
         'cancel' => 'Annulation',
         'refund' => 'Remboursement',
+        'refund_cancel' => 'Remboursement annulé',
         'deposit' => 'Remise de chèques',
         'deposit_cancel' => 'Remise annulée',
         'closure' => 'Clôture de caisse',
@@ -95,14 +96,17 @@ function registrarc_journal_type_label($type) {
 
 // Opérations qui font bouger la caisse
 function registrarc_journal_is_cash($type) {
-    return in_array($type, ['payment', 'cancel', 'refund'], true);
+    return in_array($type, ['payment', 'cancel', 'refund', 'refund_cancel'], true);
 }
 
 // ---------------------------------------------------------------------------
 // Opérations de paiement
 // ---------------------------------------------------------------------------
 // $changes : liste de ['id' => EnId, 'action' => 'pay'|'cancel'|'refund',
-//                      'method' => code, 'receipt' => bool]
+//                      'method' => code, 'receipt' => bool, 'reason' => motif du remboursement]
+// 'cancel' supprime le paiement ; sur un engagement remboursé, il annule aussi le
+// remboursement (deux opérations de caisse, chacune dans son mode).
+// 'refund' exige un motif.
 // $source : 'liste', 'kiosque', 'import', 'helloasso'
 // Retourne ['ok' => bool, 'done' => [ids], 'skipped' => [id => raison]]
 function registrarc_apply_payment_changes($TourId, array $changes, $source) {
@@ -164,9 +168,22 @@ function registrarc_apply_payment_changes($TourId, array $changes, $source) {
                 $journal[] = $line + ['type' => 'payment', 'amount' => $amount, 'method' => $method];
                 $done[] = $id;
             } elseif ($change['action'] === 'cancel') {
-                if ($prevStatus !== 'PAYE') {
-                    $skipped[$id] = "pas de paiement à annuler";
+                if ($prevStatus !== 'PAYE' && $prevStatus !== 'REMBOURSE') {
+                    $skipped[$id] = "pas de paiement à supprimer";
                     continue;
+                }
+
+                if ($prevStatus === 'REMBOURSE') {
+                    // Chèque déposé puis remboursé : la remise à la banque reste telle quelle
+                    if (!empty($prev['deposit_id'])) {
+                        $skipped[$id] = "chèque déjà déposé (remise " . $prev['deposit_id'] . ")";
+                        continue;
+                    }
+
+                    // Le remboursement est annulé : son montant revient dans son mode
+                    $refundAmount = isset($prev['refund_amount']) ? (float)$prev['refund_amount'] : $prevAmount;
+                    $refundMethod = isset($prev['refund_method']) ? registrarc_normalize_payment_code($prev['refund_method']) : '';
+                    $journal[] = $line + ['type' => 'refund_cancel', 'amount' => $refundAmount, 'method' => $refundMethod];
                 }
 
                 $payments[(string)$id] = ['status' => 'NON_PAYE', 'method' => '', 'receipt_required' => false, 'updated_at' => $now];
@@ -178,14 +195,22 @@ function registrarc_apply_payment_changes($TourId, array $changes, $source) {
                     continue;
                 }
 
+                $reason = isset($change['reason']) ? mb_substr(trim((string)$change['reason']), 0, 200) : '';
+
+                if ($reason === '') {
+                    $skipped[$id] = "motif du remboursement manquant";
+                    continue;
+                }
+
                 $refundMethod = registrarc_normalize_payment_code($change['method']);
                 $payments[(string)$id] = $prev;
                 $payments[(string)$id]['status'] = 'REMBOURSE';
                 $payments[(string)$id]['refund_method'] = $refundMethod;
                 $payments[(string)$id]['refund_amount'] = $prevAmount;
+                $payments[(string)$id]['refund_reason'] = $reason;
                 $payments[(string)$id]['refunded_at'] = $now;
                 $payments[(string)$id]['updated_at'] = $now;
-                $journal[] = $line + ['type' => 'refund', 'amount' => -$prevAmount, 'method' => $refundMethod];
+                $journal[] = $line + ['type' => 'refund', 'amount' => -$prevAmount, 'method' => $refundMethod, 'label' => $reason];
                 $done[] = $id;
             }
         }
@@ -207,7 +232,16 @@ function registrarc_record_payments($TourId, array $ids, $method, $receipt, $sou
         $changes[] = ['id' => $id, 'action' => 'pay', 'method' => $method, 'receipt' => $receipt];
     }
 
-    return registrarc_apply_payment_changes($TourId, $changes, $source);
+    $result = registrarc_apply_payment_changes($TourId, $changes, $source);
+
+    // Paiement au comptoir (liste ou mode Kiosk) : l'archer est là, il est pointé
+    // au greffe si l'option est cochée. Pas pour un paiement en ligne ou importé.
+    if ($result['ok'] && !empty($result['done']) && in_array($source, ['liste', 'kiosque'], true)
+        && registrarc_load_greffe_options($TourId)['checkin_on_payment']) {
+        registrarc_mark_checked_in($TourId, $result['done']);
+    }
+
+    return $result;
 }
 
 function registrarc_cancel_payments($TourId, array $ids, $source) {
@@ -217,14 +251,23 @@ function registrarc_cancel_payments($TourId, array $ids, $source) {
         $changes[] = ['id' => $id, 'action' => 'cancel'];
     }
 
-    return registrarc_apply_payment_changes($TourId, $changes, $source);
+    $result = registrarc_apply_payment_changes($TourId, $changes, $source);
+
+    // Supprimer le paiement au comptoir (liste ou mode Kiosk) défait tout :
+    // l'engagement redevient à payer et l'archer n'est plus pointé au greffe
+    if ($result['ok'] && !empty($result['done']) && in_array($source, ['liste', 'kiosque'], true)) {
+        registrarc_clear_checked_in($TourId, $result['done']);
+    }
+
+    return $result;
 }
 
-function registrarc_refund_payments($TourId, array $ids, $refundMethod, $source) {
+// $reason : motif du remboursement, obligatoire (sans motif, rien n'est remboursé)
+function registrarc_refund_payments($TourId, array $ids, $refundMethod, $source, $reason = '') {
     $changes = [];
 
     foreach (array_unique(array_map('intval', $ids)) as $id) {
-        $changes[] = ['id' => $id, 'action' => 'refund', 'method' => $refundMethod];
+        $changes[] = ['id' => $id, 'action' => 'refund', 'method' => $refundMethod, 'reason' => $reason];
     }
 
     return registrarc_apply_payment_changes($TourId, $changes, $source);

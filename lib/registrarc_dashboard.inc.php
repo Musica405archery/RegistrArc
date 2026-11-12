@@ -54,10 +54,10 @@ function registrarc_dashboard_data($TourId) {
             'age' => registrarc_age_category($e['categorie'], $ageClasses),            // jeunes, adultes
             't' => $special !== '' ? $special : 'Standard',                            // tarif
             'u' => $e['target_is_unassigned'] ? 1 : 0,                                 // sans cible
-            'l' => $e['late'] ? 1 : 0,                                                 // inscription tardive
             'up' => !empty($e['is_upgraded']) ? 1 : 0,                                 // surclassé
             'n' => $e['note'] !== '' ? 1 : 0,                                          // note
             'dep' => $e['deposit_id'] !== '' ? 1 : 0,                                  // chèque déposé
+            'ci' => $e['checked_in'] !== '' ? 1 : 0,                                   // passé au greffe
         ];
     }
 

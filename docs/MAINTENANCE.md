@@ -24,11 +24,11 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 |---|---|
 | `index.php` | liste des engagements : encaissement, annulation, remboursement, note, import / export des inscriptions ; vue par archer avec le passage au greffe (`?view=archer`) |
 | `kiosk.php` | mode Kiosk (`kiosk.php?q=licence` ouvre directement un archer) |
-| `config_tarifs.php` | paramètres du tournoi |
+| `config_tarifs.php` | paramètres du tournoi, en 4 parties (catégories, tarifs, paiements, export / import) ; numéro du concours rappelé pour retrouver ses fichiers JSON ; logos des modes de paiement (`registrarc_payment_icon()`, SVG dessinés dans `lib/registrarc.inc.php`) |
 | `invoice.php` | factures : aperçu, émission numérotée (`?num=2026-0001`) |
 | `bankchequedeposite.php` | bordereau de remise de chèques, remises déposées (`?remise=R1`) |
 | `caisse.php` | reçoit les formulaires de la caisse (fond, clôture) et affiche les rapports imprimables : clôture (`?cloture=C1`), caisse en cours (`?imprimer=1`). Sans paramètre, renvoie vers le tableau de bord |
-| `dashboard.php` | tableau de bord (`?page=tresorier` ouvre la page Trésorier, avec la caisse), sauvegarde / restauration, clôture du concours |
+| `dashboard.php` | tableau de bord en deux vues (Greffe, Trésorier ; `?page=tresorier` ouvre la vue Trésorier), chacune en parties repliables `registrarc_dash_section_open()` ; emplacements `data-viz-tiles` et `data-viz-cards` (identifiants des cartes de `assets/js/dashboard.js`) ; caisse, sauvegarde / restauration, clôture du concours |
 | `fdm.php` | feuilles de marque (vue FdM de la liste) : `?ids=12,15`, avec les options de `Qualification/PrintScore.php` (complète + totaux progressifs, toutes distances, flèches saisies, drapeau du club, en-tête de page). Un archer : `CreateSessionScorecard()` d'I@nseo (feuille personnelle remplie). Plusieurs : une page par archer dans un seul PDF, avec `QualificationScorecards()` et `ScorePDF::DrawScoreNew()` d'I@nseo, placées comme le fait `CreateSessionScorecard()` (tir sur cible, 1 à 4 distances ; parcours et 3D : une feuille à la fois). Lecture seule |
 | `export.php` | téléchargements : `?type=engagements`, `journal` (CSV), `backup` (JSON) |
 | `helloasso.php` | import des paiements HelloAsso |
@@ -43,7 +43,7 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 | `lib/registrarc_caisse.inc.php` | opérations de paiement journalisées, remises déposées, fond de caisse, clôtures de caisse, concours clôturé |
 | `lib/registrarc_caisse_view.inc.php` | affichage de la caisse, partagé par la page Trésorier du tableau de bord et les rapports de `caisse.php` |
 | `lib/registrarc_invoices.inc.php` | registre des factures émises |
-| `lib/registrarc_dashboard.inc.php` | données du tableau de bord (pages Greffe et Trésorier) : un enregistrement par engagement, sans nom ni licence, et les opérations de caisse ; dessin par `assets/js/dashboard.js` |
+| `lib/registrarc_dashboard.inc.php` | données du tableau de bord (vues Greffe et Trésorier) : un enregistrement par engagement, sans nom ni licence (`ci` : passé au greffe), et les opérations de caisse ; dessin par `assets/js/dashboard.js` |
 | `lib/registrarc_clubs.inc.php` | ville des clubs : détection dans le nom du club parmi les communes de son département, corrections (`data/club_cities.json`), repli au centre du département |
 | `lib/data/communes.json` | communes de métropole et de Corse avec leur centre (geo.api.gouv.fr, Licence Ouverte, généré), pour placer les clubs sans service en ligne |
 | `lib/registrarc_departements.inc.php` | nom et centre de chaque département (fichier généré à partir des contours IGN Admin Express, Licence Ouverte, via france-geojson) pour la carte des clubs |
@@ -64,7 +64,7 @@ Pour la personne qui installe, maintient ou fait évoluer le module. Le mode d'e
 
 Le module ne modifie jamais la structure des tables I@nseo : il se contente de les lire.
 
-**Règle importante** : tout changement de paiement passe par `registrarc_apply_payment_changes()` (ou ses raccourcis `registrarc_record_payments`, `registrarc_cancel_payments`, `registrarc_refund_payments`), qui écrit aussi le journal. Tout montant affiché vient de `registrarc_load_engagements()`.
+**Règle importante** : tout changement de paiement passe par `registrarc_apply_payment_changes()` (ou ses raccourcis `registrarc_record_payments`, `registrarc_cancel_payments`, `registrarc_refund_payments`), qui écrit aussi le journal. Tout montant affiché vient de `registrarc_load_engagements()`. `EnIndFEvent` y est recalculé : vrai seulement si la case de l'archer est cochée **et** si sa catégorie (EventClass, division, classe, sous-classe) est dans une épreuve individuelle avec `EvFinalFirstPhase <> 0` ; la détection des finales dans les paramètres demande aussi `EvFinalFirstPhase <> 0`.
 
 ## Données
 
@@ -72,14 +72,14 @@ Tout est dans `Modules/Custom/RegistrArc/data/`. Par tournoi :
 
 | Fichier | Contenu |
 |---|---|
-| `payments_<n°>.json` | paiements : statut (`PAYE`, `NON_PAYE`, `REMBOURSE`), mode, montant, date, opérateur, remise |
-| `settings_<n°>.json` | classes d'âge, tarifs, règles, modes de paiement, plafond. Les tarifs sont des totaux cumulés par nombre de départs (`{"1": 10, "2": 17, "3": 21}`), de 2 paliers au nombre de départs du concours (`ToNumSession`) ; au-delà du dernier, le dernier supplément se répète (`registrarc_tarif_step()`) |
+| `payments_<n°>.json` | paiements : statut (`PAYE`, `NON_PAYE`, `REMBOURSE`), mode, montant, date, opérateur, remise ; pour un remboursement : mode, montant et motif (`refund_reason`, obligatoire). Supprimer le paiement d'un engagement remboursé écrit deux opérations au journal : `refund_cancel` (+, mode du remboursement) et `cancel` (−, mode du paiement) |
+| `settings_<n°>.json` | classes d'âge, tarifs, règles, modes de paiement, plafond. Les tarifs sont des totaux cumulés par nombre de départs (`{"1": 10, "2": 17, "3": 21}`), de 2 paliers au nombre de départs du concours (`ToNumSession`) ; au-delà du dernier, le dernier supplément se répète (`registrarc_tarif_step()`). Options du greffe dans `greffe` : `checkin_on_payment` (vrai par défaut : valider un paiement depuis la liste ou le mode Kiosk pointe aussi l'archer au greffe, via `registrarc_record_payments()` ; jamais pour les sources `import` et `helloasso`) |
 | `cheque_groups_<n°>.json` | chèques groupés |
-| `archers_<n°>.json` | par engagement : note, inscription tardive (information, sans effet sur le prix) et passage au greffe (`checked_in` : date, `checked_in_by` : opérateur), pointé dans la vue par archer de la liste |
+| `archers_<n°>.json` | par engagement : note et passage au greffe (`checked_in` : date, `checked_in_by` : opérateur), pointé dans la vue par archer de la liste |
 | `journal_<n°>.json` | journal des opérations, uniquement en ajout |
 | `deposits_<n°>.json` | remises de chèques déposées |
 | `cash_float_<n°>.json` | fond de caisse : `mode` `detail` avec la quantité par valeur en centimes dans `detail` (`{"1000": 2, "50": 4}` = 2 billets de 10 € et 4 pièces de 0,50 €), ou `simple` avec un seul montant dans `amount`. Le comptage de clôture suit le même mode |
-| `closures_<n°>.json` | clôtures de caisse ; chaque clôture retient sa position dans le journal (`journal_from` / `journal_to`), le fond de caisse du moment (`cash_float_mode`, `cash_float`, `cash_float_detail`), les encaissements en espèces (`cash_takings`), les espèces attendues (fond compris) et le comptage (`cash_counted`, `cash_counted_detail`) |
+| `closures_<n°>.json` | clôtures de caisse ; chaque clôture retient sa position dans le journal (`journal_from` / `journal_to`), le fond de caisse du moment (`cash_float_mode`, `cash_float`, `cash_float_detail`), les encaissements en espèces (`cash_takings`), les espèces attendues (fond compris) et le comptage, détaillé ou simplifié au choix (`count_mode` du formulaire, quel que soit le fond) : `cash_counted`, `cash_counted_detail` (vide pour un comptage simplifié) |
 | `state_<n°>.json` | concours clôturé ou non |
 
 Commun à tous les tournois : `invoices.json`, registre des factures émises (compteur par année et copie figée de chaque facture), et `club_cities.json`, villes des clubs corrigées dans la page « Villes des clubs » (par numéro de club).
