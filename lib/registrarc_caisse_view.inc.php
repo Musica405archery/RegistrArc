@@ -224,25 +224,30 @@ function registrarc_render_caisse($TourId, $closure = null, $mode = 'panel') {
         <?php if ($canWrite): ?>
             <div class="rg-card rg-noprint">
                 <h2>Clôturer la caisse</h2>
-                <?php if ($float['mode'] === 'simple'): ?>
-                    <p class="rg-help">Compter les espèces présentes dans la caisse, fond compris. Sans montant, la clôture est enregistrée sans écart.</p>
-                <?php else: ?>
-                    <p class="rg-help">Compter les pièces et billets présents dans la caisse, fond compris. Sans comptage, la clôture est enregistrée sans écart.</p>
-                <?php endif; ?>
+                <p class="rg-help">Compter les espèces présentes dans la caisse, fond compris : pièce par pièce, ou d'un seul montant. Sans comptage, la clôture est enregistrée sans écart.</p>
 
-                <form method="POST" action="caisse.php" onsubmit="return confirm('Clôturer la caisse ? Les prochaines opérations compteront pour la clôture suivante.');">
+                <!-- Comptage détaillé ou simplifié : au choix, celui du fond de caisse par défaut -->
+                <form method="POST" action="caisse.php" data-float-form onsubmit="return confirm('Clôturer la caisse ? Les prochaines opérations compteront pour la clôture suivante.');">
                     <?php echo registrarc_form_fields($TourId); ?>
-                    <?php if ($float['mode'] !== 'simple'): ?>
+
+                    <div class="rg-float-modes rg-noprint" role="radiogroup" aria-label="Type de comptage">
+                        <label><input type="radio" name="count_mode" value="detail" <?php echo $float['mode'] !== 'simple' ? 'checked' : ''; ?>> Détaillée : pièces et billets</label>
+                        <label><input type="radio" name="count_mode" value="simple" <?php echo $float['mode'] === 'simple' ? 'checked' : ''; ?>> Simplifiée : un seul montant</label>
+                    </div>
+
+                    <div data-float-mode="detail" <?php echo $float['mode'] !== 'simple' ? '' : 'hidden'; ?>>
                         <?php registrarc_render_cash_grid('count', []); ?>
-                    <?php endif; ?>
+                    </div>
+
+                    <div data-float-mode="simple" class="rg-form" <?php echo $float['mode'] === 'simple' ? '' : 'hidden'; ?>>
+                        <div class="rg-field">
+                            <label for="cash_counted">Espèces comptées (€)</label>
+                            <input type="text" inputmode="decimal" name="cash_counted" id="cash_counted" placeholder="<?php echo registrarc_format_montant($cashExpected); ?>" size="10">
+                        </div>
+                    </div>
+
                     <p class="rg-help">Espèces attendues : <strong class="num"><?php echo registrarc_format_montant($cashExpected); ?> €</strong></p>
                     <div class="rg-form">
-                        <?php if ($float['mode'] === 'simple'): ?>
-                            <div class="rg-field">
-                                <label for="cash_counted">Espèces comptées (€)</label>
-                                <input type="text" inputmode="decimal" name="cash_counted" id="cash_counted" placeholder="<?php echo registrarc_format_montant($cashExpected); ?>" size="10">
-                            </div>
-                        <?php endif; ?>
                         <div class="rg-field">
                             <label for="comment">Commentaire</label>
                             <input type="text" name="comment" id="comment" maxlength="200" placeholder="Ex. : samedi matin" size="22">

@@ -211,6 +211,50 @@ select {
     color: #fff;
 }
 
+/* --- Logos des moyens de paiement (dessinés par registrarc_payment_icon()) --- */
+.pm-icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+}
+
+.pm-icon svg { width: 18px; height: 18px; }
+
+.pm-icon-cash { background: #e3f4e8; color: #15803d; }
+.pm-icon-cheque { background: #e6edff; color: #1d4ed8; }
+.pm-icon-transfer { background: #ece9ff; color: #4f46e5; }
+.pm-icon-card { background: #ffeedd; color: #c2410c; }
+.pm-icon-free { background: #fde6f1; color: #be185d; }
+.pm-icon-online { background: #f3e8ff; color: #9333ea; }
+.pm-icon-voucher { background: #dff4f1; color: #0f766e; }
+.pm-icon-other { background: #eef1f5; color: #475569; }
+
+/* Bouton de mode de paiement : logo au-dessus du libellé */
+.pay-mode {
+    flex-direction: column;
+    gap: 3px;
+    min-height: 58px;
+    padding: 6px 8px;
+}
+
+.pay-mode-label { font-size: 13px; line-height: 1.15; text-align: center; }
+.pay-mode.is-active .pm-icon { background: #fff; }
+
+/* Petit logo devant « Payé · Chèque » */
+.state .pm-icon {
+    width: 18px;
+    height: 18px;
+    margin-right: 4px;
+    border-radius: 5px;
+    vertical-align: -4px;
+}
+
+.state .pm-icon svg { width: 12px; height: 12px; }
+
 .check {
     display: inline-flex;
     align-items: center;

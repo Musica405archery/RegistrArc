@@ -67,7 +67,7 @@ test('annulation et remboursement', function () {
     registrarc_record_payments(1, [$a, $b], 'ESP', false, 'liste');
 
     registrarc_cancel_payments(1, [$a], 'liste');
-    registrarc_refund_payments(1, [$b], 'VIR', 'liste');
+    registrarc_refund_payments(1, [$b], 'VIR', 'liste', 'Désistement');
 
     $e = registrarc_load_engagements(1, true);
     assert_same('due', $e[$a]['state']);
@@ -87,7 +87,7 @@ test('opérations refusées : rien à annuler ou à rembourser, engagement incon
     assert_same([], $r['done']);
     assert_true(isset($r['skipped'][$id]));
 
-    $r = registrarc_refund_payments(1, [$id], 'ESP', 'liste');
+    $r = registrarc_refund_payments(1, [$id], 'ESP', 'liste', 'Blessure');
     assert_true(isset($r['skipped'][$id]));
 
     $r = registrarc_record_payments(1, [999], 'ESP', false, 'liste');
@@ -112,7 +112,7 @@ test('remise de chèques : chèque déposé verrouillé sauf remboursement', fun
     $r = registrarc_cancel_payments(1, [$chq], 'liste');
     assert_true(isset($r['skipped'][$chq]), 'annulation refusée');
 
-    $r = registrarc_refund_payments(1, [$chq], 'CHQ', 'liste');
+    $r = registrarc_refund_payments(1, [$chq], 'CHQ', 'liste', 'Erreur d\'inscription');
     assert_same([$chq], $r['done'], 'remboursement accepté');
 
     assert_same('', registrarc_create_deposit(1, [['group_id' => '', 'engagement_ids' => [$chq]]]), 'déjà déposé');
@@ -189,6 +189,22 @@ test('clôture : fond compris dans les espèces attendues, comptage détaillé',
     assert_amount(42, registrarc_load_closures(1)[0]['cash_float']);
 
     assert_true(in_array(registrarc_cash_float_file_path(1), registrarc_backup_files(1), true), 'fond de caisse sauvegardé');
+});
+
+test('clôture simplifiée (un seul montant) avec un fond de caisse détaillé', function () {
+    $a = test_add_entry('A1', 'CLS1H', '1099000');
+    registrarc_save_cash_float(1, [1000 => 3, 200 => 5, 50 => 4]);
+    registrarc_record_payments(1, [$a], 'ESP', false, 'liste');
+
+    // Comptage simplifié : seul le montant saisi, aucun détail
+    assert_same('C1', registrarc_close_cash(1, registrarc_parse_cash_amount('51,50'), '', []));
+
+    $c1 = registrarc_load_closures(1)[0];
+    assert_same('detail', $c1['cash_float_mode'], 'le fond reste détaillé');
+    assert_amount(52, $c1['cash_expected']);
+    assert_amount(51.5, $c1['cash_counted']);
+    assert_amount(-0.5, $c1['cash_difference']);
+    assert_same([], registrarc_normalize_cash_detail($c1['cash_counted_detail']));
 });
 
 test('fond de caisse simplifié : un seul montant, sans détail', function () {

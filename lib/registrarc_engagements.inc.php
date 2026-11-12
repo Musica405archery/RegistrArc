@@ -11,7 +11,7 @@
 // 2. plafond par archer : le total d'un archer ne dépasse pas le plafond
 //
 // Fichiers JSON propres au tournoi :
-// - archers_<TourId>.json  : note et inscription tardive (simple information), par engagement
+// - archers_<TourId>.json  : note et passage au greffe, par engagement
 // ============================================================================
 
 // ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ function registrarc_load_pricing_options($TourId) {
 }
 
 // ---------------------------------------------------------------------------
-// Note et inscription tardive, par engagement
+// Note et passage au greffe, par engagement
 // ---------------------------------------------------------------------------
 function registrarc_archers_file_path($TourId) {
     return registrarc_data_dir() . '/archers_' . intval($TourId) . '.json';
@@ -60,15 +60,16 @@ function registrarc_update_archer_info($TourId, callable $mutator) {
     return registrarc_update_json_file(registrarc_archers_file_path($TourId), $mutator);
 }
 
-// Note et inscription tardive d'un engagement ; le pointage au greffe est conservé
-function registrarc_set_archer_note($TourId, $engagementId, $note, $late) {
+// Note d'un engagement ; le pointage au greffe est conservé
+function registrarc_set_archer_note($TourId, $engagementId, $note) {
     $key = (string)intval($engagementId);
     $note = mb_substr(trim((string)$note), 0, 200);
 
-    return intval($engagementId) > 0 && registrarc_update_archer_info($TourId, function (array &$info) use ($key, $note, $late) {
+    return intval($engagementId) > 0 && registrarc_update_archer_info($TourId, function (array &$info) use ($key, $note) {
         $entry = isset($info[$key]) && is_array($info[$key]) ? $info[$key] : [];
         $entry['note'] = $note;
-        $entry['late'] = (bool)$late;
+        // Ancienne « inscription tardive » (retirée en 1.2.6) : effacée à l'enregistrement
+        unset($entry['late']);
         $entry['updated_at'] = date('Y-m-d H:i:s');
         $info[$key] = $entry;
         registrarc_archer_info_cleanup($info, $key);
@@ -94,11 +95,81 @@ function registrarc_toggle_checkin($TourId, $engagementId) {
     });
 }
 
-// Retire un engagement sans note, ni inscription tardive, ni pointage
+// Pointe des engagements comme présentés au greffe (ceux déjà pointés gardent leur heure)
+function registrarc_mark_checked_in($TourId, array $ids) {
+    $ids = array_values(array_filter(array_map('intval', $ids)));
+
+    if (empty($ids)) {
+        return true;
+    }
+
+    return registrarc_update_archer_info($TourId, function (array &$info) use ($ids) {
+        $now = date('Y-m-d H:i:s');
+        $operator = registrarc_operator_name();
+
+        foreach ($ids as $id) {
+            $key = (string)$id;
+            $entry = isset($info[$key]) && is_array($info[$key]) ? $info[$key] : [];
+
+            if (empty($entry['checked_in'])) {
+                $entry['checked_in'] = $now;
+                $entry['checked_in_by'] = $operator;
+                $info[$key] = $entry;
+            }
+        }
+    });
+}
+
+// Retire le pointage au greffe de ces engagements (la note est conservée)
+function registrarc_clear_checked_in($TourId, array $ids) {
+    $ids = array_values(array_filter(array_map('intval', $ids)));
+
+    if (empty($ids)) {
+        return true;
+    }
+
+    return registrarc_update_archer_info($TourId, function (array &$info) use ($ids) {
+        foreach ($ids as $id) {
+            $key = (string)$id;
+
+            if (isset($info[$key]) && is_array($info[$key]) && !empty($info[$key]['checked_in'])) {
+                unset($info[$key]['checked_in'], $info[$key]['checked_in_by']);
+                registrarc_archer_info_cleanup($info, $key);
+            }
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Options du greffe (paramètres du tournoi, clé "greffe")
+// - checkin_on_payment : valider un paiement au comptoir (liste ou mode Kiosk)
+//   pointe aussi l'archer comme présenté au greffe pour ce départ
+// ---------------------------------------------------------------------------
+function registrarc_default_greffe_options() {
+    return ['checkin_on_payment' => true];
+}
+
+function registrarc_normalize_greffe_options($options) {
+    $out = registrarc_default_greffe_options();
+
+    if (is_array($options) && isset($options['checkin_on_payment'])) {
+        $out['checkin_on_payment'] = !empty($options['checkin_on_payment']);
+    }
+
+    return $out;
+}
+
+function registrarc_load_greffe_options($TourId) {
+    $settings = registrarc_load_settings($TourId);
+
+    return registrarc_normalize_greffe_options(isset($settings['greffe']) ? $settings['greffe'] : null);
+}
+
+// Retire un engagement sans note ni pointage
 function registrarc_archer_info_cleanup(array &$info, $key) {
     $entry = $info[$key];
 
-    if ((!isset($entry['note']) || $entry['note'] === '') && empty($entry['late']) && empty($entry['checked_in'])) {
+    if ((!isset($entry['note']) || $entry['note'] === '') && empty($entry['checked_in'])) {
         unset($info[$key]);
     }
 }
@@ -155,6 +226,9 @@ function registrarc_load_engagements($TourId, $refresh = false) {
     $payments = registrarc_load_payments($TourId);
     $archerInfo = registrarc_load_archer_info($TourId);
 
+    // Finale individuelle : la case de l'archer ne suffit pas (cochée par défaut
+    // dans I@nseo) ; sa catégorie doit aussi appartenir à au moins une épreuve
+    // individuelle qui a des phases finales (EvFinalFirstPhase différent de 0)
     $query = "
         SELECT
             e.EnId AS engagement_id,
@@ -174,7 +248,20 @@ function registrarc_load_engagements($TourId, $refresh = false) {
             q.QuHits AS hits,
             e.EnIndClEvent,
             e.EnTeamClEvent,
-            e.EnIndFEvent,
+            IF(e.EnIndFEvent <> 0 AND EXISTS (
+                SELECT 1
+                FROM EventClass ec
+                INNER JOIN Events ev
+                    ON ev.EvTournament = ec.EcTournament
+                   AND ev.EvCode = ec.EcCode
+                   AND ev.EvTeamEvent = 0
+                WHERE ec.EcTournament = e.EnTournament
+                  AND ec.EcTeamEvent = 0
+                  AND ec.EcDivision = e.EnDivision
+                  AND ec.EcClass = e.EnClass
+                  AND (ec.EcSubClass = '' OR ec.EcSubClass = e.EnSubClass)
+                  AND ev.EvFinalFirstPhase <> 0
+            ), 1, 0) AS EnIndFEvent,
             e.EnTeamFEvent,
             e.EnTeamMixEvent
         FROM Entries e
@@ -254,7 +341,6 @@ function registrarc_load_engagements($TourId, $refresh = false) {
 
         $info = isset($archerInfo[(string)$id]) && is_array($archerInfo[(string)$id]) ? $archerInfo[(string)$id] : [];
         $entry['note'] = isset($info['note']) ? trim((string)$info['note']) : '';
-        $entry['late'] = !empty($info['late']);
         // Présenté au greffe : date du pointage, '' sinon
         $entry['checked_in'] = isset($info['checked_in']) ? (string)$info['checked_in'] : '';
         $entry['checked_in_by'] = isset($info['checked_in_by']) ? (string)$info['checked_in_by'] : '';

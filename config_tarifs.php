@@ -22,9 +22,10 @@
 // - Département : 3e et 4e chiffres du code club
 // - Qualification individuelle
 // - Qualification équipe
-// - Finale individuelle si Events contient EvTeamEvent = 0 pour le tournoi
-// - Finale équipe si Events contient EvTeamEvent = 1 pour le tournoi
-// - Double mixte si Events contient EvTeamEvent = 1 et EvMixedTeam = 1
+// - Finale individuelle si Events contient EvTeamEvent = 0 avec phases finales
+// - Finale équipe si Events contient EvTeamEvent = 1 avec phases finales
+// - Double mixte si Events contient EvTeamEvent = 1 et EvMixedTeam = 1 avec phases finales
+// (phases finales : EvFinalFirstPhase différent de 0)
 // ============================================================================
 
 require_once(dirname(__FILE__) . '/lib/registrarc_page.inc.php');
@@ -79,6 +80,7 @@ function registrarc_get_events_final_presence($TourId) {
             SUM(CASE WHEN EvTeamEvent = 1 AND IFNULL(EvMixedTeam, 0) = 1 THEN 1 ELSE 0 END) AS NbMixed
         FROM Events
         WHERE EvTournament = $TourId
+          AND EvFinalFirstPhase <> 0
     ";
 
     $rs = safe_r_sql($query);
@@ -199,6 +201,7 @@ function registrarc_default_settings($TourId) {
         'payment_modes' => registrarc_default_payment_modes(),
         'rules' => [],
         'options' => registrarc_default_pricing_options(),
+        'greffe' => registrarc_default_greffe_options(),
     ];
 }
 
@@ -343,6 +346,7 @@ function registrarc_config_normalize_settings($TourId, $settings, array $allowed
     $out['payment_modes'] = registrarc_normalize_payment_modes(isset($settings['payment_modes']) ? $settings['payment_modes'] : null);
     $out['rules'] = registrarc_normalize_rules(isset($settings['rules']) ? $settings['rules'] : [], $allowedRuleScopes);
     $out['options'] = registrarc_normalize_pricing_options(isset($settings['options']) ? $settings['options'] : null);
+    $out['greffe'] = registrarc_normalize_greffe_options(isset($settings['greffe']) ? $settings['greffe'] : null);
 
     return $out;
 }
@@ -579,6 +583,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'options' => [
                     'cap_per_archer' => isset($_POST['cap_per_archer']) ? str_replace(',', '.', $_POST['cap_per_archer']) : 0,
                 ],
+                'greffe' => [
+                    'checkin_on_payment' => !empty($_POST['checkin_on_payment']),
+                ],
             ];
 
             $settings = registrarc_config_normalize_settings($TourId, $settings, $allowedRuleScopes);
@@ -603,6 +610,7 @@ $currentTarifs = $currentSettings['tarifs'];
 $currentModes = $currentSettings['payment_modes'];
 $currentRules = $currentSettings['rules'];
 $currentOptions = registrarc_normalize_pricing_options(isset($currentSettings['options']) ? $currentSettings['options'] : null);
+$currentGreffe = registrarc_normalize_greffe_options(isset($currentSettings['greffe']) ? $currentSettings['greffe'] : null);
 
 $currentSettingsTimestamp = registrarc_settings_timestamp($currentSettings, registrarc_settings_file_path($TourId));
 $currentSettingsTimestampLabel = registrarc_format_timestamp_for_message($currentSettingsTimestamp);
@@ -631,6 +639,10 @@ include('Common/Templates/head.php');
         <div>
             <div class="registrarc-header-title">Paramètres</div>
             <div class="registrarc-header-sub"><?php echo htmlspecialchars($tournamentName ?: "RegistrArc, le module de greffe pour I@nseo"); ?></div>
+            <!-- Numéro du concours : c'est lui qui figure dans le nom des fichiers JSON (data/settings_<n°>.json…) -->
+            <div class="registrarc-header-id">
+                Concours n° <strong><?php echo intval($TourId); ?></strong><?php echo $tournamentCode !== '' ? ' · code ' . htmlspecialchars($tournamentCode) : ''; ?>
+            </div>
         </div>
 
         <div class="header-actions">
@@ -655,51 +667,24 @@ include('Common/Templates/head.php');
         </div>
     <?php endif; ?>
 
-    <div class="card">
-        <div class="card-title">Export / Import du paramétrage</div>
-        <div class="card-help">
-            Les classes d'âge, tarifs, moyens de paiement et règles avancées sont enregistrés dans un fichier JSON local.
-        </div>
-
-        <div class="import-export-row">
-            <div>
-                <div style="font-weight:600;margin-bottom:6px;">Exporter</div>
-                <a href="?action=export" class="btn-primary">
-                    Exporter le JSON
-                </a>
-            </div>
-
-            <?php if ($canWrite): ?>
-            <div>
-                <div style="font-weight:600;margin-bottom:6px;">Importer</div>
-                <form
-                    method="POST"
-                    enctype="multipart/form-data"
-                    id="importSettingsForm"
-                    data-current-ts="<?php echo intval($currentSettingsTimestamp); ?>"
-                    data-current-label="<?php echo htmlspecialchars($currentSettingsTimestampLabel); ?>"
-                    data-current-code="<?php echo htmlspecialchars($tournamentCode); ?>"
-                    style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;"
-                >
-                    <?php echo registrarc_form_fields($TourId); ?>
-                    <input type="file" name="settings_file" id="settings_file" accept="application/json,.json" class="import-input" style="max-width:320px;">
-                    <button type="submit" name="import_settings" value="1" class="btn-warning">
-                        Importer
-                    </button>
-                </form>
-            </div>
-            <?php endif; ?>
-        </div>
-    </div>
-
     <form method="POST" id="mainSettingsForm">
         <?php echo registrarc_form_fields($TourId); ?>
+        <div class="settings-section" data-section="categories">
+        <div class="settings-banner" id="categories" role="button" tabindex="0" aria-expanded="true" title="Replier / déplier cette partie">
+            <span class="settings-banner-num">1</span>
+            <div>
+                <div class="settings-banner-title">Catégories</div>
+                <div class="settings-banner-sub">Quelles catégories paient le tarif jeunes, lesquelles le tarif adultes</div>
+            </div>
+            <span class="settings-banner-chevron" aria-hidden="true"></span>
+        </div>
+        <div class="settings-section-body">
+
         <div class="card">
-            <div class="card-title">Classes d'âge</div>
+            <div class="card-title">Jeunes et adultes</div>
             <div class="card-help">
-                Toutes les catégories réellement présentes dans ce tournoi (table <strong>Classes</strong>) sont réparties
-                dans l'une des deux colonnes ci-dessous. <strong>Glisse-dépose</strong> une catégorie d'une colonne à l'autre,
-                ou clique sur la flèche de sa carte pour la faire basculer instantanément.
+                Les catégories du concours, dans la colonne de leur tarif. Pour en changer une de colonne,
+                faites-la <strong>glisser</strong> ou cliquez sur sa <strong>flèche</strong>.
             </div>
 
             <!-- Ces deux champs cachés contiennent la liste finale (jeunes / adultes), reconstruite automatiquement
@@ -775,22 +760,24 @@ include('Common/Templates/head.php');
                     </div>
                 </div>
             <?php endif; ?>
-
-            <div class="grid-2">
-                <div>
-                    <strong>Aperçu Jeunes</strong>
-                    <div class="age-preview" id="agePreviewJeunes"></div>
-                </div>
-
-                <div>
-                    <strong>Aperçu Adultes</strong>
-                    <div class="age-preview" id="agePreviewAdultes"></div>
-                </div>
-            </div>
         </div>
 
+        </div>
+        </div>
+
+        <div class="settings-section" data-section="tarifs">
+        <div class="settings-banner" id="tarifs" role="button" tabindex="0" aria-expanded="true" title="Replier / déplier cette partie">
+            <span class="settings-banner-num">2</span>
+            <div>
+                <div class="settings-banner-title">Tarifs d'inscription</div>
+                <div class="settings-banner-sub">Le tarif simple pour tout le monde, puis les tarifs personnalisés pour certains archers</div>
+            </div>
+            <span class="settings-banner-chevron" aria-hidden="true"></span>
+        </div>
+        <div class="settings-section-body">
+
         <div class="card">
-            <div class="card-title">Tarifs d'inscription</div>
+            <div class="card-title">Tarif simple <span class="card-title-tag">pour tous les archers</span></div>
             <div class="card-help">
                 Montants en euros. Chaque départ suivant est calculé comme :
                 <span class="chip">départs précédents + supplément</span>.
@@ -873,8 +860,9 @@ include('Common/Templates/head.php');
         </div>
 
         <div class="card">
-            <div class="card-title">Règles avancées de tarification</div>
+            <div class="card-title">Tarifs personnalisés <span class="card-title-tag">règles pour certains archers</span></div>
             <div class="card-help">
+                Un prix spécial qui remplace le tarif simple pour les archers concernés (tarif découverte, finales, gratuité…).
                 Valeurs possibles pour les portées liées aux engagements : <strong>OUI</strong> ou <strong>NON</strong>.
                 <?php if (empty($finalPresence['individual']) && empty($finalPresence['team']) && empty($finalPresence['mixed'])): ?>
                     <br><strong>Aucune phase finale détectée :</strong> les règles liées aux finales ne sont pas proposées.
@@ -976,19 +964,42 @@ include('Common/Templates/head.php');
             </div>
         </div>
 
+        </div>
+        </div>
+
+        <div class="settings-section" data-section="paiements">
+        <div class="settings-banner" id="paiements" role="button" tabindex="0" aria-expanded="true" title="Replier / déplier cette partie">
+            <span class="settings-banner-num">3</span>
+            <div>
+                <div class="settings-banner-title">Paiements</div>
+                <div class="settings-banner-sub">Les moyens de paiement acceptés et ce que fait la validation d'un paiement</div>
+            </div>
+            <span class="settings-banner-chevron" aria-hidden="true"></span>
+        </div>
+        <div class="settings-section-body">
+
         <div class="card">
             <div class="card-title">Modes de paiement</div>
             <div class="card-help">
-                Codes recommandés :
-                <span class="chip">ESP = Espèces</span>
-                <span class="chip">CHQ = Chèque</span>
-                <span class="chip">VIR = Virement</span>
-                <span class="chip">GRA = Gratuit</span>
+                Le logo se choisit tout seul d'après le code. Codes recommandés :
+                <?php foreach (['ESP' => 'Espèces', 'CHQ' => 'Chèque', 'VIR' => 'Virement', 'CB' => 'Carte bancaire', 'HA' => 'HelloAsso', 'ANCV' => 'Chèques-vacances', 'GRA' => 'Gratuit'] as $pmCode => $pmLabel): ?>
+                    <span class="pm-chip"><?php echo registrarc_payment_icon($pmCode); ?><strong><?php echo $pmCode; ?></strong> <?php echo $pmLabel; ?></span>
+                <?php endforeach; ?>
             </div>
 
-            <table>
+            <!-- Logos par famille, pour le code saisi dans une ligne (assets/js/config_tarifs.js) -->
+            <script type="application/json" id="pmIcons"><?php
+                $pmFamilies = [];
+                foreach (['ESP', 'ESPECES', 'LIQ', 'CASH', 'CHQ', 'CHEQUE', 'CHEQ', 'CH', 'VIR', 'VIREMENT', 'VIRT', 'SEPA', 'CB', 'CARTE', 'TPE', 'CARD', 'SUMUP', 'GRA', 'GRATUIT', 'OFFERT', 'HA', 'HELLOASSO', 'PAYPAL', 'WEB', 'LIGNE', 'EN_LIGNE', 'ANCV', 'CV', 'CHQV', 'BON', 'PASS', 'COUPON'] as $knownCode) {
+                    $pmFamilies[$knownCode] = registrarc_payment_icon_family($knownCode);
+                }
+                echo json_encode(['svgs' => registrarc_payment_icon_svgs(), 'codes' => $pmFamilies], JSON_HEX_TAG | JSON_HEX_AMP);
+            ?></script>
+
+            <table class="pm-table">
                 <thead>
                     <tr>
+                        <th style="width:46px;"></th>
                         <th style="width:25%;">Code</th>
                         <th>Libellé</th>
                         <th style="width:40px;">Suppr.</th>
@@ -1011,6 +1022,7 @@ include('Common/Templates/head.php');
                         $isProtectedGra = ($code === 'GRA');
                     ?>
                         <tr>
+                            <td class="pm-icon-cell"><?php echo registrarc_payment_icon($code); ?></td>
                             <td>
                                 <input
                                     type="text"
@@ -1045,18 +1057,94 @@ include('Common/Templates/head.php');
             </div>
         </div>
 
-        <div class="form-footer">
-            <?php if ($canWrite): ?>
-                <button type="submit" name="save_settings" value="1" class="btn-success">
-                    Enregistrer les paramètres
-                </button>
-            <?php else: ?>
-                <span class="chip">Lecture seule : modification réservée aux droits en écriture</span>
-            <?php endif; ?>
+        <div class="card">
+            <div class="card-title">Validation d'un paiement et passage au greffe</div>
+            <div class="card-help">
+                Le passage au greffe se pointe dans la liste des engagements, vue <strong>Par archer</strong>.
+            </div>
 
-            <a href="index.php" class="back-link">← Retour à la liste des engagements</a>
+            <label class="greffe-option">
+                <input type="checkbox" name="checkin_on_payment" value="1" <?php echo $currentGreffe['checkin_on_payment'] ? 'checked' : ''; ?>>
+                <span>
+                    <strong>Valider un paiement pointe aussi l'archer au greffe</strong><br>
+                    <span class="greffe-option-help">Quand un paiement est validé depuis la liste ou le mode Kiosk, l'archer est noté comme présenté au greffe pour ce départ.
+                    Un paiement importé (HelloAsso, autre poste) ne pointe personne : l'archer n'est pas forcément venu. Supprimer le paiement retire aussi le pointage.</span>
+                </span>
+            </label>
         </div>
+
+        </div>
+        </div>
+
     </form>
+
+    <div class="settings-section" data-section="export">
+    <div class="settings-banner" id="export" role="button" tabindex="0" aria-expanded="true" title="Replier / déplier cette partie">
+        <span class="settings-banner-num">4</span>
+        <div>
+            <div class="settings-banner-title">Export / Import des paramètres</div>
+            <div class="settings-banner-sub">Pour sauvegarder ces réglages ou les reprendre dans un autre concours</div>
+        </div>
+        <span class="settings-banner-chevron" aria-hidden="true"></span>
+    </div>
+    <div class="settings-section-body">
+
+    <div class="card">
+        <div class="card-title">Fichier des paramètres</div>
+        <div class="card-help">
+            Catégories, tarifs, règles, moyens de paiement et options du greffe sont enregistrés pour le concours
+            n° <strong><?php echo intval($TourId); ?></strong> dans <code>data/settings_<?php echo intval($TourId); ?>.json</code>.
+            Les autres fichiers de ce concours portent le même numéro :
+            <code>payments_<?php echo intval($TourId); ?>.json</code>, <code>journal_<?php echo intval($TourId); ?>.json</code>,
+            <code>archers_<?php echo intval($TourId); ?>.json</code>…
+        </div>
+
+        <div class="import-export-row">
+            <div>
+                <div style="font-weight:600;margin-bottom:6px;">Exporter</div>
+                <a href="?action=export" class="btn-primary">
+                    Exporter le JSON
+                </a>
+            </div>
+
+            <?php if ($canWrite): ?>
+            <div>
+                <div style="font-weight:600;margin-bottom:6px;">Importer</div>
+                <form
+                    method="POST"
+                    enctype="multipart/form-data"
+                    id="importSettingsForm"
+                    data-current-ts="<?php echo intval($currentSettingsTimestamp); ?>"
+                    data-current-label="<?php echo htmlspecialchars($currentSettingsTimestampLabel); ?>"
+                    data-current-code="<?php echo htmlspecialchars($tournamentCode); ?>"
+                    style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;"
+                >
+                    <?php echo registrarc_form_fields($TourId); ?>
+                    <input type="file" name="settings_file" id="settings_file" accept="application/json,.json" class="import-input" style="max-width:320px;">
+                    <button type="submit" name="import_settings" value="1" class="btn-warning">
+                        Importer
+                    </button>
+                </form>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    </div>
+    </div>
+
+    <!-- Toujours en dernier et toujours visible ; relié au formulaire principal par form= -->
+    <div class="form-footer settings-save-bar">
+        <?php if ($canWrite): ?>
+            <button type="submit" form="mainSettingsForm" name="save_settings" value="1" class="btn-success">
+                Enregistrer les paramètres
+            </button>
+        <?php else: ?>
+            <span class="chip">Lecture seule : modification réservée aux droits en écriture</span>
+        <?php endif; ?>
+
+        <a href="index.php" class="back-link">← Retour à la liste des engagements</a>
+    </div>
 
     <div class="settings-version">RegistrArc <?php echo htmlspecialchars(registrarc_local_version_number()); ?></div>
 </div>

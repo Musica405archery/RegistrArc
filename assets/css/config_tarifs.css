@@ -53,6 +53,95 @@ body {
     margin-top: 2px;
 }
 
+/* Numéro du concours (nom des fichiers JSON) */
+.registrarc-header-id {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    color: var(--on-accent);
+    font-size: 12px;
+}
+
+/* --- Bandeaux de partie : séparation visuelle des grandes étapes ------------ */
+.settings-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 26px 0 12px;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    background: linear-gradient(90deg, var(--accent) 0%, #24508f 100%);
+    color: var(--on-accent);
+    scroll-margin-top: 12px;
+}
+
+.settings-banner:first-of-type { margin-top: 8px; }
+
+.settings-banner-num {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    background: var(--on-accent);
+    color: var(--accent);
+    font-weight: 800;
+    font-size: 16px;
+}
+
+.settings-banner-title { font-size: 17px; font-weight: 700; }
+.settings-banner-sub { color: var(--on-accent-muted); font-size: 13px; margin-top: 1px; }
+
+.registrarc-container .card-title-tag {
+    margin-left: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* --- Logos des moyens de paiement ------------------------------------------ */
+.pm-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    flex: none;
+}
+
+.pm-icon-cash { background: #e3f4e8; color: #15803d; }
+.pm-icon-cheque { background: #e6edff; color: #1d4ed8; }
+.pm-icon-transfer { background: #ece9ff; color: #4f46e5; }
+.pm-icon-card { background: #ffeedd; color: #c2410c; }
+.pm-icon-free { background: #fde6f1; color: #be185d; }
+.pm-icon-online { background: #f3e8ff; color: #9333ea; }
+.pm-icon-voucher { background: #dff4f1; color: #0f766e; }
+.pm-icon-other { background: #eef1f5; color: #475569; }
+
+.pm-table .pm-icon-cell { width: 46px; text-align: center; vertical-align: middle; }
+
+.pm-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 8px 0 0;
+    padding: 2px 10px 2px 2px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.pm-chip strong { color: #1f2937; }
+.pm-chip .pm-icon { width: 24px; height: 24px; border-radius: 999px; }
+.pm-chip .pm-icon svg { width: 15px; height: 15px; }
+
 .header-actions {
     display: flex;
     flex-wrap: wrap;
@@ -211,6 +300,17 @@ body {
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
+
+/* Option du passage au greffe */
+.greffe-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.greffe-option input { margin-top: 3px; }
+.greffe-option-help { color: var(--muted); font-size: 13px; line-height: 1.45; }
 
 /* Tarif dégressif par départ */
 .tarif-scroll { overflow-x: auto; }
@@ -424,4 +524,45 @@ body {
     text-align: right;
     font-size: 11px;
     color: #b9bec7;
+}
+
+/* --- Parties repliables et barre d'enregistrement ------------------------- */
+.settings-section .settings-banner {
+    margin-top: 26px;
+    cursor: pointer;
+    user-select: none;
+}
+
+#mainSettingsForm > .settings-section:first-of-type .settings-banner { margin-top: 8px; }
+
+.settings-banner:hover { filter: brightness(1.08); }
+.settings-banner:focus-visible { outline: 3px solid #93b4e8; outline-offset: 2px; }
+
+.settings-banner-chevron {
+    flex: none;
+    width: 11px;
+    height: 11px;
+    margin: 0 6px 0 auto;
+    border-right: 3px solid var(--on-accent);
+    border-bottom: 3px solid var(--on-accent);
+    transform: translateY(-3px) rotate(45deg);
+    transition: transform .15s ease;
+}
+
+.settings-section.is-collapsed .settings-banner-chevron { transform: translateY(1px) rotate(-45deg); }
+.settings-section.is-collapsed .settings-section-body { display: none; }
+.settings-section.is-collapsed .settings-banner { margin-bottom: 0; }
+.settings-section.is-collapsed + .settings-section .settings-banner,
+#mainSettingsForm:has(> .settings-section.is-collapsed:last-of-type) + .settings-section .settings-banner { margin-top: 10px; }
+
+.settings-save-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin-top: 16px;
+    padding: 10px 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: 0 -4px 14px rgba(20, 51, 107, .12);
 }
