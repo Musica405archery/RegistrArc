@@ -457,12 +457,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $warnings[] = "le code tournoi importé ($importCode) est différent du code courant ($currentCode)";
                 }
 
+                // Le paramétrage existant est entièrement remplacé (copie de secours .bak)
+                $settingsFile = registrarc_settings_file_path($TourId);
+                $hadSettings = is_file($settingsFile);
+
                 if (registrarc_save_settings($TourId, $settings, $allowedRuleScopes)) {
+                    $message = "Paramétrage remplacé par celui du fichier importé : catégories, tarifs, règles, moyens de paiement et options du greffe."
+                        . ($hadSettings ? " L'ancien paramétrage est gardé dans data/" . basename($settingsFile) . ".bak." : '');
+
                     if (!empty($warnings)) {
-                        $message = "Paramétrage importé avec succès, mais attention : " . implode(' ; ', $warnings) . ".";
+                        $message .= " Attention : " . implode(' ; ', $warnings) . ".";
                         $messageType = 'warning';
                     } else {
-                        $message = "Paramétrage importé avec succès.";
                         $messageType = 'success';
                     }
                 } else {

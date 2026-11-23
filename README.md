@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/module-I%40nseo-14336b" alt="Module I@nseo">
-  <img src="https://img.shields.io/badge/version-1.2.6-14336b" alt="Version 1.2.6">
+  <img src="https://img.shields.io/badge/version-1.2.7-14336b" alt="Version 1.2.7">
   <img src="https://img.shields.io/badge/langue-fran%C3%A7ais-14336b" alt="En français">
   <img src="https://img.shields.io/badge/tir%20%C3%A0%20l'arc-greffe-e3242b" alt="Tir à l'arc, greffe">
 </p>
@@ -278,7 +278,8 @@ Chaque mode a son **logo**, choisi d'après le code : billet pour `ESP`, chèque
 - **Exporter** enregistre tous vos réglages dans un fichier ;
 - **Importer** les recharge, par exemple pour reprendre les tarifs de l'an dernier ou les mettre sur un autre ordinateur.
 
-Avant de remplacer vos réglages, RegistrArc vous prévient si le fichier vient d'un autre concours ou s'il est plus ancien que vos réglages actuels.
+> [!WARNING]
+> **L'import remplace tous les réglages du concours** (catégories, tarifs, règles, moyens de paiement, options du greffe) par ceux du fichier. RegistrArc le rappelle avant l'import, en prévenant aussi si le fichier vient d'un autre concours ou s'il est plus ancien que vos réglages actuels. Après l'import, un message confirme le remplacement : l'ancien réglage est gardé en copie de secours (`settings_<n°>.json.bak` dans le dossier `data/`).
 
 Pour retrouver à la main les fichiers d'un concours (dans le dossier `data/` du module), cherchez son numéro : l'étape 4 rappelle le nom des fichiers, par exemple `settings_12.json` pour les réglages du concours n° 12.
 
@@ -315,7 +316,8 @@ Choisissez **Par archer** avec l'interrupteur à droite du titre « Actions sur 
 
 - **-** : l'archer ne tire pas ce départ ;
 - **✕ rouge** : il n'est pas encore passé au greffe. Un clic sur la croix le pointe ;
-- **✓ vert** : il est passé au greffe. Son numéro de cible et son blason s'affichent dessous (blason en rouge s'il n'est pas celui de sa catégorie). Un clic sur la coche annule le pointage.
+- **✓ vert** : il est passé au greffe. Son numéro de cible et son blason s'affichent dessous (blason en rouge s'il n'est pas celui de sa catégorie). Un clic sur la coche annule le pointage ;
+- **girophare rouge** et **ABSENT** : l'archer a été signalé absent depuis le mode Kiosk (voir plus bas). S'il arrive finalement, un clic sur le girophare le pointe et retire le signalement.
 
 Sous le titre de chaque départ, une pastille indique les **archers encore à passer au greffe** sur ceux attendus (par exemple **8/23**, en rouge), puis **✓ 23** en vert quand tout le monde est passé. Ces chiffres tiennent compte des filtres : avec le filtre **Départ**, on suit un seul départ. La recherche marche aussi (avec « ; » pour plusieurs archers).
 
@@ -323,6 +325,10 @@ Pour encaisser, revenez à la vue **Par engagement**.
 
 > [!TIP]
 > **Pointer en encaissant** : dans **⚙ Paramètres**, partie **Paiements**, l'option « Valider un paiement pointe aussi l'archer au greffe » est cochée par défaut. Chaque paiement validé depuis la liste ou le mode Kiosk pointe alors l'archer pour ce départ, sans clic de plus. Un paiement importé (HelloAsso, autre poste) ne pointe personne, et **Supprimer le paiement** retire aussi le pointage. Décochez l'option pour pointer à part.
+
+**Les archers signalés absents** depuis le mode Kiosk apparaissent en haut de la liste, quelle que soit la vue : un bouton par archer, avec un petit girophare, **ABSENT**, son nom et son prénom barrés, et sa cible. Dans la liste aussi, le nom d'un archer absent est barré. Un clic sur le bouton affiche l'archer dans la liste. Le statut **Absents** du filtre **Statut paiement** les montre tous ensemble. Dans la vue **Par engagement**, le badge **ABSENT** sous son nom retire le signalement (par exemple si l'archer était seulement en retard). Pointer l'archer retire aussi le signalement, comme l'encaisser au comptoir quand l'option « Valider un paiement pointe aussi l'archer au greffe » est cochée.
+
+<img src="docs/images/liste-absents.png" alt="Archers signalés absents : boutons ABSENT en haut de la liste, noms barrés, statut Absents" width="100%">
 
 </details>
 
@@ -379,7 +385,11 @@ La feuille est celle d'I@nseo, avec les réglages de sa page d'impression : **fe
 - **Facture** et **Facture groupée** : voir [Faire une facture](#faire-une-facture).
 - **Remise de chèque** : voir [Préparer la remise de chèques](#préparer-la-remise-de-chèques).
 - **Liste Greffe** : imprime la liste telle qu'elle est affichée à l'écran.
-- **Exporter / Importer** : recopie les paiements d'un ordinateur RegistrArc à un autre, par exemple de l'ordinateur des pré-inscriptions vers celui du greffe. Seuls les paiements sont recopiés : les inscriptions dans I@nseo ne changent pas.
+- **Exporter / Importer** : recopie les paiements d'un ordinateur RegistrArc à un autre, par exemple de l'ordinateur des pré-inscriptions vers celui du greffe. Seuls les paiements sont recopiés : les inscriptions dans I@nseo ne changent pas. **Les paiements du fichier remplacent ceux de l'ordinateur qui importe** (payé, remboursé avec son mode et son motif, ou non payé) :
+  - fichier exporté **sans filtre** : tous les paiements sont remplacés ; un engagement payé ici mais non payé, ou absent, dans le fichier redevient non payé ;
+  - fichier exporté **avec un filtre** (club, départ, recherche…) : seuls les engagements du fichier sont remplacés.
+
+  RegistrArc lit le fichier et dit ce qui va être remplacé avant l'import, puis résume ce qui a changé. Chaque changement est noté dans la caisse ; un chèque déjà déposé à la banque reste tel quel ; l'ancienne liste des paiements est gardée en copie de secours (`payments_<n°>.json.bak`).
 
 </details>
 
@@ -405,7 +415,14 @@ Le bouton **Mode Kiosk** ouvre un écran fait pour encaisser debout, avec un té
 
 1. **Trouvez l'archer** en tapant son nom, sa licence, son club ou son blason, ou en choisissant le départ. Seuls les archers qui doivent encore payer sont affichés ; cochez **Afficher payés et gratuits** pour voir tout le monde.
 2. **Touchez sa ligne**, ou plusieurs lignes. **Tout sélectionner** coche toutes les lignes affichées. Le total apparaît en bas.
-3. **Choisissez le mode de paiement** (chaque mode a son logo : pièces, chèque, carte…), cochez **Reçu demandé** si l'archer veut un reçu, puis **Encaisser**.
+3. **Choisissez le mode de paiement** (chaque mode a son logo : pièces, chèque, carte…), cochez **Reçu demandé** si l'archer veut un reçu, puis **Encaisser**. En mode **Gratuit**, le total et le bouton indiquent **0 €** : rien n'est encaissé, et l'engagement s'affiche ensuite à 0 €.
+
+**Un archer manque à l'appel ?** Touchez sa ligne puis **Absent** (le bouton au girophare). Si son départ est déjà payé, RegistrArc demande s'il faut le rembourser :
+
+- **Ne pas rembourser** : le paiement est gardé ;
+- **Rembourser le départ** : le remboursement est noté dans la caisse avec le motif « Archer absent », dans le mode de son paiement ou dans le mode choisi (virement, chèque…).
+
+L'archer est alors signalé au greffe, en haut de la liste des engagements, et sa ligne porte **ABSENT** dans le kiosque, avec son nom barré. Quand tous les archers cochés sont déjà signalés, le bouton devient **Présent** et retire le signalement (sans annuler un remboursement déjà fait).
 
 En haut de l'écran : le nombre d'archers à encaisser, la somme qui reste à encaisser, le nombre de payés et le nombre de reçus demandés. Tapez votre prénom dans le champ **Opérateur** : il est retenu sur le téléphone.
 
@@ -626,6 +643,20 @@ Un bug, un écran pas clair, une idée pour le greffe ? Déposez un ticket (une 
 ## Questions fréquentes
 
 <details>
+<summary>Un archer qui avait payé a été supprimé d'I@nseo</summary>
+
+<br>
+
+Son engagement n'est plus affiché dans la liste des engagements, mais RegistrArc le garde avec son paiement : l'argent encaissé ne disparaît pas de la caisse ni du tableau de bord. Pour les voir, choisissez le statut **Absents** dans le filtre **Statut paiement** : ils y sont marqués **Absent · supprimé d'I@nseo**, avec les archers signalés absents depuis le mode Kiosk.
+
+- Pour le **rembourser**, utilisez **Rembourser** comme d'habitude : il reste affiché, remboursé.
+- Si le paiement était une erreur, **Supprimer le paiement** le retire : l'engagement disparaît alors de la liste.
+
+Il n'apparaît plus dans le mode Kiosk, la vue **Par archer**, les feuilles de marque, les QR codes ni la carte des clubs. RegistrArc garde son nom, son club, son départ et sa cible tels qu'ils étaient au dernier paiement enregistré.
+
+</details>
+
+<details>
 <summary>Un message dit que le module ne peut pas enregistrer ses informations</summary>
 
 <br>
@@ -725,7 +756,7 @@ Le bouton ouvre une page qui montre la version installée, la nouvelle version e
 
 <br>
 
-Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.6 »), et dans le sous-titre de la page d'aide.
+Elle est indiquée en petit, en bas à droite de la page **⚙ Paramètres** (par exemple « RegistrArc 1.2.7 »), et dans le sous-titre de la page d'aide.
 
 </details>
 
@@ -742,7 +773,24 @@ Il n'apparaît que pour l'administrateur d'I@nseo, quand l'ordinateur a accès �
 
 Ce qui change pour vous à chaque nouvelle version. La version installée est écrite en petit, en bas de la page **⚙ Paramètres**.
 
-### Version 1.2.6
+### Version 1.2.7
+
+**Au greffe**
+
+- **Archer absent** : dans le mode Kiosk, le bouton **Absent** (au petit girophare) signale l'archer au greffe. S'il a déjà payé, RegistrArc demande s'il faut rembourser son départ (motif « Archer absent », dans le mode de son paiement ou le mode choisi). **Présent** retire le signalement. Voir [encaisser sur un téléphone](#encaisser-sur-un-téléphone).
+- **Les absents dans la liste** : un bouton par archer absent en haut de la liste (girophare, **ABSENT**, nom, prénom, cible), son nom barré, et le statut **Absents** dans le filtre pour les voir tous. Pointer l'archer qui arrive finalement retire le signalement. Le tableau de bord les compte dans « À vérifier ».
+- **Archer payé puis supprimé d'I@nseo** : son engagement et son paiement sont gardés, l'argent encaissé ne disparaît pas. Il n'est visible qu'avec le statut **Absents**, pour être remboursé si besoin.
+- **Gratuit, c'est 0 €** : un départ gratuit ou offert affiche 0 € dans le kiosque ; en mode Gratuit, le total, le bouton et les confirmations indiquent 0 €.
+
+**Imports**
+
+- **Importer des paramètres** remplace tous les réglages du concours : RegistrArc le dit avant l'import et le confirme après, avec une copie de secours de l'ancien réglage.
+- **Importer les paiements d'un autre poste** : les paiements du fichier remplacent ceux de l'ordinateur (tous pour un fichier exporté sans filtre, seulement les siens pour un fichier filtré), remboursements compris. RegistrArc annonce ce qui va changer, puis le résume.
+
+<details>
+<summary><strong>Version 1.2.6</strong></summary>
+
+<br>
 
 **Au greffe**
 
@@ -764,6 +812,8 @@ Ce qui change pour vous à chaque nouvelle version. La version installée est é
 - **Une page en quatre parties numérotées** : catégories, tarifs, paiements, export / import. Chaque partie se replie, et **Enregistrer les paramètres** reste toujours visible en bas de l'écran.
 - **Le numéro du concours** est rappelé sous le titre, pour retrouver ses fichiers.
 - **Finales** : un archer compte comme finaliste individuel seulement si sa catégorie est dans une épreuve qui a des phases finales.
+
+</details>
 
 <details>
 <summary><strong>Version 1.2.5</strong></summary>

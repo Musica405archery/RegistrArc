@@ -100,6 +100,14 @@ function confirmBulkAction(type) {
     }
 
     const method = bulkMethod ? String(bulkMethod.value || '').toUpperCase() : '';
+    const methodOption = bulkMethod ? bulkMethod.options[bulkMethod.selectedIndex] : null;
+
+    // Mode Gratuit : rien n'est encaissé
+    if (methodOption && methodOption.dataset.free === '1') {
+        return confirm(
+            'Vous allez valider gratuitement ' + count + ' engagement(s) : 0 € encaissé.\n\nConfirmer ?'
+        );
+    }
 
     if (method === 'CHQ' && count >= 2) {
         const createGroup = confirm(
@@ -116,6 +124,18 @@ function confirmBulkAction(type) {
 
     return confirm(
         'Vous allez ' + actionText + ' pour ' + count + ' engagement(s).\n\nConfirmer ?'
+    );
+}
+
+// Validation d'un engagement : rappelle le montant encaissé, 0 € en mode Gratuit
+function confirmRowPayment(button) {
+    const select = button.form ? button.form.querySelector('select[name="payment_method"]') : null;
+    const option = select ? select.options[select.selectedIndex] : null;
+    const free = !!(option && option.dataset.free === '1');
+
+    return confirm(
+        'Valider le paiement de ' + (button.dataset.archer || '') + ' : ' +
+        (free ? '0 € (gratuit)' : (button.dataset.amount || '0') + ' €') + ' ?'
     );
 }
 
@@ -223,19 +243,74 @@ function toggleImportRegistrations() {
     return false;
 }
 
-function confirmImportRegistrations() {
+// Import des paiements d'un autre poste : le fichier REMPLACE les paiements de ce
+// poste. Le fichier est lu avant l'envoi pour dire exactement ce qui va changer.
+function confirmImportRegistrations(button) {
     const input = document.getElementById('registrations_file');
+    const form = button ? button.form : null;
+
+    if (form && form.dataset.confirmed === '1') {
+        form.dataset.confirmed = '';
+        return true;
+    }
 
     if (!input || !input.files || input.files.length === 0) {
-        alert('Sélectionne un fichier JSON inscriptions.');
+        alert('Choisissez le fichier d\'inscriptions exporté par l\'autre poste.');
         return false;
     }
 
-    return confirm(
-        'Importer ce fichier d\'inscriptions ?\n\n' +
-        'Les états de paiement correspondants seront appliqués aux inscriptions locales trouvées.\n' +
-        'Aucune inscription I@nseo ne sera créée ou supprimée.'
-    );
+    const footer =
+        '\n\nChaque changement est noté dans la caisse, et l\'ancienne liste des paiements est gardée en copie de secours.\n' +
+        'Aucune inscription I@nseo n\'est créée ni supprimée.\n\nImporter ?';
+
+    if (!window.FileReader || !form) {
+        return confirm('Les paiements de ce poste vont être remplacés par ceux du fichier.' + footer);
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = function () {
+        let data = null;
+
+        try {
+            data = JSON.parse(String(reader.result || ''));
+        } catch (e) {
+            data = null;
+        }
+
+        if (!data || !Array.isArray(data.registrations)) {
+            alert('Ce fichier n\'est pas un export d\'inscriptions RegistrArc.');
+            return;
+        }
+
+        const filters = data.filters && typeof data.filters === 'object' ? data.filters : null;
+        const partial = !filters
+            || ['club', 'category', 'payment', 'session'].some(key => filters[key] && filters[key] !== 'all')
+            || (filters.search && String(filters.search).trim() !== '');
+        const count = data.registrations.length;
+        const at = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(String(data.exported_at || ''));
+        const when = at ? ' (exporté le ' + at[3] + '/' + at[2] + '/' + at[1] + ' à ' + at[4] + ':' + at[5] + ')' : '';
+
+        const text = partial
+            ? 'Ce fichier' + when + ' contient ' + count + ' engagement(s) d\'un export filtré.\n\n' +
+              'Leurs paiements vont REMPLACER ceux de ce poste : payé, remboursé ou non payé, comme dans le fichier. ' +
+              'Les autres engagements ne changent pas.'
+            : 'Ce fichier' + when + ' contient tous les engagements (' + count + ').\n\n' +
+              'Les paiements de ce poste vont être ENTIÈREMENT REMPLACÉS par ceux du fichier : ' +
+              'un engagement payé ici mais non payé, ou absent, dans le fichier redeviendra non payé.';
+
+        if (confirm(text + footer)) {
+            form.dataset.confirmed = '1';
+            button.click();
+        }
+    };
+
+    reader.onerror = function () {
+        alert('Impossible de lire ce fichier.');
+    };
+
+    reader.readAsText(input.files[0]);
+    return false;
 }
 
 function printGreffeList() {
@@ -791,6 +866,18 @@ function initLiveFilters() {
         radio.addEventListener('change', () => schedule(0));
     });
 
+    // Bouton « ABSENT » en haut de la liste : affiche cet archer (les autres filtres
+    // sont remis à zéro pour qu'il soit bien visible)
+    document.addEventListener('click', event => {
+        const chip = event.target.closest ? event.target.closest('.absent-chip') : null;
+
+        if (chip) {
+            form.querySelectorAll('select').forEach(select => { select.value = 'all'; });
+            form.querySelector('#search').value = chip.dataset.search || '';
+            schedule(0);
+        }
+    });
+
     // Pointage au greffe (vue par archer) : enregistré sans recharger la page
     const checkinForm = document.getElementById('checkinForm');
 
@@ -798,7 +885,8 @@ function initLiveFilters() {
         checkinForm.addEventListener('submit', event => {
             const button = event.submitter;
 
-            if (!button || button.name !== 'toggle_checkin') {
+            // Pointage (vue par archer) ou signalement « absent » retiré (badge ABSENT)
+            if (!button || (button.name !== 'toggle_checkin' && button.name !== 'clear_absent')) {
                 return;
             }
 

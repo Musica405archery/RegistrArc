@@ -626,3 +626,136 @@ dialog.rg-dialog::backdrop {
     gap: 8px;
     margin-top: 6px;
 }
+
+/* --- Signalement « absent » (mode Kiosk) : petit girophare ------------------- */
+/* Dôme rouge qui clignote sur son socle (immobile si l'appareil limite les animations) */
+.beacon {
+    position: relative;
+    display: inline-block;
+    flex: none;
+    width: 12px;
+    height: 13px;
+    vertical-align: -1px;
+}
+
+.beacon::before {
+    content: "";
+    position: absolute;
+    top: 1px;
+    left: 2px;
+    right: 2px;
+    height: 9px;
+    border-radius: 5px 5px 1px 1px;
+    background: #dc2626;
+    animation: beacon-flash 1s ease-in-out infinite;
+}
+
+.beacon::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    border-radius: 1px;
+    background: #374151;
+}
+
+@keyframes beacon-flash {
+    0%, 100% { background: #b91c1c; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    50% { background: #f87171; box-shadow: 0 0 6px 2px rgba(239, 68, 68, 0.75); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .beacon::before { animation: none; }
+}
+
+/* Bandeau des archers signalés absents, en haut de la liste */
+.absent-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid #fecaca;
+    border-left: 4px solid #dc2626;
+    border-radius: var(--radius);
+    background: #fff5f5;
+}
+
+.absent-strip-title {
+    margin-right: 4px;
+    color: #991b1b;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.absent-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid #fca5a5;
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.absent-chip:hover { background: #fee2e2; }
+.absent-chip-label { color: #b91c1c; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; }
+.absent-chip-name { font-weight: 700; }
+.absent-chip-target { color: var(--muted); }
+
+/* Badge ABSENT sous le nom (vue par engagement) : un clic retire le signalement */
+.absent-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 3px;
+    padding: 1px 8px;
+    border: 1px solid #fca5a5;
+    border-radius: 999px;
+    background: #fef2f2;
+    color: #b91c1c;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+}
+
+button.absent-badge { cursor: pointer; }
+button.absent-badge:hover { background: #fee2e2; }
+
+/* Vue par archer : girophare à la place de la croix */
+.checkin-btn.is-absent { background: #fef2f2; border-color: #fca5a5; }
+button.checkin-btn.is-absent:hover { background: #fee2e2; }
+.checkin-absent { color: #b91c1c; font-weight: 800; letter-spacing: 0.04em; }
+
+/* Engagement supprimé d'I@nseo, gardé pour son paiement */
+.removed-badge {
+    display: inline-block;
+    margin-top: 3px;
+    padding: 1px 8px;
+    border: 1px dashed #9ca3af;
+    border-radius: 999px;
+    background: #f3f4f6;
+    color: #4b5563;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+tr.is-removed > td { background: #fafafa; color: #6b7280; }
+
+/* Archer signalé absent : police barrée (nom, prénom, cible) */
+.is-struck {
+    text-decoration: line-through;
+    text-decoration-color: #b91c1c;
+    text-decoration-thickness: 2px;
+}

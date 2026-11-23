@@ -132,21 +132,6 @@ function registrarc_redirect_params($filters, $sortColumn, $sortDirection) {
 }
 
 // ---------------------------------------------------------------------------
-// Clé stable inscription
-// ---------------------------------------------------------------------------
-function registrarc_registration_key($licence, $categorie, $session, $target, $letter) {
-    return strtoupper(trim((string)$licence))
-        . '|'
-        . strtoupper(trim((string)$categorie))
-        . '|'
-        . trim((string)$session)
-        . '|'
-        . trim((string)$target)
-        . '|'
-        . strtoupper(trim((string)$letter));
-}
-
-// ---------------------------------------------------------------------------
 // Infos tournoi
 // ---------------------------------------------------------------------------
 $tournament = registrarc_get_tournament_info($TourId);
@@ -243,53 +228,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        $matched = 0;
-        $unmatched = 0;
-        $paidImported = 0;
-        $unpaidImported = 0;
-
-        $changes = [];
-
-        // Changements à appliquer d'après le fichier importé
-        foreach ($data['registrations'] as $reg) {
-            if (!is_array($reg)) {
-                $unmatched++;
-                continue;
-            }
-
-            $key = isset($reg['key']) ? trim((string)$reg['key']) : '';
-
-            if ($key === '') {
-                $key = registrarc_registration_key(
-                    isset($reg['licence']) ? $reg['licence'] : '',
-                    isset($reg['categorie']) ? $reg['categorie'] : '',
-                    isset($reg['session']) ? $reg['session'] : '',
-                    isset($reg['target']) ? $reg['target'] : '',
-                    isset($reg['letter']) ? $reg['letter'] : ''
-                );
-            }
-
-            if (!isset($localMap[$key])) {
-                $unmatched++;
-                continue;
-            }
-
-            $engagementId = $localMap[$key];
-            $payment = isset($reg['payment']) && is_array($reg['payment']) ? $reg['payment'] : [];
-            $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
-            $method = isset($payment['method']) ? registrarc_clean_payment_method($payment['method'], $paymentModes) : '';
-            $receiptRequired = !empty($payment['receipt_required']);
-
-            if ($status === 'PAYE') {
-                $changes[] = ['id' => $engagementId, 'action' => 'pay', 'method' => $method !== '' ? $method : 'ESP', 'receipt' => $receiptRequired];
-                $paidImported++;
-            } else {
-                $changes[] = ['id' => $engagementId, 'action' => 'cancel'];
-                $unpaidImported++;
-            }
-
-            $matched++;
-        }
+        // Le fichier importé remplace les paiements de ce poste (export complet : tous les
+        // engagements ; export filtré : seulement ceux du fichier). Voir registrarc_import_registrations_plan().
+        $plan = registrarc_import_registrations_plan($data, $localMap, registrarc_load_engagements($TourId), $paymentModes);
+        $changes = $plan['changes'];
+        $partialExport = $plan['partial'];
+        $matched = $plan['matched'];
+        $unmatched = $plan['unmatched'];
+        $paidImported = $plan['paid'];
+        $refundedImported = $plan['refunded'];
+        $unpaidImported = $plan['unpaid'];
+        $resetCount = $plan['reset'];
 
         $importResult = registrarc_apply_payment_changes($TourId, $changes, 'import');
         $saved = $importResult['ok'];
@@ -305,10 +254,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $warnings[] = "fichier importé plus ancien que les paiements locaux";
             }
 
-            $msg = "Import inscriptions terminé : $matched correspondance(s), $unmatched non trouvée(s), $paidImported payée(s), $unpaidImported non payée(s).";
+            $msg = ($partialExport
+                    ? "Import terminé : les paiements des $matched engagement(s) du fichier (export filtré) ont remplacé ceux de ce poste, les autres n'ont pas changé"
+                    : "Import terminé : les paiements de ce poste ont été remplacés par ceux du fichier")
+                . " ($paidImported payé(s), $refundedImported remboursé(s), $unpaidImported non payé(s)"
+                . ($resetCount > 0 ? ", $resetCount engagement(s) absent(s) du fichier remis à non payé" : '')
+                . ($unmatched > 0 ? ", $unmatched ligne(s) du fichier sans engagement correspondant dans I@nseo" : '') . ")."
+                . ($currentPaymentsTs > 0 ? " L'ancienne liste des paiements est gardée dans data/" . basename($currentPaymentsFile) . ".bak." : '');
 
-            if (!empty($warnings)) {
-                $msg .= " Attention : " . implode(' ; ', $warnings) . ".";
+            // Engagements laissés tels quels (par exemple un chèque déjà déposé à la banque)
+            $msg .= registrarc_skipped_message($TourId, $importResult['skipped']);
+
+            if (!empty($warnings) || !empty($importResult['skipped'])) {
+                $msg .= !empty($warnings) ? " Attention : " . implode(' ; ', $warnings) . "." : '';
                 $_SESSION['RegistrArc_message_type'] = 'warning';
             } else {
                 $_SESSION['RegistrArc_message_type'] = 'success';
@@ -441,6 +399,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $redirect();
     }
+
+    // Signalement « absent » fait depuis le mode Kiosk : retiré depuis la liste
+    if (isset($_POST['clear_absent'])) {
+        if (!registrarc_set_absent($TourId, [intval($_POST['clear_absent'])], false)) {
+            $setMessage("Erreur : impossible de retirer le signalement." . registrarc_storage_error_suffix(), 'error');
+        }
+
+        $redirect();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -487,6 +454,15 @@ foreach (registrarc_load_engagements($TourId) as $engagement) {
         'note'                 => $engagement['note'],
         'checked_in'           => $engagement['checked_in'],
         'checked_in_by'        => $engagement['checked_in_by'],
+        'absent'               => $engagement['absent'],
+        'absent_by'            => $engagement['absent_by'],
+        // Supprimé d'I@nseo, gardé pour son paiement
+        'removed'              => !empty($engagement['removed']),
+        'EnIndClEvent'         => $engagement['EnIndClEvent'],
+        'EnTeamClEvent'        => $engagement['EnTeamClEvent'],
+        'EnIndFEvent'          => $engagement['EnIndFEvent'],
+        'EnTeamFEvent'         => $engagement['EnTeamFEvent'],
+        'EnTeamMixEvent'       => $engagement['EnTeamMixEvent'],
         'deposit_id'           => $engagement['deposit_id'],
         'refund_method'        => isset($engagement['payment']['refund_method']) ? (string)$engagement['payment']['refund_method'] : '',
         'refund_reason'        => isset($engagement['payment']['refund_reason']) ? (string)$engagement['payment']['refund_reason'] : '',
@@ -544,6 +520,16 @@ foreach ($engagementsData as $e) {
     $stateFilters = ['paid' => 'paid', 'unpaid' => 'due', 'free' => 'free', 'refunded' => 'refunded'];
 
     if (isset($stateFilters[$filters['payment']]) && $e['state'] !== $stateFilters[$filters['payment']]) {
+        continue;
+    }
+
+    // Statut « Absents » : archers signalés absents (mode Kiosk) et engagements payés
+    // mais supprimés d'I@nseo. Ces derniers ne sont affichés qu'avec ce statut.
+    if ($filters['payment'] === 'absent') {
+        if (!$e['removed'] && ($e['absent'] === '' || $e['checked_in'] !== '')) {
+            continue;
+        }
+    } elseif ($e['removed']) {
         continue;
     }
 
@@ -636,15 +622,18 @@ if ($filters['view'] === 'archer') {
 
     $allByArcher = [];
 
+    // Engagements supprimés d'I@nseo : plus personne à pointer, absents de cette vue
     foreach ($engagementsData as $e) {
-        $allByArcher[$archerKey($e)][] = $e;
+        if (!$e['removed']) {
+            $allByArcher[$archerKey($e)][] = $e;
+        }
     }
 
     // Ordre du tri choisi : celui du premier engagement affiché de l'archer
     foreach ($displayEngagements as $e) {
         $key = $archerKey($e);
 
-        if (isset($displayArchers[$key])) {
+        if ($e['removed'] || isset($displayArchers[$key])) {
             continue;
         }
 
@@ -695,10 +684,13 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_registrations') {
                 'EnTeamFEvent' => $e['EnTeamFEvent'],
                 'EnTeamMixEvent' => $e['EnTeamMixEvent'],
             ],
+            // Payé, remboursé (avec son mode et son motif) ou non payé
             'payment' => [
-                'status' => $e['payment_status'] ? 'PAYE' : 'NON_PAYE',
-                'method' => $e['payment_status'] ? $e['payment_method'] : '',
+                'status' => $e['state'] === 'paid' ? 'PAYE' : ($e['state'] === 'refunded' ? 'REMBOURSE' : 'NON_PAYE'),
+                'method' => in_array($e['state'], ['paid', 'refunded'], true) ? $e['payment_method'] : '',
                 'receipt_required' => !empty($e['receipt_required']),
+                'refund_method' => $e['state'] === 'refunded' ? $e['refund_method'] : '',
+                'refund_reason' => $e['state'] === 'refunded' ? $e['refund_reason'] : '',
             ],
         ];
     }
@@ -706,7 +698,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_registrations') {
     $payload = [
         'module' => 'RegistrArc',
         'type' => 'registrations_export',
-        'version' => 1,
+        'version' => 2,                 // 2 : paiements remboursés exportés (REMBOURSE, mode et motif)
         'tour_id' => $TourId,
         'tournament_code' => $tournamentCode,
         'exported_at' => date('Y-m-d H:i:s'),
@@ -849,6 +841,7 @@ $categoryHtml = function (array $e) {
                         <option value="unpaid" <?php echo ($filters['payment'] === 'unpaid') ? 'selected' : ''; ?>>Non payés</option>
                         <option value="free" <?php echo ($filters['payment'] === 'free') ? 'selected' : ''; ?>>Gratuits</option>
                         <option value="refunded" <?php echo ($filters['payment'] === 'refunded') ? 'selected' : ''; ?>>Remboursés</option>
+                        <option value="absent" <?php echo ($filters['payment'] === 'absent') ? 'selected' : ''; ?>>Absents</option>
                     </select>
                 </div>
 
@@ -880,7 +873,7 @@ $categoryHtml = function (array $e) {
                     <label for="bulk_payment_method">Mode de paiement</label>
                     <select name="bulk_payment_method" id="bulk_payment_method">
                         <?php foreach ($paymentModes as $code => $label): ?>
-                            <option value="<?php echo htmlspecialchars($code); ?>">
+                            <option value="<?php echo htmlspecialchars($code); ?>"<?php echo registrarc_is_free_method($code) ? ' data-free="1"' : ''; ?>>
                                 <?php echo htmlspecialchars($label); ?>
                             </option>
                         <?php endforeach; ?>
@@ -948,7 +941,7 @@ $categoryHtml = function (array $e) {
                 </div>
 
                 <div class="filter-actions">
-                    <button type="submit" name="import_registrations" value="1" class="btn-primary" onclick="return confirmImportRegistrations();">Confirmer l'import</button>
+                    <button type="submit" name="import_registrations" value="1" class="btn-primary" onclick="return confirmImportRegistrations(this);">Confirmer l'import</button>
                     <button type="button" class="btn-ghost" onclick="toggleImportRegistrations();">Annuler</button>
                 </div>
             </div>
@@ -965,17 +958,50 @@ $categoryHtml = function (array $e) {
     }
 
     $statusClasses = ['paid' => 'status-paid', 'due' => 'status-unpaid', 'free' => 'status-free', 'refunded' => 'status-refunded'];
+
+    // Archers signalés absents depuis le mode Kiosk : tous, quels que soient les
+    // filtres, le plus récent en premier
+    $absentEngagements = array_values(array_filter($engagementsData, function ($e) {
+        return !$e['removed'] && $e['absent'] !== '' && $e['checked_in'] === '';
+    }));
+
+    usort($absentEngagements, function ($a, $b) {
+        return strcmp($b['absent'], $a['absent']);
+    });
     ?>
 
     <!-- Remplacé pendant la recherche en direct (assets/js/index.js) -->
     <div id="engagementsList">
+    <?php if (!empty($absentEngagements)): ?>
+        <!-- Un bouton par archer signalé absent : un clic l'affiche dans la liste -->
+        <div class="absent-strip" role="region" aria-label="Archers signalés absents">
+            <span class="absent-strip-title">Signalés absents</span>
+            <?php foreach ($absentEngagements as $e): ?>
+                <?php
+                $absentName = trim($e['nom'] . ' ' . $e['prenom']);
+                $absentTarget = !empty($e['target_is_unassigned']) ? 'Sans cible' : 'Cible ' . $e['target_label'];
+                ?>
+                <button type="button" class="absent-chip" data-search="<?php echo htmlspecialchars($e['licence'] !== '' ? $e['licence'] : $absentName); ?>" title="<?php echo htmlspecialchars('Signalé absent le ' . date('d/m à H:i', strtotime($e['absent'])) . ($e['absent_by'] !== '' ? ' par ' . $e['absent_by'] : '') . ($e['session'] !== '' ? ', départ ' . $e['session'] : '') . ' : cliquer pour l\'afficher dans la liste'); ?>">
+                    <span class="beacon" aria-hidden="true"></span>
+                    <span class="absent-chip-label">ABSENT</span>
+                    <span class="absent-chip-name is-struck"><?php echo htmlspecialchars($absentName); ?></span>
+                    <span class="absent-chip-target num"><?php echo htmlspecialchars($absentTarget); ?></span>
+                </button>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+
     <?php if ($filters['view'] === 'fdm'): ?>
         <?php
         // Feuilles de marque : une ligne par départ d'un archer ; la feuille est
         // imprimée par fdm.php (dessin I@nseo, flèches saisies, totaux et cumul)
         $fdmPrintable = 0;
+        // Pas de feuille de marque pour un engagement supprimé d'I@nseo
+        $fdmEngagements = array_values(array_filter($displayEngagements, function ($e) {
+            return !$e['removed'];
+        }));
 
-        foreach ($displayEngagements as $e) {
+        foreach ($fdmEngagements as $e) {
             $fdmPrintable += $e['session'] !== '' ? 1 : 0;
         }
         ?>
@@ -1004,7 +1030,7 @@ $categoryHtml = function (array $e) {
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($displayEngagements as $e): ?>
+                        <?php foreach ($fdmEngagements as $e): ?>
                             <?php $printable = $e['session'] !== ''; ?>
                             <tr>
                                 <td class="col-check">
@@ -1032,7 +1058,7 @@ $categoryHtml = function (array $e) {
                             </tr>
                         <?php endforeach; ?>
 
-                        <?php if (empty($displayEngagements)): ?>
+                        <?php if (empty($fdmEngagements)): ?>
                             <tr>
                                 <td colspan="10" style="text-align:center;padding:20px;color:var(--muted);">Aucun engagement trouvé.</td>
                             </tr>
@@ -1110,11 +1136,25 @@ $categoryHtml = function (array $e) {
                     </thead>
                     <tbody>
                         <?php foreach ($displayArchers as $row): ?>
-                            <?php $a = $row['archer']; ?>
+                            <?php
+                            $a = $row['archer'];
+                            // Signalé absent sur tous ses départs : nom et prénom barrés
+                            $allAbsent = true;
+
+                            foreach ($row['sessions'] as $items) {
+                                foreach ($items as $item) {
+                                    if ($item['absent'] === '' || $item['checked_in'] !== '') {
+                                        $allAbsent = false;
+                                    }
+                                }
+                            }
+
+                            $struck = $allAbsent ? ' class="is-struck"' : '';
+                            ?>
                             <tr>
                                 <td class="num"><?php echo htmlspecialchars($a['licence']); ?></td>
-                                <td><strong><?php echo htmlspecialchars($a['nom']); ?></strong></td>
-                                <td><?php echo htmlspecialchars($a['prenom']); ?></td>
+                                <td<?php echo $struck; ?>><strong><?php echo htmlspecialchars($a['nom']); ?></strong></td>
+                                <td<?php echo $struck; ?>><?php echo htmlspecialchars($a['prenom']); ?></td>
                                 <td><?php echo htmlspecialchars($a['club']); ?></td>
                                 <td><?php echo implode(', ', array_map($categoryHtml, $row['categories'])); ?></td>
                                 <?php foreach ($archerSessions as $sess): ?>
@@ -1128,15 +1168,31 @@ $categoryHtml = function (array $e) {
                                                 $face = isset($archerTargetFaces[$item['engagement_id']]) ? $archerTargetFaces[$item['engagement_id']] : null;
                                                 $faceLabel = registrarc_target_face_label($face);
                                                 $faceNotDefault = $faceLabel !== '' && empty($face['is_default']);
+                                                // Signalé absent depuis le mode Kiosk : girophare au lieu de la croix ;
+                                                // le pointer (il est finalement arrivé) retire le signalement
+                                                $isAbsent = !$done && $item['absent'] !== '';
                                                 $checkinTitle = $done
                                                     ? 'Passé au greffe le ' . date('d/m à H:i', strtotime($item['checked_in'])) . ($item['checked_in_by'] !== '' ? ' (' . $item['checked_in_by'] . ')' : '')
-                                                    : 'Pas encore passé au greffe';
+                                                    : ($isAbsent
+                                                        ? 'Signalé absent le ' . date('d/m à H:i', strtotime($item['absent'])) . ($item['absent_by'] !== '' ? ' (' . $item['absent_by'] . ')' : '')
+                                                        : 'Pas encore passé au greffe');
+                                                $checkinClass = $done ? 'is-done' : ($isAbsent ? 'is-absent' : 'is-todo');
+                                                $checkinMark = $done ? '✓' : ($isAbsent ? '<span class="beacon" aria-hidden="true"></span>' : '✕');
                                                 ?>
                                                 <div class="checkin">
                                                     <?php if ($canWrite): ?>
-                                                        <button type="submit" form="checkinForm" name="toggle_checkin" value="<?php echo intval($item['engagement_id']); ?>" class="checkin-btn <?php echo $done ? 'is-done' : 'is-todo'; ?>" title="<?php echo htmlspecialchars($checkinTitle . ($done ? ' : cliquer pour annuler' : ' : cliquer pour le pointer')); ?>" aria-label="<?php echo htmlspecialchars($checkinTitle); ?>"><?php echo $done ? '✓' : '✕'; ?></button>
+                                                        <button type="submit" form="checkinForm" name="toggle_checkin" value="<?php echo intval($item['engagement_id']); ?>" class="checkin-btn <?php echo $checkinClass; ?>" title="<?php echo htmlspecialchars($checkinTitle . ($done ? ' : cliquer pour annuler' : ($isAbsent ? ' : cliquer quand il arrive pour le pointer' : ' : cliquer pour le pointer'))); ?>" aria-label="<?php echo htmlspecialchars($checkinTitle); ?>"><?php echo $checkinMark; ?></button>
                                                     <?php else: ?>
-                                                        <span class="checkin-btn <?php echo $done ? 'is-done' : 'is-todo'; ?>" title="<?php echo htmlspecialchars($checkinTitle); ?>"><?php echo $done ? '✓' : '✕'; ?></span>
+                                                        <span class="checkin-btn <?php echo $checkinClass; ?>" title="<?php echo htmlspecialchars($checkinTitle); ?>"><?php echo $checkinMark; ?></span>
+                                                    <?php endif; ?>
+
+                                                    <?php if ($isAbsent): ?>
+                                                        <div class="checkin-info">
+                                                            <div class="checkin-absent">ABSENT</div>
+                                                            <div class="checkin-target is-struck<?php echo !empty($item['target_is_unassigned']) ? ' target-unassigned' : ''; ?>">
+                                                                <?php echo !empty($item['target_is_unassigned']) ? htmlspecialchars($item['target_label']) : 'Cible ' . htmlspecialchars($item['target_label']); ?>
+                                                            </div>
+                                                        </div>
                                                     <?php endif; ?>
 
                                                     <?php if ($done): ?>
@@ -1206,9 +1262,13 @@ $categoryHtml = function (array $e) {
                         <?php
                         $state = $e['state'];
                         $archerLabel = trim($e['nom'] . ' ' . $e['prenom']);
+                        // Signalé absent (mode Kiosk) : nom et prénom barrés
+                        $isAbsentRow = $e['absent'] !== '' && $e['checked_in'] === '';
+                        // Nom barré : signalé absent, ou supprimé d'I@nseo (classé dans les absents)
+                        $isStruck = $isAbsentRow || $e['removed'];
                         $methodLabel = isset($paymentModes[$e['payment_method']]) ? $paymentModes[$e['payment_method']] : $e['payment_method'];
                         ?>
-                        <tr>
+                        <tr<?php echo $e['removed'] ? ' class="is-removed"' : ''; ?>>
                             <td class="col-check">
                                 <input
                                     type="checkbox"
@@ -1223,14 +1283,25 @@ $categoryHtml = function (array $e) {
                             <td><span class="chip chip-engagement">n° <?php echo intval($e['numero_engagement']); ?></span></td>
                             <td class="num"><?php echo htmlspecialchars($e['licence']); ?></td>
                             <td>
-                                <div class="row-name"><?php echo htmlspecialchars($e['nom']); ?></div>
+                                <div class="row-name<?php echo $isStruck ? ' is-struck' : ''; ?>"><?php echo htmlspecialchars($e['nom']); ?></div>
+                                <?php if ($e['removed']): ?>
+                                    <span class="removed-badge" title="Cet archer n'est plus dans les participants d'I@nseo. L'engagement est gardé parce qu'il a été payé : remboursez-le ou supprimez le paiement si besoin.">Absent · supprimé d'I@nseo</span>
+                                <?php endif; ?>
+                                <?php if ($isAbsentRow): ?>
+                                    <?php $absentTitle = 'Signalé absent le ' . date('d/m à H:i', strtotime($e['absent'])) . ($e['absent_by'] !== '' ? ' par ' . $e['absent_by'] : ''); ?>
+                                    <?php if ($canWrite): ?>
+                                        <button type="submit" form="checkinForm" name="clear_absent" value="<?php echo intval($e['engagement_id']); ?>" class="absent-badge" title="<?php echo htmlspecialchars($absentTitle . ' : cliquer pour retirer le signalement'); ?>" onclick="return confirm(<?php echo htmlspecialchars(json_encode('Retirer le signalement « absent » de ' . $archerLabel . ' ?'), ENT_QUOTES); ?>);"><span class="beacon" aria-hidden="true"></span>ABSENT</button>
+                                    <?php else: ?>
+                                        <span class="absent-badge" title="<?php echo htmlspecialchars($absentTitle); ?>"><span class="beacon" aria-hidden="true"></span>ABSENT</span>
+                                    <?php endif; ?>
+                                <?php endif; ?>
                                 <?php if ($e['note'] !== ''): ?>
                                     <div class="row-extra">
                                         <span class="row-note"><?php echo htmlspecialchars($e['note']); ?></span>
                                     </div>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo htmlspecialchars($e['prenom']); ?></td>
+                            <td<?php echo $isStruck ? ' class="is-struck"' : ''; ?>><?php echo htmlspecialchars($e['prenom']); ?></td>
                             <td><?php echo htmlspecialchars(trim($e['country_code'] . ' - ' . $e['club'])); ?></td>
                             <td>
                                 <?php echo $categoryHtml($e); ?>
@@ -1268,7 +1339,11 @@ $categoryHtml = function (array $e) {
                                                 <?php echo registrarc_form_fields($TourId); ?>
                                                 <input type="hidden" name="engagement_id" value="<?php echo intval($e['engagement_id']); ?>">
                                                 <input type="hidden" name="validate_payment" value="unvalidate">
-                                                <button type="submit" class="btn-small btn-danger" onclick="return confirm(<?php echo htmlspecialchars(json_encode('Annuler le paiement de ' . $archerLabel . ' ? Son pointage au greffe sera aussi retiré.'), ENT_QUOTES); ?>);">Annuler</button>
+                                                <?php if ($e['removed']): ?>
+                                                    <button type="submit" class="btn-small btn-danger" title="Cet engagement n'est plus dans I@nseo : il disparaîtra de la liste" onclick="return confirm(<?php echo htmlspecialchars(json_encode('Supprimer le paiement de ' . $archerLabel . ' ? Cet engagement n\'est plus dans I@nseo : il disparaîtra de la liste.'), ENT_QUOTES); ?>);">Supprimer le paiement</button>
+                                                <?php else: ?>
+                                                    <button type="submit" class="btn-small btn-danger" onclick="return confirm(<?php echo htmlspecialchars(json_encode('Annuler le paiement de ' . $archerLabel . ' ? Son pointage au greffe sera aussi retiré.'), ENT_QUOTES); ?>);">Annuler</button>
+                                                <?php endif; ?>
                                             </form>
                                         <?php endif; ?>
 
@@ -1303,11 +1378,11 @@ $categoryHtml = function (array $e) {
 
                                             <select name="payment_method">
                                                 <?php foreach ($paymentModes as $code => $label): ?>
-                                                    <option value="<?php echo htmlspecialchars($code); ?>"><?php echo htmlspecialchars($label); ?></option>
+                                                    <option value="<?php echo htmlspecialchars($code); ?>"<?php echo registrarc_is_free_method($code) ? ' data-free="1"' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
                                                 <?php endforeach; ?>
                                             </select>
 
-                                            <button type="submit" class="btn-small btn-success" onclick="return confirm(<?php echo htmlspecialchars(json_encode('Valider le paiement de ' . $archerLabel . ' ?'), ENT_QUOTES); ?>);">Valider</button>
+                                            <button type="submit" class="btn-small btn-success" data-archer="<?php echo htmlspecialchars($archerLabel); ?>" data-amount="<?php echo htmlspecialchars(registrarc_format_montant($e['montant'])); ?>" onclick="return confirmRowPayment(this);">Valider</button>
                                         </form>
                                     <?php endif; ?>
 

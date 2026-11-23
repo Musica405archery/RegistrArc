@@ -39,7 +39,7 @@ $ids = [];
 foreach (explode(',', isset($_GET['ids']) ? (string)$_GET['ids'] : '') as $id) {
     $id = intval($id);
 
-    if ($id > 0 && isset($engagements[$id]) && $engagements[$id]['session'] !== '' && !in_array($id, $ids, true)) {
+    if ($id > 0 && isset($engagements[$id]) && empty($engagements[$id]['removed']) && $engagements[$id]['session'] !== '' && !in_array($id, $ids, true)) {
         $ids[] = $id;
     }
 }

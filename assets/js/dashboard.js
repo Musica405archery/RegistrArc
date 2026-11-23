@@ -299,8 +299,10 @@
         const inSession = function (s) { return state.session === '*' || s === state.session; };
         const R = data.records.filter(function (r) { return inSession(r.s); });
         const J = OPS.filter(function (op) { return inSession(op.session); });
+        // Engagements supprimés d'I@nseo (gardés pour leur paiement) : comptés dans
+        // l'argent encaissé seulement, plus dans les archers ni le passage au greffe
         const A = {
-            R: R,
+            R: R.filter(function (r) { return !r.rm; }),
             J: J,
             counts: { paid: 0, due: 0, free: 0, refunded: 0 },
             collected: 0,
@@ -314,6 +316,8 @@
             modes: {},
             tarifs: {},
             checked: 0,           // engagements passés au greffe
+            absent: 0,            // engagements signalés absents (mode Kiosk)
+            removed: 0,           // engagements supprimés d'I@nseo, gardés pour leur paiement
             unassigned: 0,
             upgraded: 0,
             special: 0,
@@ -325,6 +329,23 @@
             const paid = r.st === 'paid' ? 1 : 0;
             const due = r.st === 'due' ? 1 : 0;
             const other = paid || due ? 0 : 1;
+
+            if (r.rm) {
+                A.removed++;
+                A.collected += r.p;
+
+                if (paid) {
+                    add(A.modes, r.m, { amount: r.p, count: 1 });
+
+                    if (r.m === 'CHQ' && !r.dep) {
+                        A.chequesPending.count++;
+                        A.chequesPending.amount += r.p;
+                    }
+                }
+
+                add(A.sessions, r.s, { collected: r.p });
+                return;
+            }
 
             A.counts[r.st]++;
             A.collected += r.p;
@@ -344,6 +365,7 @@
 
             add(A.sessions, r.s, { paid: paid, due: due, other: other, collected: r.p, remaining: r.d, checked: r.ci ? 1 : 0, count: 1 });
             A.checked += r.ci ? 1 : 0;
+            A.absent += r.ab ? 1 : 0;
             add(A.categories, r.cat, { count: 1 });
             add(A.clubs, r.c, { count: 1, due: due, remaining: r.d });
 
@@ -625,7 +647,7 @@
         const jeunes = archers.filter(function (a) { return A.archers[a] === 'jeunes'; }).length;
         const clubs = Object.keys(A.clubArchers).length;
         const pct = percent(A.checked, A.R.length);
-        const toCheck = A.unassigned + A.upgraded;
+        const toCheck = A.unassigned + A.upgraded + A.absent;
         const checks = [];
 
         if (A.unassigned) {
@@ -634,6 +656,10 @@
 
         if (A.upgraded) {
             checks.push(plural(A.upgraded, 'surclassé', 'surclassés'));
+        }
+
+        if (A.absent) {
+            checks.push(plural(A.absent, 'absent', 'absents'));
         }
 
         return [

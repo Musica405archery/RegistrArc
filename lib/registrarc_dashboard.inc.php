@@ -58,6 +58,8 @@ function registrarc_dashboard_data($TourId) {
             'n' => $e['note'] !== '' ? 1 : 0,                                          // note
             'dep' => $e['deposit_id'] !== '' ? 1 : 0,                                  // chèque déposé
             'ci' => $e['checked_in'] !== '' ? 1 : 0,                                   // passé au greffe
+            'ab' => $e['absent'] !== '' ? 1 : 0,                                       // signalé absent
+            'rm' => !empty($e['removed']) ? 1 : 0,                                     // supprimé d'I@nseo, gardé pour son paiement
         ];
     }
 
