@@ -60,7 +60,7 @@ if ($type === 'engagements') {
             $e['target_label'],
             $e['numero'],
             $amount($e['amount_due']),
-            registrarc_state_label($e['state']),
+            registrarc_state_label($e['state']) . (!empty($e['removed']) ? " · supprimé d'I@nseo" : ''),
             $e['state'] === 'paid' || $e['state'] === 'refunded' ? $modeLabel($e['payment_method']) : '',
             isset($payment['paid_at']) ? $payment['paid_at'] : (isset($payment['updated_at']) && $e['state'] === 'paid' ? $payment['updated_at'] : ''),
             $e['deposit_id'],

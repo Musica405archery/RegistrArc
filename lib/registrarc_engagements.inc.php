@@ -11,7 +11,12 @@
 // 2. plafond par archer : le total d'un archer ne dépasse pas le plafond
 //
 // Fichiers JSON propres au tournoi :
-// - archers_<TourId>.json  : note et passage au greffe, par engagement
+// - archers_<TourId>.json  : note, passage au greffe et signalement « absent »,
+//   par engagement
+//
+// Un engagement payé (ou remboursé) puis supprimé d'I@nseo reste dans la liste,
+// marqué « removed », d'après la photo gardée avec son paiement : l'argent
+// encaissé ne disparaît pas et l'engagement peut encore être remboursé.
 // ============================================================================
 
 // ---------------------------------------------------------------------------
@@ -77,6 +82,7 @@ function registrarc_set_archer_note($TourId, $engagementId, $note) {
 }
 
 // Archer présenté au greffe pour ce départ, ou non. Retourne false en cas d'erreur d'écriture.
+// Pointer un archer signalé absent retire le signalement : il est arrivé.
 function registrarc_toggle_checkin($TourId, $engagementId) {
     $key = (string)intval($engagementId);
 
@@ -88,6 +94,7 @@ function registrarc_toggle_checkin($TourId, $engagementId) {
         } else {
             $entry['checked_in'] = date('Y-m-d H:i:s');
             $entry['checked_in_by'] = registrarc_operator_name();
+            unset($entry['absent'], $entry['absent_by']);
         }
 
         $info[$key] = $entry;
@@ -114,8 +121,44 @@ function registrarc_mark_checked_in($TourId, array $ids) {
             if (empty($entry['checked_in'])) {
                 $entry['checked_in'] = $now;
                 $entry['checked_in_by'] = $operator;
+                unset($entry['absent'], $entry['absent_by']);
                 $info[$key] = $entry;
             }
+        }
+    });
+}
+
+// Signale des engagements absents (mode Kiosk), ou retire le signalement ($absent = false).
+// Un archer signalé absent n'est plus pointé au greffe ; le pointer retire le signalement.
+// Ceux déjà signalés gardent l'heure et l'opérateur du premier signalement.
+function registrarc_set_absent($TourId, array $ids, $absent) {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+
+    if (empty($ids)) {
+        return true;
+    }
+
+    return registrarc_update_archer_info($TourId, function (array &$info) use ($ids, $absent) {
+        $now = date('Y-m-d H:i:s');
+        $operator = registrarc_operator_name();
+
+        foreach ($ids as $id) {
+            $key = (string)$id;
+            $entry = isset($info[$key]) && is_array($info[$key]) ? $info[$key] : [];
+
+            if ($absent) {
+                if (empty($entry['absent'])) {
+                    $entry['absent'] = $now;
+                    $entry['absent_by'] = $operator;
+                }
+
+                unset($entry['checked_in'], $entry['checked_in_by']);
+            } else {
+                unset($entry['absent'], $entry['absent_by']);
+            }
+
+            $info[$key] = $entry;
+            registrarc_archer_info_cleanup($info, $key);
         }
     });
 }
@@ -165,13 +208,126 @@ function registrarc_load_greffe_options($TourId) {
     return registrarc_normalize_greffe_options(isset($settings['greffe']) ? $settings['greffe'] : null);
 }
 
-// Retire un engagement sans note ni pointage
+// Retire un engagement sans note, ni pointage, ni signalement « absent »
 function registrarc_archer_info_cleanup(array &$info, $key) {
     $entry = $info[$key];
 
-    if ((!isset($entry['note']) || $entry['note'] === '') && empty($entry['checked_in'])) {
+    if ((!isset($entry['note']) || $entry['note'] === '') && empty($entry['checked_in']) && empty($entry['absent'])) {
         unset($info[$key]);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Engagements supprimés d'I@nseo après paiement
+// ---------------------------------------------------------------------------
+// Photo d'un engagement, gardée avec son paiement (clé « snapshot ») : si
+// l'archer est ensuite supprimé d'I@nseo, RegistrArc l'affiche encore.
+function registrarc_engagement_snapshot(array $e) {
+    $snap = [];
+
+    foreach (['licence', 'nom', 'prenom', 'categorie', 'class_code', 'age_class', 'club', 'club_full', 'country_code', 'session', 'target', 'letter'] as $key) {
+        $snap[$key] = isset($e[$key]) ? (string)$e[$key] : '';
+    }
+
+    $snap['numero'] = isset($e['numero']) ? intval($e['numero']) : 0;
+
+    return $snap;
+}
+
+// Met à jour la photo de chaque paiement (payé ou remboursé) dont l'engagement
+// est encore dans I@nseo. Appelé à chaque écriture des paiements.
+function registrarc_payments_refresh_snapshots(array &$payments, array $engagements) {
+    foreach ($payments as $key => $payment) {
+        $id = intval($key);
+
+        if (!is_array($payment) || !isset($engagements[$id]) || !empty($engagements[$id]['removed'])) {
+            continue;
+        }
+
+        $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : '';
+
+        if ($status !== 'PAYE' && $status !== 'REMBOURSE') {
+            continue;
+        }
+
+        $snap = registrarc_engagement_snapshot($engagements[$id]);
+
+        if (!isset($payment['snapshot']) || $payment['snapshot'] !== $snap) {
+            $payments[$key]['snapshot'] = $snap;
+        }
+    }
+}
+
+// Engagement supprimé d'I@nseo, reconstitué d'après la photo de son paiement
+// (ou, pour un paiement plus ancien sans photo, le nom noté dans le journal).
+// Son montant est celui encaissé ; il n'a ni score, ni pointage, ni épreuve.
+function registrarc_removed_engagement($id, array $payment, array $info, $journalName = '') {
+    $snap = isset($payment['snapshot']) && is_array($payment['snapshot']) ? $payment['snapshot'] : [];
+    $get = function ($key) use ($snap) {
+        return isset($snap[$key]) ? trim((string)$snap[$key]) : '';
+    };
+
+    $nom = strtoupper($get('nom'));
+    $prenom = $get('prenom');
+
+    if ($nom === '' && $prenom === '') {
+        $nom = trim((string)$journalName) !== '' ? trim((string)$journalName) : 'Engagement n° ' . intval($id);
+    }
+
+    $target = $get('target');
+    $letter = $get('letter');
+    $unassigned = registrarc_is_null_empty_or_zero($target) || registrarc_is_null_empty_or_zero($letter);
+    $method = isset($payment['method']) ? registrarc_normalize_payment_code($payment['method']) : '';
+    $amount = isset($payment['amount']) ? round((float)$payment['amount'], 2) : 0.0;
+    $state = registrarc_engagement_state($payment, $amount);
+    $ageClass = $get('age_class');
+    $classCode = $get('class_code');
+
+    return [
+        'engagement_id' => intval($id),
+        'licence' => strtoupper($get('licence')),
+        'nom' => $nom,
+        'prenom' => $prenom,
+        'categorie' => $get('categorie'),
+        'class_code' => $classCode,
+        'age_class' => $ageClass,
+        'is_upgraded' => $ageClass !== '' && strtoupper($ageClass) !== strtoupper($classCode),
+        'club' => $get('club'),
+        'club_full' => $get('club_full'),
+        'country_code' => $get('country_code'),
+        'session' => $get('session'),
+        'target' => $target,
+        'letter' => $letter,
+        'target_no' => $unassigned ? '' : trim($target . $letter),
+        'target_label' => $unassigned ? 'Archer non affecté' : trim($target . $letter),
+        'target_is_unassigned' => $unassigned,
+        'score' => 0,
+        'hits' => 0,
+        'EnIndClEvent' => '0',
+        'EnTeamClEvent' => '0',
+        'EnIndFEvent' => '0',
+        'EnTeamFEvent' => '0',
+        'EnTeamMixEvent' => '0',
+        'numero' => isset($snap['numero']) ? intval($snap['numero']) : 0,
+        'base_amount' => $amount,
+        'rule_label' => '',
+        'rule_count' => 0,
+        'note' => isset($info['note']) ? trim((string)$info['note']) : '',
+        'checked_in' => '',
+        'checked_in_by' => '',
+        'absent' => '',
+        'absent_by' => '',
+        'adjustments' => [],
+        'amount_due' => $amount,
+        'payment' => $payment,
+        'payment_method' => $method,
+        'receipt_required' => !empty($payment['receipt_required']),
+        'deposit_id' => isset($payment['deposit_id']) ? (string)$payment['deposit_id'] : '',
+        'state' => $state,
+        'is_paid' => $state === 'paid',
+        'amount' => $amount,
+        'removed' => true,
+    ];
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +500,10 @@ function registrarc_load_engagements($TourId, $refresh = false) {
         // Présenté au greffe : date du pointage, '' sinon
         $entry['checked_in'] = isset($info['checked_in']) ? (string)$info['checked_in'] : '';
         $entry['checked_in_by'] = isset($info['checked_in_by']) ? (string)$info['checked_in_by'] : '';
+        // Signalé absent (mode Kiosk) : date du signalement, '' sinon
+        $entry['absent'] = isset($info['absent']) ? (string)$info['absent'] : '';
+        $entry['absent_by'] = isset($info['absent_by']) ? (string)$info['absent_by'] : '';
+        $entry['removed'] = false;
 
         $entry['adjustments'] = [];
         $entry['amount_due'] = $entry['base_amount'];
@@ -388,6 +548,40 @@ function registrarc_load_engagements($TourId, $refresh = false) {
 
         // Montant affiché : 0 pour un engagement réglé en mode Gratuit
         $engagements[$id]['amount'] = ($state === 'paid' && registrarc_is_free_method($method)) ? 0 : $entry['amount_due'];
+    }
+
+    // Engagements payés (ou remboursés) puis supprimés d'I@nseo : gardés, d'après
+    // la photo de leur paiement, pour ne pas perdre l'argent encaissé
+    $journalNames = null;
+
+    foreach ($payments as $key => $payment) {
+        $id = intval($key);
+
+        if ($id <= 0 || isset($engagements[$id]) || !is_array($payment)) {
+            continue;
+        }
+
+        $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : '';
+
+        if ($status !== 'PAYE' && $status !== 'REMBOURSE') {
+            continue;
+        }
+
+        // Paiement plus ancien, sans photo : le nom de l'archer noté dans le journal
+        if (empty($payment['snapshot']) && $journalNames === null) {
+            $journalNames = [];
+
+            if (function_exists('registrarc_load_journal')) {
+                foreach (registrarc_load_journal($TourId) as $line) {
+                    if (is_array($line) && !empty($line['engagement_id']) && isset($line['archer']) && trim((string)$line['archer']) !== '') {
+                        $journalNames[intval($line['engagement_id'])] = (string)$line['archer'];
+                    }
+                }
+            }
+        }
+
+        $info = isset($archerInfo[(string)$id]) && is_array($archerInfo[(string)$id]) ? $archerInfo[(string)$id] : [];
+        $engagements[$id] = registrarc_removed_engagement($id, $payment, $info, isset($journalNames[$id]) ? $journalNames[$id] : '');
     }
 
     $cache[$TourId] = $engagements;

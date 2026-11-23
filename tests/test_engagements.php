@@ -241,3 +241,83 @@ test('surclassé : catégorie d\'âge différente de la catégorie de classement
     assert_same(false, $e[$same]['is_upgraded'], 'même catégorie, casse différente');
     assert_same(false, $e[$unknown]['is_upgraded'], 'date de naissance inconnue : pas signalé');
 });
+
+test('absent : signalé depuis le mode Kiosk, retiré au pointage ou à la demande', function () {
+    $a = test_add_entry('A1', 'CLS1H', '1099000', 1);
+    $b = test_add_entry('B1', 'CLS1H', '1099000', 1);
+    $c = test_add_entry('C1', 'CLS1H', '1099000', 2);
+
+    // Un archer pointé puis signalé absent n'est plus pointé
+    assert_true(registrarc_toggle_checkin(1, $b));
+    assert_true(registrarc_set_absent(1, [$a, $b, $c, 0], true));
+    $e = registrarc_load_engagements(1, true);
+    assert_true($e[$a]['absent'] !== '' && $e[$b]['absent'] !== '' && $e[$c]['absent'] !== '', 'signalés');
+    assert_same('', $e[$b]['checked_in'], 'plus pointé');
+
+    // Signalé une deuxième fois : l'heure du premier signalement reste
+    $info = registrarc_load_archer_info(1);
+    $info[(string)$a]['absent'] = '2026-11-22 08:00:00';
+    file_put_contents(registrarc_archers_file_path(1), json_encode($info));
+    assert_true(registrarc_set_absent(1, [$a], true));
+    assert_same('2026-11-22 08:00:00', registrarc_load_engagements(1, true)[$a]['absent']);
+
+    // Pointé (il est finalement arrivé) ou payé au comptoir : plus absent
+    assert_true(registrarc_toggle_checkin(1, $a));
+    registrarc_record_payments(1, [$b], 'ESP', false, 'kiosque');
+    $e = registrarc_load_engagements(1, true);
+    assert_same('', $e[$a]['absent'], 'pointé : signalement retiré');
+    assert_same('', $e[$b]['absent'], 'payé au comptoir et pointé : signalement retiré');
+    assert_true($e[$b]['checked_in'] !== '');
+
+    // Retiré à la demande : plus rien n'est gardé pour cet engagement
+    assert_true(registrarc_set_absent(1, [$c], false));
+    assert_same('', registrarc_load_engagements(1, true)[$c]['absent']);
+    assert_true(!isset(registrarc_load_archer_info(1)[(string)$c]), 'entrée vide supprimée');
+
+    // Tableau de bord : signalé absent
+    assert_true(registrarc_set_absent(1, [$c], true));
+    registrarc_load_engagements(1, true);
+    $records = registrarc_dashboard_data(1)['records'];
+    assert_same(1, array_sum(array_column($records, 'ab')));
+});
+
+test('engagement payé puis supprimé d\'I@nseo : gardé dans la liste, remboursable', function () {
+    $a = test_add_entry('A1', 'CLS1H', '1099000', 2, '7', 'C');
+    $b = test_add_entry('B1', 'CLS1H', '1099000', 1);
+    $c = test_add_entry('C1', 'CLS1H', '1099000', 1);
+    $d = test_add_entry('D1', 'CLS1H', '1099000', 1);
+
+    registrarc_record_payments(1, [$a, $d], 'CHQ', false, 'liste');
+    assert_same('NOM' . $a, registrarc_load_payments(1)[(string)$a]['snapshot']['nom'], 'photo prise au paiement');
+
+    // Un paiement plus ancien, sans photo : le nom vient du journal
+    $payments = registrarc_load_payments(1);
+    unset($payments[(string)$d]['snapshot']);
+    file_put_contents(registrarc_payments_file_path(1), json_encode($payments));
+
+    // A et D supprimés d'I@nseo ; C supprimé sans avoir payé
+    $GLOBALS['test_db']['entries'] = array_values(array_filter($GLOBALS['test_db']['entries'], function ($row) use ($b) {
+        return $row->engagement_id === $b;
+    }));
+    $e = registrarc_load_engagements(1, true);
+
+    assert_same([$b, $a, $d], array_keys($e), 'C a disparu, A et D sont gardés');
+    assert_true($e[$a]['removed'] && !$e[$b]['removed']);
+    assert_same(['NOM' . $a, '1099000', '2', '7C'], [$e[$a]['nom'], $e[$a]['country_code'], $e[$a]['session'], $e[$a]['target_label']]);
+    assert_same('paid', $e[$a]['state']);
+    assert_amount(10, $e[$a]['amount'], 'le montant encaissé');
+    assert_same('NOM' . $d . ' Prénom' . $d, $e[$d]['nom'], 'nom repris du journal');
+
+    // Tableau de bord : compté dans l'argent, pas dans les archers
+    $records = registrarc_dashboard_data(1)['records'];
+    assert_same([0, 1, 1], array_column($records, 'rm'));
+
+    // Remboursé : reste affiché ; paiement supprimé : disparaît
+    registrarc_refund_payments(1, [$a], 'CHQ', 'liste', 'Forfait');
+    $e = registrarc_load_engagements(1, true);
+    assert_same('refunded', $e[$a]['state']);
+    assert_same('NOM' . $a, $e[$a]['nom'], 'photo gardée au remboursement');
+
+    registrarc_cancel_payments(1, [$a], 'liste');
+    assert_true(!isset(registrarc_load_engagements(1, true)[$a]), 'plus rien à garder');
+});

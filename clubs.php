@@ -68,6 +68,11 @@ $departements = registrarc_departements();
 $clubs = [];
 
 foreach (registrarc_load_engagements($TourId) as $e) {
+    // Engagement supprimé d'I@nseo (gardé pour son paiement) : plus un participant
+    if (!empty($e['removed'])) {
+        continue;
+    }
+
     $code = trim((string)$e['country_code']);
 
     if (!isset($clubs[$code])) {

@@ -55,6 +55,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
+    // Absent : les archers cochés sont signalés au greffe (liste des engagements) et,
+    // si on a répondu oui, leurs départs déjà payés sont remboursés ;
+    // Présent : le signalement est retiré
+    if (isset($_POST['absent_action']) && ($_POST['absent_action'] === 'absent' || $_POST['absent_action'] === 'present')) {
+        $absent = $_POST['absent_action'] === 'absent';
+        $ids = [];
+
+        foreach ((!empty($_POST['engagements']) && is_array($_POST['engagements']) ? $_POST['engagements'] : []) as $id) {
+            if (intval($id) > 0) {
+                $ids[] = intval($id);
+            }
+        }
+
+        $ids = array_values(array_unique($ids));
+
+        // Mode du remboursement : '' = le mode de chaque paiement
+        $refund = $absent && !empty($_POST['absent_refund']);
+        $refundMethod = isset($_POST['absent_refund_method']) && trim((string)$_POST['absent_refund_method']) !== ''
+            ? registrarc_clean_payment_method($_POST['absent_refund_method'], $paymentModes)
+            : '';
+
+        if (empty($ids)) {
+            $_SESSION['RegistrArc_kiosk_message'] = 'Aucun archer sélectionné.';
+            $_SESSION['RegistrArc_kiosk_message_type'] = 'error';
+        } elseif (!$absent && registrarc_set_absent($TourId, $ids, false)) {
+            $_SESSION['RegistrArc_kiosk_message'] = 'Signalement « absent » retiré pour ' . count($ids) . ' archer(s).';
+            $_SESSION['RegistrArc_kiosk_message_type'] = 'success';
+        } elseif ($absent && ($report = registrarc_report_absent($TourId, $ids, $refund, $refundMethod, 'kiosque')) && $report['ok']) {
+            $_SESSION['RegistrArc_kiosk_message'] = count($ids) . ' archer(s) signalé(s) absent(s) : le greffe le voit en haut de la liste des engagements.'
+                . (!empty($report['refunded']) ? ' ' . count($report['refunded']) . ' départ(s) remboursé(s) : ' . registrarc_format_montant($report['amount']) . ' €.' : ($refund ? ' Aucun départ payé à rembourser.' : ''));
+            $_SESSION['RegistrArc_kiosk_message_type'] = 'success';
+
+            $skippedMessage = registrarc_skipped_message($TourId, $report['skipped']);
+
+            if ($skippedMessage !== '') {
+                $_SESSION['RegistrArc_kiosk_message'] .= $skippedMessage;
+                $_SESSION['RegistrArc_kiosk_message_type'] = 'warning';
+            }
+        } else {
+            $_SESSION['RegistrArc_kiosk_message'] = "Erreur : signalement ou remboursement non enregistré." . registrarc_storage_error_suffix();
+            $_SESSION['RegistrArc_kiosk_message_type'] = 'error';
+        }
+
+        header('Location: kiosk.php');
+        exit();
+    }
+
     if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'validate' && !empty($_POST['engagements']) && is_array($_POST['engagements'])) {
         $method = isset($_POST['bulk_payment_method'])
             ? registrarc_clean_payment_method($_POST['bulk_payment_method'], $paymentModes)
@@ -130,6 +177,11 @@ $sessions = [];
 $targetFaces = registrarc_load_target_faces($TourId);
 
 foreach (registrarc_load_engagements($TourId) as $engagement) {
+    // Engagement supprimé d'I@nseo (gardé pour son paiement) : pas au kiosque
+    if (!empty($engagement['removed'])) {
+        continue;
+    }
+
     if ($engagement['session'] !== '') {
         $sessions[$engagement['session']] = true;
     }
@@ -163,6 +215,10 @@ foreach (registrarc_load_engagements($TourId) as $engagement) {
         'is_free' => registrarc_nothing_due($engagement['amount_due']) || ($engagement['is_paid'] && $method === 'GRA'),
         'nothing_due' => registrarc_nothing_due($engagement['amount_due']),
         'note' => $engagement['note'],
+        'absent' => $engagement['absent'],
+        'absent_by' => $engagement['absent_by'],
+        // Montant encaissé : proposé au remboursement si l'archer est signalé absent
+        'amount_paid' => $engagement['state'] === 'paid' ? (float)$engagement['amount'] : 0,
         'target_face' => isset($targetFaces[$engagement['engagement_id']]) ? $targetFaces[$engagement['engagement_id']] : null,
     ];
 }
@@ -342,8 +398,13 @@ foreach ($rows as $r) {
                         $row['country_code'] . ' ' .
                         $row['categorie'] . ' ' .
                         (!empty($row['is_upgraded']) ? 'surclassé ' : '') .
+                        ($row['absent'] !== '' ? 'absent ' : '') .
                         $row['tarif_label']
                     );
+                    $isAbsent = $row['absent'] !== '';
+                    $absentTitle = $isAbsent
+                        ? 'Signalé absent le ' . date('d/m à H:i', strtotime($row['absent'])) . ($row['absent_by'] !== '' ? ' par ' . $row['absent_by'] : '')
+                        : '';
                     // Départ et catégorie d'abord : le club, souvent long, est coupé en premier
                     // Départ, catégorie (en rouge si surclassé), club ; chaque morceau échappé
                     $categoryHtml = htmlspecialchars($row['categorie']);
@@ -361,10 +422,12 @@ foreach ($rows as $r) {
                     ]);
                     ?>
                     <div
-                        class="kiosk-card <?php echo $isSettled ? 'is-paid' : ''; ?>"
+                        class="kiosk-card <?php echo $isSettled ? 'is-paid' : ''; ?><?php echo $isAbsent ? ' is-absent' : ''; ?>"
                         data-search="<?php echo htmlspecialchars($searchText); ?>"
                         data-session="<?php echo htmlspecialchars($row['session']); ?>"
                         data-paid="<?php echo $isSettled ? '1' : '0'; ?>"
+                        data-absent="<?php echo $isAbsent ? '1' : '0'; ?>"
+                        data-paid-amount="<?php echo htmlspecialchars(number_format((float)$row['amount_paid'], 2, '.', '')); ?>"
                         data-amount="<?php echo htmlspecialchars($amountData); ?>"
                         onclick="toggleCardSelection(event, this);"
                     >
@@ -391,8 +454,12 @@ foreach ($rows as $r) {
 
                             <div class="row-meta"><?php echo implode(' · ', $meta); ?></div>
 
-                            <?php if (!empty($row['target_is_unassigned']) || !empty($row['receipt_required']) || !empty($row['has_special_tarif']) || $row['note'] !== ''): ?>
+                            <?php if ($isAbsent || !empty($row['target_is_unassigned']) || !empty($row['receipt_required']) || !empty($row['has_special_tarif']) || $row['note'] !== ''): ?>
                                 <div class="row-flags">
+                                    <?php if ($isAbsent): ?>
+                                        <span class="flag-absent" title="<?php echo htmlspecialchars($absentTitle); ?>"><span class="beacon" aria-hidden="true"></span>ABSENT</span>
+                                    <?php endif; ?>
+
                                     <?php if (!empty($row['target_is_unassigned'])): ?>
                                         <span class="flag-warn">Sans cible</span>
                                     <?php endif; ?>
@@ -439,7 +506,7 @@ foreach ($rows as $r) {
 
                         <div class="row-amount">
                             <div class="amount num">
-                                <?php echo !empty($row['is_free']) ? 'Gratuit' : registrarc_format_montant($row['amount_due']) . ' €'; ?>
+                                <?php echo registrarc_format_montant(!empty($row['is_free']) ? 0 : $row['amount_due']) . ' €'; ?>
                             </div>
                             <div class="state <?php echo $isSettled ? 'state-paid' : 'state-unpaid'; ?>">
                                 <?php
@@ -466,10 +533,14 @@ foreach ($rows as $r) {
     <form method="POST" id="bulkForm" class="bottom-bulk-bar">
         <?php echo registrarc_form_fields($TourId); ?>
         <input type="hidden" name="create_cheque_group_after_payment" id="create_cheque_group_after_payment" value="0">
+        <!-- Bouton Absent / Présent : remplis par la fenêtre « Signaler absent » -->
+        <input type="hidden" name="absent_action" id="absentAction" value="">
+        <input type="hidden" name="absent_refund" id="absentRefund" value="0">
+        <input type="hidden" name="absent_refund_method" id="absentRefundMethod" value="">
 
         <select name="bulk_payment_method" id="bulk_payment_method" class="sr-only" tabindex="-1" aria-hidden="true" autocomplete="off">
             <?php foreach ($paymentModes as $code => $label): ?>
-                <option value="<?php echo htmlspecialchars($code); ?>">
+                <option value="<?php echo htmlspecialchars($code); ?>"<?php echo registrarc_is_free_method($code) ? ' data-free="1"' : ''; ?>>
                     <?php echo htmlspecialchars($label); ?>
                 </option>
             <?php endforeach; ?>
@@ -484,7 +555,7 @@ foreach ($rows as $r) {
             <div class="bulk-details">
                 <div class="segmented pay-modes" role="group" aria-label="Mode de paiement">
                     <?php foreach ($paymentModes as $code => $label): ?>
-                        <button type="button" class="pay-mode" data-code="<?php echo htmlspecialchars($code); ?>" onclick="selectPaymentMode(this);">
+                        <button type="button" class="pay-mode" data-code="<?php echo htmlspecialchars($code); ?>"<?php echo registrarc_is_free_method($code) ? ' data-free="1"' : ''; ?> onclick="selectPaymentMode(this);">
                             <?php echo registrarc_payment_icon($code); ?>
                             <span class="pay-mode-label"><?php echo htmlspecialchars($label); ?></span>
                         </button>
@@ -498,6 +569,13 @@ foreach ($rows as $r) {
                     </label>
 
                     <?php if ($canWrite): ?>
+                        <!-- Absent : signalé au greffe, avec la question du remboursement ;
+                             devient « Présent » si tous les cochés sont déjà signalés -->
+                        <button type="button" value="absent" id="bulkAbsent" class="btn-absent" disabled onclick="openAbsentDialog(this);">
+                            <span class="beacon" aria-hidden="true"></span>
+                            <span class="btn-absent-label">Absent</span>
+                        </button>
+
                         <button type="submit" name="bulk_action" value="validate" id="bulkSubmit" class="btn-validate-wide" onclick="return confirmBulk();">
                             Valider
                         </button>
@@ -510,6 +588,43 @@ foreach ($rows as $r) {
             </div>
         </div>
     </form>
+
+    <?php if ($canWrite): ?>
+        <!-- Signaler absent : et rembourser, ou non, les départs déjà payés -->
+        <dialog id="absentDialog" class="kiosk-dialog" aria-labelledby="absentDialogTitle">
+            <div class="kiosk-dialog-title" id="absentDialogTitle"><span class="beacon" aria-hidden="true"></span>Signaler absent</div>
+            <p class="kiosk-dialog-text" id="absentDialogText"></p>
+
+            <div id="absentRefundBlock" hidden>
+                <p class="kiosk-dialog-question" id="absentRefundText"></p>
+
+                <label class="kiosk-dialog-choice">
+                    <input type="radio" name="absentRefundChoice" value="0" checked onchange="syncAbsentRefund();">
+                    <span><strong>Ne pas rembourser</strong><small>Le paiement est gardé.</small></span>
+                </label>
+
+                <label class="kiosk-dialog-choice">
+                    <input type="radio" name="absentRefundChoice" value="1" onchange="syncAbsentRefund();">
+                    <span><strong>Rembourser le départ</strong><small>Noté dans la caisse, motif « Archer absent ».</small></span>
+                </label>
+
+                <label class="kiosk-dialog-method" id="absentRefundMethodField" hidden>
+                    Rembourser en
+                    <select id="absentRefundMethodSelect">
+                        <option value="">même mode que le paiement</option>
+                        <?php foreach ($paymentModes as $code => $label): ?>
+                            <option value="<?php echo htmlspecialchars($code); ?>"><?php echo htmlspecialchars($label); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+            </div>
+
+            <div class="kiosk-dialog-actions">
+                <button type="button" class="kiosk-dialog-cancel" onclick="document.getElementById('absentDialog').close();">Annuler</button>
+                <button type="button" class="kiosk-dialog-ok" onclick="submitAbsentDialog();">Signaler absent</button>
+            </div>
+        </dialog>
+    <?php endif; ?>
 
     <script>const KIOSK_FILTERS_KEY = 'RegistrArcKioskFilters_<?php echo intval($TourId); ?>';</script>
     <script src="<?php echo registrarc_asset_url('assets/js/kiosk.js'); ?>"></script>

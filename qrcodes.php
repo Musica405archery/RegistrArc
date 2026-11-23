@@ -16,6 +16,11 @@ $tournament = registrarc_get_tournament_info($TourId);
 $archers = [];
 
 foreach (registrarc_load_engagements($TourId) as $e) {
+    // Engagement supprimé d'I@nseo (gardé pour son paiement) : plus un participant
+    if (!empty($e['removed'])) {
+        continue;
+    }
+
     if (!isset($archers[$e['licence']])) {
         $archers[$e['licence']] = [
             'licence' => $e['licence'],

@@ -223,6 +223,16 @@ function selectPaymentMode(btn) {
     }
 
     syncPaymentModes();
+    // Le total et le bouton suivent le mode : 0 € en mode Gratuit
+    updateBulkSummary();
+}
+
+// Mode de paiement choisi gratuit (Gratuit) : rien n'est encaissé
+function isFreePaymentMode() {
+    const select = document.getElementById('bulk_payment_method');
+    const option = select ? select.options[select.selectedIndex] : null;
+
+    return !!(option && option.dataset.free === '1');
 }
 
 function syncPaymentModes() {
@@ -254,6 +264,10 @@ function selectedBulkCount() {
 
 function selectedBulkTotal() {
     let total = 0;
+
+    if (isFreePaymentMode()) {
+        return 0;
+    }
 
     selectedBulkCheckboxes().forEach(cb => {
         const card = cb.closest('.kiosk-card');
@@ -333,7 +347,7 @@ function updateBulkSummary() {
         submit.disabled = count === 0;
         submit.textContent = count === 0
             ? 'Valider'
-            : (total > 0 ? 'Encaisser ' + formatEuro(total) : 'Valider ' + count + ' engagement(s)');
+            : (total > 0 ? 'Encaisser ' + formatEuro(total) : 'Valider · ' + formatEuro(0));
     }
 
     document.querySelectorAll('.kiosk-card').forEach(card => {
@@ -346,7 +360,123 @@ function updateBulkSummary() {
         }
     });
 
+    updateAbsentButton();
     updateSelectAllButton();
+}
+
+// Bouton Absent : « Présent » quand tous les archers cochés sont déjà signalés absents
+function updateAbsentButton() {
+    const btn = document.getElementById('bulkAbsent');
+
+    if (!btn) {
+        return;
+    }
+
+    const selected = selectedBulkCheckboxes();
+    const allAbsent = selected.length > 0 && selected.every(cb => {
+        const card = cb.closest('.kiosk-card');
+        return card && card.dataset.absent === '1';
+    });
+    const label = btn.querySelector('.btn-absent-label');
+
+    btn.disabled = selected.length === 0;
+    btn.value = allAbsent ? 'present' : 'absent';
+    btn.classList.toggle('is-present', allAbsent);
+    btn.title = allAbsent
+        ? 'Retirer le signalement : les archers cochés sont bien là'
+        : 'Signaler au greffe les archers cochés comme absents';
+
+    if (label) {
+        label.textContent = allAbsent ? 'Présent' : 'Absent';
+    }
+}
+
+// Départs déjà payés parmi les archers cochés : ceux qu'on propose de rembourser
+function selectedPaidDeparts() {
+    let count = 0;
+    let total = 0;
+
+    selectedBulkCheckboxes().forEach(cb => {
+        const card = cb.closest('.kiosk-card');
+        const amount = Number(card ? card.dataset.paidAmount || 0 : 0);
+
+        if (amount > 0) {
+            count++;
+            total += amount;
+        }
+    });
+
+    return { count: count, total: total };
+}
+
+// Bouton Absent : fenêtre « Signaler absent », avec la question du remboursement
+// si des départs sont déjà payés ; bouton Présent : simple confirmation
+function openAbsentDialog(btn) {
+    const count = selectedBulkCount();
+
+    if (count === 0) {
+        alert('Aucun archer sélectionné.');
+        return;
+    }
+
+    if (btn.value === 'present') {
+        if (confirm('Retirer le signalement « absent » de ' + count + ' archer(s) ?')) {
+            submitAbsentAction('present', false, '');
+        }
+
+        return;
+    }
+
+    const paid = selectedPaidDeparts();
+    const text = 'Signaler ' + count + ' archer(s) absent(s) : le greffe le verra en haut de la liste des engagements.';
+    const question = paid.count + ' départ(s) déjà payé(s), ' + formatEuro(paid.total) + '. Rembourser le départ ?';
+    const dialog = document.getElementById('absentDialog');
+
+    // Navigateur sans fenêtre de dialogue : deux questions simples
+    if (!dialog || typeof dialog.showModal !== 'function') {
+        if (!confirm(text)) {
+            return;
+        }
+
+        const refund = paid.count > 0 && confirm(question + '\n\nOK : rembourser, dans le mode de chaque paiement\nAnnuler : garder le paiement');
+        submitAbsentAction('absent', refund, '');
+        return;
+    }
+
+    document.getElementById('absentDialogText').textContent = text;
+    document.getElementById('absentRefundText').textContent = question;
+    document.getElementById('absentRefundBlock').hidden = paid.count === 0;
+    dialog.querySelector('input[name="absentRefundChoice"][value="0"]').checked = true;
+    document.getElementById('absentRefundMethodSelect').value = '';
+    syncAbsentRefund();
+    dialog.showModal();
+}
+
+// Le mode du remboursement n'est demandé que si l'on rembourse
+function syncAbsentRefund() {
+    const choice = document.querySelector('input[name="absentRefundChoice"]:checked');
+    const field = document.getElementById('absentRefundMethodField');
+
+    if (field) {
+        field.hidden = !(choice && choice.value === '1');
+    }
+}
+
+function submitAbsentDialog() {
+    const dialog = document.getElementById('absentDialog');
+    const choice = document.querySelector('input[name="absentRefundChoice"]:checked');
+    const refund = !document.getElementById('absentRefundBlock').hidden && !!choice && choice.value === '1';
+    const method = document.getElementById('absentRefundMethodSelect').value;
+
+    dialog.close();
+    submitAbsentAction('absent', refund, refund ? method : '');
+}
+
+function submitAbsentAction(action, refund, method) {
+    document.getElementById('absentAction').value = action;
+    document.getElementById('absentRefund').value = refund ? '1' : '0';
+    document.getElementById('absentRefundMethod').value = method;
+    document.getElementById('bulkForm').submit();
 }
 
 function currentBulkPaymentMethod() {
@@ -367,6 +497,14 @@ function confirmBulk() {
     if (count === 0) {
         alert('Aucun engagement sélectionné.');
         return false;
+    }
+
+    // Mode Gratuit : rien n'est encaissé
+    if (isFreePaymentMode()) {
+        return confirm(
+            'Valider gratuitement ' + count + ' engagement(s) ?\n\n' +
+            'Montant encaissé : ' + formatEuro(0)
+        );
     }
 
     if (method === 'CHQ' && count >= 2) {

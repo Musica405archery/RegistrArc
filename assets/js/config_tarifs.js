@@ -390,18 +390,22 @@ function handleImportSubmit(event) {
             warnings.push('Le JSON importé ne contient pas de code tournoi.');
         }
 
+        // Le fichier importé remplace tout le paramétrage : on le dit clairement
+        const replaceText =
+            'Le paramétrage actuel (catégories, tarifs, règles, moyens de paiement, options du greffe) ' +
+            'sera ENTIÈREMENT REMPLACÉ par celui du fichier. L\'ancien est gardé en copie de secours.';
         let message = '';
 
         if (warnings.length > 0) {
             message =
                 'Attention avant import :\n\n' +
                 warnings.join('\n\n') +
-                '\n\nImporter quand même et remplacer le paramétrage actuel ?';
+                '\n\n' + replaceText + '\n\nImporter quand même ?';
         } else {
             message =
-                'Importer ce fichier JSON et remplacer le paramétrage actuel ?\n\n' +
+                replaceText + '\n\n' +
                 'Code tournoi détecté : ' + importedCode + '\n' +
-                'Date détectée (' + imported.source + ') : ' + importedLabel;
+                'Date détectée (' + imported.source + ') : ' + importedLabel + '\n\nImporter ?';
         }
 
         if (!confirm(message)) {

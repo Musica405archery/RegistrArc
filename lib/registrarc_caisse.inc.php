@@ -273,6 +273,175 @@ function registrarc_refund_payments($TourId, array $ids, $refundMethod, $source,
     return registrarc_apply_payment_changes($TourId, $changes, $source);
 }
 
+// Archers signalés absents (mode Kiosk) et, si on le demande, départs déjà payés
+// remboursés, motif « Archer absent ». $refundMethod : mode du remboursement, ou ''
+// pour rembourser chacun dans le mode de son paiement. Un départ payé 0 € (Gratuit)
+// n'a rien à rembourser.
+// Retourne ['ok', 'refunded' => [ids], 'amount' => total remboursé, 'skipped' => [id => motif]]
+function registrarc_report_absent($TourId, array $ids, $refund, $refundMethod, $source) {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+    $out = ['ok' => registrarc_set_absent($TourId, $ids, true), 'refunded' => [], 'amount' => 0.0, 'skipped' => []];
+
+    if (!$out['ok'] || !$refund) {
+        return $out;
+    }
+
+    $engagements = registrarc_load_engagements($TourId, true);
+    $groups = [];
+
+    foreach ($ids as $id) {
+        if (!isset($engagements[$id]) || $engagements[$id]['state'] !== 'paid' || (float)$engagements[$id]['amount'] <= 0) {
+            continue;
+        }
+
+        $method = $refundMethod !== '' ? $refundMethod : $engagements[$id]['payment_method'];
+        $groups[$method][] = $id;
+    }
+
+    foreach ($groups as $method => $groupIds) {
+        $result = registrarc_refund_payments($TourId, $groupIds, $method, $source, 'Archer absent');
+        $out['ok'] = $out['ok'] && $result['ok'];
+        $out['skipped'] += $result['skipped'];
+
+        foreach ($result['done'] as $id) {
+            $out['refunded'][] = $id;
+            $out['amount'] = round($out['amount'] + (float)$engagements[$id]['amount'], 2);
+        }
+    }
+
+    return $out;
+}
+
+// ---------------------------------------------------------------------------
+// Import des paiements d'un autre poste (fichier exporté depuis la liste)
+// ---------------------------------------------------------------------------
+// Clé stable d'une inscription, commune aux postes : licence, catégorie, départ, cible
+function registrarc_registration_key($licence, $categorie, $session, $target, $letter) {
+    return strtoupper(trim((string)$licence))
+        . '|'
+        . strtoupper(trim((string)$categorie))
+        . '|'
+        . trim((string)$session)
+        . '|'
+        . trim((string)$target)
+        . '|'
+        . strtoupper(trim((string)$letter));
+}
+
+// Export filtré (club, catégorie, statut, départ ou recherche) : il ne contient
+// qu'une partie des engagements. Sans filtres connus, on le considère filtré.
+function registrarc_registrations_export_is_partial(array $data) {
+    if (!isset($data['filters']) || !is_array($data['filters'])) {
+        return true;
+    }
+
+    foreach (['club', 'category', 'payment', 'session'] as $key) {
+        if (isset($data['filters'][$key]) && !in_array((string)$data['filters'][$key], ['', 'all'], true)) {
+            return true;
+        }
+    }
+
+    return isset($data['filters']['search']) && trim((string)$data['filters']['search']) !== '';
+}
+
+// Changements qui font REMPLACER les paiements de ce poste par ceux du fichier :
+// payé, remboursé (mode et motif) ou non payé, comme dans le fichier. Export
+// complet : un engagement payé ici mais absent du fichier redevient non payé ;
+// export filtré : seuls les engagements du fichier changent.
+// $localMap : [clé d'inscription => EnId] ; $engagements : registrarc_load_engagements()
+// Retourne ['changes', 'partial', 'matched', 'unmatched', 'paid', 'refunded', 'unpaid', 'reset']
+function registrarc_import_registrations_plan(array $data, array $localMap, array $engagements, array $paymentModes) {
+    $plan = [
+        'changes' => [],
+        'partial' => registrarc_registrations_export_is_partial($data),
+        'matched' => 0,
+        'unmatched' => 0,
+        'paid' => 0,
+        'refunded' => 0,
+        'unpaid' => 0,
+        'reset' => 0,
+    ];
+    $state = function ($id) use ($engagements) {
+        return isset($engagements[$id]) ? $engagements[$id]['state'] : 'due';
+    };
+    $seen = [];
+
+    foreach ((isset($data['registrations']) && is_array($data['registrations']) ? $data['registrations'] : []) as $reg) {
+        if (!is_array($reg)) {
+            $plan['unmatched']++;
+            continue;
+        }
+
+        $key = isset($reg['key']) ? trim((string)$reg['key']) : '';
+
+        if ($key === '') {
+            $key = registrarc_registration_key(
+                isset($reg['licence']) ? $reg['licence'] : '',
+                isset($reg['categorie']) ? $reg['categorie'] : '',
+                isset($reg['session']) ? $reg['session'] : '',
+                isset($reg['target']) ? $reg['target'] : '',
+                isset($reg['letter']) ? $reg['letter'] : ''
+            );
+        }
+
+        if (!isset($localMap[$key])) {
+            $plan['unmatched']++;
+            continue;
+        }
+
+        $id = intval($localMap[$key]);
+        $seen[$id] = true;
+        $payment = isset($reg['payment']) && is_array($reg['payment']) ? $reg['payment'] : [];
+        $status = isset($payment['status']) ? strtoupper(trim((string)$payment['status'])) : 'NON_PAYE';
+        $method = !empty($payment['method']) ? registrarc_clean_payment_method($payment['method'], $paymentModes) : 'ESP';
+        $receipt = !empty($payment['receipt_required']);
+        $local = $state($id);
+
+        if ($status === 'PAYE') {
+            $plan['changes'][] = ['id' => $id, 'action' => 'pay', 'method' => $method, 'receipt' => $receipt];
+            $plan['paid']++;
+        } elseif ($status === 'REMBOURSE') {
+            // Remboursé dans le fichier : payé (si besoin) puis remboursé ici aussi
+            if ($local !== 'refunded') {
+                if ($local !== 'paid') {
+                    $plan['changes'][] = ['id' => $id, 'action' => 'pay', 'method' => $method, 'receipt' => $receipt];
+                }
+
+                $reason = isset($payment['refund_reason']) ? trim((string)$payment['refund_reason']) : '';
+                $plan['changes'][] = [
+                    'id' => $id,
+                    'action' => 'refund',
+                    'method' => !empty($payment['refund_method']) ? registrarc_clean_payment_method($payment['refund_method'], $paymentModes) : $method,
+                    'reason' => $reason !== '' ? $reason : 'Remboursement importé',
+                ];
+            }
+
+            $plan['refunded']++;
+        } else {
+            if ($local === 'paid' || $local === 'refunded') {
+                $plan['changes'][] = ['id' => $id, 'action' => 'cancel'];
+            }
+
+            $plan['unpaid']++;
+        }
+
+        $plan['matched']++;
+    }
+
+    if (!$plan['partial']) {
+        foreach ($localMap as $id) {
+            $id = intval($id);
+
+            if (!isset($seen[$id]) && in_array($state($id), ['paid', 'refunded'], true)) {
+                $plan['changes'][] = ['id' => $id, 'action' => 'cancel'];
+                $plan['reset']++;
+            }
+        }
+    }
+
+    return $plan;
+}
+
 // Message lisible pour les engagements non traités
 function registrarc_skipped_message($TourId, array $skipped) {
     if (empty($skipped)) {

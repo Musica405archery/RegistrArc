@@ -280,9 +280,19 @@ function registrarc_save_payments($TourId, array $data) {
     return registrarc_save_json_file(registrarc_payments_file_path($TourId), $data);
 }
 
-// Toute modification de paiement resynchronise les groupes de chèques
+// Toute modification de paiement resynchronise les groupes de chèques. Elle met
+// aussi à jour la photo de chaque engagement payé (nom, club, départ, cible…),
+// qui le garde dans la liste s'il est ensuite supprimé d'I@nseo.
 function registrarc_update_payments($TourId, callable $mutator) {
-    $saved = registrarc_update_json_file(registrarc_payments_file_path($TourId), $mutator);
+    $engagements = registrarc_load_engagements($TourId);
+
+    $saved = registrarc_update_json_file(registrarc_payments_file_path($TourId), function (array &$payments) use ($mutator, $engagements) {
+        if ($mutator($payments) === false) {
+            return false;
+        }
+
+        registrarc_payments_refresh_snapshots($payments, $engagements);
+    });
 
     if ($saved) {
         registrarc_sync_cheque_groups($TourId);

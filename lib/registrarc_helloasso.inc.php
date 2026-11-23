@@ -132,6 +132,11 @@ function registrarc_helloasso_match($TourId, array $rows, array $columns) {
     $byName = [];
 
     foreach ($engagements as $id => $e) {
+        // Engagement supprimé d'I@nseo : plus rien à y rapprocher
+        if (!empty($e['removed'])) {
+            continue;
+        }
+
         $byLicence[$e['licence']][] = $id;
         $byName[strtoupper(registrarc_helloasso_plain($e['nom'] . ' ' . $e['prenom']))][] = $id;
     }

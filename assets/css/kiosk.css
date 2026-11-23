@@ -607,3 +607,181 @@ select {
         justify-content: space-between;
     }
 }
+
+/* --- Signalement « absent » : petit girophare -------------------------------- */
+/* Dôme rouge qui clignote sur son socle (immobile si l'appareil limite les animations) */
+.beacon {
+    position: relative;
+    display: inline-block;
+    flex: none;
+    width: 12px;
+    height: 13px;
+    vertical-align: -1px;
+}
+
+.beacon::before {
+    content: "";
+    position: absolute;
+    top: 1px;
+    left: 2px;
+    right: 2px;
+    height: 9px;
+    border-radius: 5px 5px 1px 1px;
+    background: #dc2626;
+    animation: beacon-flash 1s ease-in-out infinite;
+}
+
+.beacon::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    border-radius: 1px;
+    background: #374151;
+}
+
+@keyframes beacon-flash {
+    0%, 100% { background: #b91c1c; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    50% { background: #f87171; box-shadow: 0 0 6px 2px rgba(239, 68, 68, 0.75); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .beacon::before { animation: none; }
+}
+
+.flag-absent {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--unpaid);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+}
+
+.kiosk-card.is-absent { box-shadow: inset 4px 0 0 #dc2626; }
+
+/* Bouton Absent / Présent de la barre du bas (girophare immobile) */
+.btn-absent {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 7px;
+    height: 48px;
+    padding: 0 14px;
+    border: 1px solid #fca5a5;
+    border-radius: var(--radius);
+    background: #fef2f2;
+    color: var(--unpaid);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.btn-absent .beacon::before { animation: none; }
+.btn-absent.is-present { border-color: #86efac; background: #f0fdf4; color: var(--paid); }
+.btn-absent.is-present .beacon { display: none; }
+
+.btn-absent:disabled {
+    border-color: var(--line-strong);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: default;
+}
+
+.btn-absent:disabled .beacon::before { background: var(--line-strong); }
+
+@media (max-width: 520px) {
+    .bulk-actions { gap: 10px; }
+    .btn-absent { padding: 0 11px; font-size: 14px; }
+}
+
+/* Archer signalé absent : nom barré */
+.kiosk-card.is-absent .row-name {
+    text-decoration: line-through;
+    text-decoration-color: #b91c1c;
+    text-decoration-thickness: 2px;
+}
+
+/* --- Fenêtre « Signaler absent » ------------------------------------------- */
+.kiosk-dialog {
+    width: min(420px, calc(100vw - 24px));
+    padding: 18px;
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.3);
+    color: var(--text);
+}
+
+.kiosk-dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
+
+.kiosk-dialog-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: var(--unpaid);
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.kiosk-dialog-text { margin: 0 0 12px; line-height: 1.4; }
+.kiosk-dialog-question { margin: 0 0 8px; font-weight: 700; }
+
+.kiosk-dialog-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.kiosk-dialog-choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.kiosk-dialog-choice input { margin-top: 3px; }
+.kiosk-dialog-choice small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+
+.kiosk-dialog-method {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 4px 0 8px;
+    font-size: 14px;
+}
+
+.kiosk-dialog-method[hidden] { display: none; }
+
+.kiosk-dialog-method select {
+    flex: 1 1 100%;
+    min-width: 0;
+    height: 40px;
+    padding: 0 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--surface);
+    font: inherit;
+}
+
+.kiosk-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.kiosk-dialog-actions button {
+    height: 44px;
+    padding: 0 16px;
+    border-radius: var(--radius);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.kiosk-dialog-cancel { border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); }
+.kiosk-dialog-ok { border: none; background: var(--unpaid); color: #fff; }

@@ -244,3 +244,100 @@ test('concours clôturé : plus de droit d\'écriture', function () {
     registrarc_set_closed(1, false);
     assert_true(registrarc_can_write(1));
 });
+
+test('archer absent : départ remboursé ou non, au choix', function () {
+    $esp = test_add_entry('A1', 'CLS1H', '1099000', 1);
+    $chq = test_add_entry('B1', 'CLS1H', '1099000', 1);
+    $due = test_add_entry('C1', 'CLS1H', '1099000', 1);
+    $free = test_add_entry('D1', 'CLS1H', '1099000', 1);
+
+    registrarc_record_payments(1, [$esp], 'ESP', false, 'liste');
+    registrarc_record_payments(1, [$chq], 'CHQ', false, 'liste');
+    registrarc_record_payments(1, [$free], 'GRA', false, 'liste');
+
+    // Sans remboursement : signalés, paiements gardés
+    $r = registrarc_report_absent(1, [$esp], false, '', 'kiosque');
+    assert_true($r['ok']);
+    assert_same([], $r['refunded']);
+    $e = registrarc_load_engagements(1, true);
+    assert_true($e[$esp]['absent'] !== '');
+    assert_same('paid', $e[$esp]['state']);
+
+    // Avec remboursement dans le mode de chaque paiement : seuls les départs payés
+    // plus de 0 € sont remboursés
+    $r = registrarc_report_absent(1, [$esp, $chq, $due, $free], true, '', 'kiosque');
+    assert_true($r['ok']);
+    sort($r['refunded']);
+    assert_same([$esp, $chq], $r['refunded']);
+    assert_amount(20, $r['amount']);
+
+    $e = registrarc_load_engagements(1, true);
+    assert_same(['refunded', 'refunded', 'due', 'paid'], [$e[$esp]['state'], $e[$chq]['state'], $e[$due]['state'], $e[$free]['state']]);
+    assert_same(['ESP', 'CHQ'], [$e[$esp]['payment']['refund_method'], $e[$chq]['payment']['refund_method']]);
+    assert_same('Archer absent', $e[$chq]['payment']['refund_reason']);
+    assert_true($e[$due]['absent'] !== '' && $e[$free]['absent'] !== '', 'tous signalés');
+
+    // Mode imposé : virement pour tout le monde
+    $f = test_add_entry('E1', 'CLS1H', '1099000', 1);
+    registrarc_record_payments(1, [$f], 'CB', false, 'liste');
+    registrarc_report_absent(1, [$f], true, 'VIR', 'kiosque');
+    assert_same('VIR', registrarc_load_engagements(1, true)[$f]['payment']['refund_method']);
+});
+
+test('import des paiements d\'un autre poste : le fichier remplace ceux de ce poste', function () {
+    $a = test_add_entry('A1', 'CLS1H', '1099000', 1, '1', 'A');
+    $b = test_add_entry('B1', 'CLS1H', '1099000', 1, '2', 'A');
+    $c = test_add_entry('C1', 'CLS1H', '1099000', 1, '3', 'A');
+    $d = test_add_entry('D1', 'CLS1H', '1099000', 1, '4', 'A');
+    registrarc_record_payments(1, [$a, $b, $c], 'ESP', false, 'liste');
+
+    $e = registrarc_load_engagements(1, true);
+    $key = function ($id) use (&$e) {
+        return registrarc_registration_key($e[$id]['licence'], $e[$id]['categorie'], $e[$id]['session'], $e[$id]['target'], $e[$id]['letter']);
+    };
+    $localMap = [];
+
+    foreach (array_keys($e) as $id) {
+        $localMap[$key($id)] = $id;
+    }
+
+    // Export complet de l'autre poste : C n'y est pas
+    $file = [
+        'filters' => ['club' => 'all', 'category' => 'all', 'payment' => 'all', 'session' => 'all', 'search' => ''],
+        'registrations' => [
+            ['key' => $key($a), 'payment' => ['status' => 'PAYE', 'method' => 'CHQ']],
+            ['key' => $key($b), 'payment' => ['status' => 'REMBOURSE', 'method' => 'ESP', 'refund_method' => 'VIR', 'refund_reason' => 'Forfait']],
+            ['key' => $key($d), 'payment' => ['status' => 'REMBOURSE', 'method' => 'CHQ', 'refund_method' => 'CHQ']],
+            ['key' => 'INCONNU|CLS1H|1|9|Z', 'payment' => ['status' => 'PAYE', 'method' => 'ESP']],
+        ],
+    ];
+
+    $plan = registrarc_import_registrations_plan($file, $localMap, $e, registrarc_load_payment_modes(1));
+    assert_same(false, $plan['partial']);
+    assert_same([3, 1, 1, 2, 1], [$plan['matched'], $plan['unmatched'], $plan['paid'], $plan['refunded'], $plan['reset']]);
+    assert_true(registrarc_apply_payment_changes(1, $plan['changes'], 'import')['ok']);
+
+    $e = registrarc_load_engagements(1, true);
+    assert_same(['paid', 'refunded', 'due', 'refunded'], [$e[$a]['state'], $e[$b]['state'], $e[$c]['state'], $e[$d]['state']], 'remplacés par le fichier');
+    assert_same('CHQ', $e[$a]['payment_method'], 'mode du fichier');
+    assert_same(['VIR', 'Forfait'], [$e[$b]['payment']['refund_method'], $e[$b]['payment']['refund_reason']]);
+    assert_same('Remboursement importé', $e[$d]['payment']['refund_reason'], 'motif par défaut');
+
+    // Export filtré : seuls ses engagements changent ; un remboursement déjà fait reste
+    $file['filters']['club'] = 'Club X';
+    $file['registrations'] = [
+        ['key' => $key($a), 'payment' => ['status' => 'NON_PAYE']],
+        ['key' => $key($b), 'payment' => ['status' => 'REMBOURSE', 'method' => 'ESP', 'refund_method' => 'VIR']],
+    ];
+
+    $plan = registrarc_import_registrations_plan($file, $localMap, $e, registrarc_load_payment_modes(1));
+    assert_true($plan['partial']);
+    assert_same([0, 1], [$plan['reset'], count($plan['changes'])], 'B déjà remboursé : rien à refaire');
+    registrarc_apply_payment_changes(1, $plan['changes'], 'import');
+
+    $e = registrarc_load_engagements(1, true);
+    assert_same(['due', 'refunded', 'refunded'], [$e[$a]['state'], $e[$b]['state'], $e[$d]['state']]);
+
+    // Sans filtres connus (ancien fichier) : considéré comme filtré
+    assert_true(registrarc_registrations_export_is_partial(['registrations' => []]));
+});
